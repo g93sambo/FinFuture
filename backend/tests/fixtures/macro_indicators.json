@@ -1,0 +1,14 @@
+{
+  "as_of": "2026-10-01T00:00:00Z",
+  "source": "FRED",
+  "indicators": {
+    "cpi": 3.48,
+    "unemployment_rate": 3.9,
+    "fed_funds_rate": 5.33,
+    "gdp_growth_rate": 2.4,
+    "treasury_10y_yield": 4.5,
+    "unrate": 3.9,
+    "fedfunds": 5.33
+  },
+  "regime": "tightening_disinflation"
+}

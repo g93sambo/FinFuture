@@ -1,0 +1,282 @@
+{
+  "SPY": {
+    "symbol": "SPY",
+    "name": "SPDR S&P 500 ETF Trust",
+    "asset_class": "equity",
+    "expense_ratio": 0.0009,
+    "aum_billions": 525.0,
+    "top_holdings": [
+      {
+        "symbol": "MSFT",
+        "name": "Microsoft Corp",
+        "weight": 0.071
+      },
+      {
+        "symbol": "AAPL",
+        "name": "Apple Inc",
+        "weight": 0.065
+      },
+      {
+        "symbol": "NVDA",
+        "name": "NVIDIA Corp",
+        "weight": 0.058
+      },
+      {
+        "symbol": "AMZN",
+        "name": "Amazon.com Inc",
+        "weight": 0.038
+      },
+      {
+        "symbol": "META",
+        "name": "Meta Platforms Inc",
+        "weight": 0.024
+      },
+      {
+        "symbol": "GOOGL",
+        "name": "Alphabet Inc Class A",
+        "weight": 0.021
+      },
+      {
+        "symbol": "GOOG",
+        "name": "Alphabet Inc Class C",
+        "weight": 0.018
+      },
+      {
+        "symbol": "BRK.B",
+        "name": "Berkshire Hathaway Inc",
+        "weight": 0.017
+      },
+      {
+        "symbol": "LLY",
+        "name": "Eli Lilly and Co",
+        "weight": 0.015
+      },
+      {
+        "symbol": "AVGO",
+        "name": "Broadcom Inc",
+        "weight": 0.014
+      }
+    ],
+    "sector_weights": {
+      "Technology": 0.298,
+      "Financial Services": 0.131,
+      "Healthcare": 0.122,
+      "Consumer Cyclical": 0.104,
+      "Communication Services": 0.089,
+      "Industrials": 0.085,
+      "Consumer Defensive": 0.06,
+      "Energy": 0.039,
+      "Real Estate": 0.023,
+      "Materials": 0.024,
+      "Utilities": 0.025
+    },
+    "source": "fixture"
+  },
+  "BND": {
+    "symbol": "BND",
+    "name": "Vanguard Total Bond Market ETF",
+    "asset_class": "fixed_income",
+    "expense_ratio": 0.0003,
+    "aum_billions": 310.0,
+    "duration": 6.5,
+    "effective_duration": 6.5,
+    "yield_30d": 0.046,
+    "credit_quality": {
+      "AAA": 0.68,
+      "AA": 0.04,
+      "A": 0.12,
+      "BBB": 0.16
+    },
+    "top_holdings": [
+      {
+        "symbol": "US-T-4.25",
+        "name": "United States Treasury Notes 4.25%",
+        "weight": 0.008
+      },
+      {
+        "symbol": "US-T-4.00",
+        "name": "United States Treasury Notes 4.00%",
+        "weight": 0.007
+      },
+      {
+        "symbol": "US-T-4.50",
+        "name": "United States Treasury Notes 4.50%",
+        "weight": 0.007
+      }
+    ],
+    "sector_weights": {
+      "Government": 0.48,
+      "Securitized": 0.22,
+      "Corporate": 0.28,
+      "Municipal": 0.02
+    },
+    "source": "fixture"
+  },
+  "AGG": {
+    "symbol": "AGG",
+    "name": "iShares Core U.S. Aggregate Bond ETF",
+    "asset_class": "fixed_income",
+    "expense_ratio": 0.0003,
+    "aum_billions": 115.0,
+    "duration": 6.4,
+    "effective_duration": 6.4,
+    "yield_30d": 0.045,
+    "credit_quality": {
+      "AAA": 0.7,
+      "AA": 0.03,
+      "A": 0.11,
+      "BBB": 0.16
+    },
+    "top_holdings": [
+      {
+        "symbol": "US-T-4.125",
+        "name": "United States Treasury 4.125%",
+        "weight": 0.008
+      },
+      {
+        "symbol": "US-T-3.875",
+        "name": "United States Treasury 3.875%",
+        "weight": 0.007
+      }
+    ],
+    "sector_weights": {
+      "Government": 0.49,
+      "Securitized": 0.23,
+      "Corporate": 0.27,
+      "Municipal": 0.01
+    },
+    "source": "fixture"
+  },
+  "VTI": {
+    "symbol": "VTI",
+    "name": "Vanguard Total Stock Market ETF",
+    "asset_class": "equity",
+    "expense_ratio": 0.0003,
+    "aum_billions": 410.0,
+    "top_holdings": [
+      {
+        "symbol": "MSFT",
+        "name": "Microsoft Corp",
+        "weight": 0.063
+      },
+      {
+        "symbol": "AAPL",
+        "name": "Apple Inc",
+        "weight": 0.058
+      },
+      {
+        "symbol": "NVDA",
+        "name": "NVIDIA Corp",
+        "weight": 0.051
+      }
+    ],
+    "sector_weights": {
+      "Technology": 0.285,
+      "Financial Services": 0.135,
+      "Healthcare": 0.118,
+      "Consumer Cyclical": 0.106,
+      "Industrials": 0.095,
+      "Communication Services": 0.084,
+      "Consumer Defensive": 0.058,
+      "Energy": 0.042,
+      "Real Estate": 0.029,
+      "Materials": 0.024,
+      "Utilities": 0.024
+    },
+    "source": "fixture"
+  },
+  "VXUS": {
+    "symbol": "VXUS",
+    "name": "Vanguard Total International Stock ETF",
+    "asset_class": "equity",
+    "expense_ratio": 0.0008,
+    "aum_billions": 72.0,
+    "top_holdings": [
+      {
+        "symbol": "TSMC",
+        "name": "Taiwan Semiconductor",
+        "weight": 0.021
+      },
+      {
+        "symbol": "NOVO",
+        "name": "Novo Nordisk",
+        "weight": 0.016
+      },
+      {
+        "symbol": "ASML",
+        "name": "ASML Holding NV",
+        "weight": 0.014
+      }
+    ],
+    "sector_weights": {
+      "Financial Services": 0.21,
+      "Technology": 0.145,
+      "Industrials": 0.142,
+      "Consumer Cyclical": 0.115,
+      "Healthcare": 0.098,
+      "Materials": 0.075,
+      "Consumer Defensive": 0.072,
+      "Energy": 0.054,
+      "Communication Services": 0.038,
+      "Utilities": 0.031,
+      "Real Estate": 0.02
+    },
+    "source": "fixture"
+  },
+  "GLD": {
+    "symbol": "GLD",
+    "name": "SPDR Gold Shares",
+    "asset_class": "commodity",
+    "expense_ratio": 0.004,
+    "aum_billions": 65.0,
+    "top_holdings": [
+      {
+        "symbol": "GOLD",
+        "name": "Gold Bullion (100%)",
+        "weight": 1.0
+      }
+    ],
+    "sector_weights": {
+      "Commodities": 1.0
+    },
+    "source": "fixture"
+  },
+  "QQQ": {
+    "symbol": "QQQ",
+    "name": "Invesco QQQ Trust",
+    "asset_class": "equity",
+    "expense_ratio": 0.002,
+    "aum_billions": 260.0,
+    "top_holdings": [
+      {
+        "symbol": "MSFT",
+        "name": "Microsoft Corp",
+        "weight": 0.088
+      },
+      {
+        "symbol": "AAPL",
+        "name": "Apple Inc",
+        "weight": 0.082
+      },
+      {
+        "symbol": "NVDA",
+        "name": "NVIDIA Corp",
+        "weight": 0.076
+      }
+    ],
+    "sector_weights": {
+      "Technology": 0.51,
+      "Communication Services": 0.155,
+      "Consumer Cyclical": 0.132,
+      "Healthcare": 0.065,
+      "Consumer Defensive": 0.042,
+      "Industrials": 0.041,
+      "Utilities": 0.012,
+      "Financial Services": 0.005,
+      "Real Estate": 0.002,
+      "Energy": 0.003,
+      "Materials": 0.033
+    },
+    "source": "fixture"
+  }
+}

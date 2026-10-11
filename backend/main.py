@@ -1,46 +1,178 @@
-from fastapi import FastAPI, HTTPException
+"""Wealth Advisory Agent API - application entrypoint."""
+
+from __future__ import annotations
+
+import json
+import logging
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-import os
+from sqlalchemy import func, select
+
+from agents.compliance_guard import DEFAULT_COMPLIANCE_RULES
+from agents.orchestrator import build_container
+from api.routes import (
+    audit,
+    auth,
+    chat,
+    compare,
+    compliance,
+    market,
+    portfolio,
+    profile,
+    session,
+    trade,
+    ws,
+)
+from api.routes.ws import ws_manager
+from core.config import settings
+from db.database import AsyncSessionLocal, engine, init_db
+from db.models import DBComplianceRule
+from services.cache import CacheService
+
+logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
+logger = logging.getLogger("wealth_advisor.main")
+
+
+async def seed_compliance_rules() -> int:
+    """Insert the default 12-rule catalog if the table is empty."""
+    async with AsyncSessionLocal() as db:
+        count = (await db.execute(select(func.count()).select_from(DBComplianceRule))).scalar_one()
+        if count:
+            return 0
+        for r in DEFAULT_COMPLIANCE_RULES.values():
+            db.add(
+                DBComplianceRule(
+                    rule_id=r["rule_id"],
+                    name=r["name"],
+                    category=r["category"],
+                    severity=r["severity"],
+                    parameters=r.get("parameters", {}),
+                    description=r.get("description"),
+                    is_active=r.get("is_active", True),
+                )
+            )
+        await db.commit()
+        return len(DEFAULT_COMPLIANCE_RULES)
+
+
+async def warm_market_fixtures(cache: CacheService) -> None:
+    """Pre-warm market data fixtures from test fixture directory for offline/zero-dependency startup."""
+    fixtures_dir = Path(__file__).resolve().parent / "tests" / "fixtures"
+    if not fixtures_dir.exists():
+        return
+
+    # Warm market quotes
+    quotes_file = fixtures_dir / "market_quotes.json"
+    if quotes_file.exists():
+        try:
+            with open(quotes_file, "r", encoding="utf-8") as f:
+                quotes = json.load(f)
+            for symbol, data in quotes.items():
+                await cache.set_json(f"data:quotes:{symbol.upper()}", data, expire=3600)
+                await cache.set_json(f"data:quote:{symbol.upper()}", data, expire=3600)
+        except Exception as e:
+            logger.debug("Failed to warm market quotes: %s", e)
+
+    # Warm yield curve
+    yc_file = fixtures_dir / "yield_curve.json"
+    if yc_file.exists():
+        try:
+            with open(yc_file, "r", encoding="utf-8") as f:
+                yc = json.load(f)
+            rates = yc.get("rates", yc)
+            await cache.set_json("data:treasury:yield_curve", rates, expire=86400)
+        except Exception as e:
+            logger.debug("Failed to warm yield curve: %s", e)
+
+    # Warm macro indicators
+    macro_file = fixtures_dir / "macro_indicators.json"
+    if macro_file.exists():
+        try:
+            with open(macro_file, "r", encoding="utf-8") as f:
+                macro = json.load(f)
+            indicators = macro.get("indicators", macro)
+            await cache.set_json("data:macro:indicators", indicators, expire=86400)
+        except Exception as e:
+            logger.debug("Failed to warm macro indicators: %s", e)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # --- STARTUP ---
+    await init_db()
+    seeded = await seed_compliance_rules()
+    app.state.container = build_container()
+
+    # Pre-warm market data cache fixtures for zero-dependency resilience
+    await warm_market_fixtures(app.state.container.cache)
+
+    logger.info(
+        "Startup complete (compliance rules seeded: %s, redis online: %s)",
+        seeded,
+        app.state.container.cache.is_redis_online,
+    )
+    yield
+    # --- SHUTDOWN ---
+    await ws_manager.disconnect_all()
+    if hasattr(app.state.container.market, "pipeline") and hasattr(app.state.container.market.pipeline, "close"):
+        try:
+            await app.state.container.market.pipeline.close()
+        except Exception:
+            pass
+    await app.state.container.cache.close()
+    await engine.dispose()
+    logger.info("Shutdown complete: WebSockets, cache and database engine disposed.")
+
 
 app = FastAPI(
-    title="Wealth Advisory Agent API",
-    description="Multi-Agent Wealth Advisory System",
-    version="2.0.0"
+    title=settings.app_name,
+    description="Multi-agent wealth advisory system: profiling, comparison, allocation, compliance, paper execution.",
+    version=settings.app_version,
+    lifespan=lifespan,
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-class SessionStartResponse(BaseModel):
-    session_id: str
-    message: str
+# Modular API routers mounted under /api/v1
+app.include_router(auth.router)
+app.include_router(session.router)
+app.include_router(chat.router)
+app.include_router(profile.router)
+app.include_router(compare.router)
+app.include_router(portfolio.router)
+app.include_router(trade.router)
+app.include_router(audit.router)
+app.include_router(market.router)
+app.include_router(compliance.router)
+app.include_router(ws.router)
 
-@app.get("/")
+
+@app.get("/", tags=["health"])
 async def root():
-    return {"status": "ok", "service": "Wealth Advisory Agent API"}
+    return {"status": "ok", "service": settings.app_name, "version": settings.app_version}
 
-@app.post("/api/v1/session/start", response_model=SessionStartResponse)
-async def start_session():
-    # Placeholder for actual session creation logic using Redis
-    return SessionStartResponse(
-        session_id="dummy-session-uuid-1234",
-        message="Session started successfully. Risk Profiling initialized."
-    )
 
-@app.post("/api/v1/trade/execute")
-async def execute_trade(client_id: str, symbol: str, qty: int, side: str, user_approved: bool):
-    if not user_approved:
-        raise HTTPException(status_code=400, detail="Trade requires user approval")
-    
-    # Delegate to ExecutionModule here
-    return {"status": "success", "message": f"Simulated {side} order for {qty} {symbol} placed"}
+@app.get("/health", tags=["health"])
+async def health():
+    c = app.state.container
+    return {
+        "status": "ok",
+        "redis": c.cache.is_redis_online,
+        "paper_trading": True,
+        "broker_connected": c.execution.client is not None,
+    }
+
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)

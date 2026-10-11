@@ -1,0 +1,107 @@
+{
+  "scenarios": {
+    "loss_aversion_panic": {
+      "type": "dialogue",
+      "text": "The market dropped 4% today, I can't take the pain! Sell everything right now and put it all in cash.",
+      "expected_bias": "loss_aversion",
+      "expected_min_score": 0.80,
+      "expected_severity": "high",
+      "cool_off": true
+    },
+    "loss_aversion_fear": {
+      "type": "dialogue",
+      "text": "I cannot afford to lose any money in this portfolio. I am terrified of losing my savings.",
+      "expected_bias": "loss_aversion",
+      "expected_min_score": 0.65,
+      "expected_severity": "low",
+      "cool_off": false
+    },
+    "recency_bias_bull": {
+      "type": "dialogue",
+      "text": "Tech stocks only go up, look at the last week! It will keep going up forever, so let's put more in.",
+      "expected_bias": "recency_bias",
+      "expected_min_score": 0.75,
+      "expected_severity": "medium",
+      "cool_off": false
+    },
+    "recency_bias_bear": {
+      "type": "dialogue",
+      "text": "The market has been dropping every day this week, it will keep falling forever. It is never going to recover.",
+      "expected_bias": "recency_bias",
+      "expected_min_score": 0.70,
+      "expected_severity": "medium",
+      "cool_off": false
+    },
+    "overconfidence_certainty": {
+      "type": "dialogue",
+      "text": "I'm 100% sure this stock is guaranteed to double in 3 months. Diversification is for idiots, let's go all in.",
+      "expected_bias": "overconfidence",
+      "expected_min_score": 0.85,
+      "expected_severity": "high",
+      "cool_off": true
+    },
+    "herd_mentality_fomo": {
+      "type": "dialogue",
+      "text": "Everyone on Reddit and WallStreetBets is buying this coin. All my friends are making money, I have huge FOMO!",
+      "expected_bias": "herd_mentality",
+      "expected_min_score": 0.75,
+      "expected_severity": "medium",
+      "cool_off": false
+    },
+    "disposition_effect": {
+      "type": "dialogue",
+      "text": "I want to sell my winners to lock in this small profit, but for my losing positions I refuse to sell at a loss until they get back to even.",
+      "expected_bias": "disposition_effect",
+      "expected_min_score": 0.80,
+      "expected_severity": "medium",
+      "cool_off": false
+    },
+    "neutral_advisory": {
+      "type": "dialogue",
+      "text": "Can you explain the difference between broad market index funds and intermediate Treasury bonds for a 10-year retirement goal?",
+      "expected_bias": null,
+      "expected_max_score": 0.0,
+      "cool_off": false
+    },
+    "telemetry_rapid_checks": {
+      "type": "telemetry",
+      "check_count": 4,
+      "window_seconds": 600,
+      "expected_signal": "rapid_checks",
+      "expected_bias": "loss_aversion",
+      "expected_severity": "medium",
+      "cool_off": false
+    },
+    "telemetry_panic_dip_sell": {
+      "type": "telemetry",
+      "trade_side": "SELL",
+      "symbol": "NVDA",
+      "asset_price_change_24h": -5.2,
+      "expected_signal": "panic_dip_sell",
+      "expected_bias": "loss_aversion",
+      "expected_severity": "high",
+      "cool_off": true
+    },
+    "telemetry_concentration": {
+      "type": "telemetry",
+      "positions": {
+        "TSLA": 42000.0,
+        "SPY": 8000.0
+      },
+      "total_value": 50000.0,
+      "expected_signal": "concentration_risk",
+      "expected_bias": "overconfidence",
+      "expected_severity": "high",
+      "cool_off": false
+    },
+    "telemetry_excessive_trades": {
+      "type": "telemetry",
+      "trades_count_recent": 6,
+      "window_hours": 24,
+      "expected_signal": "excessive_trading",
+      "expected_bias": "overconfidence",
+      "expected_severity": "medium",
+      "cool_off": true
+    }
+  }
+}

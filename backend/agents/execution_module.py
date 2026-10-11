@@ -1,6 +1,27 @@
+"""
+backend/agents/execution_module.py
+==================================
+Hardened brokerage execution module enforcing paper trading, pre-trade compliance gates,
+distributed double-submit locking, DB persistence, and cryptographic audit logging.
+"""
+
+from __future__ import annotations
+
 import os
+import uuid
+import asyncio
 import logging
-from typing import Dict, Any
+from datetime import datetime, timezone, timedelta
+from typing import Optional, Dict, Any, Union
+from pydantic import BaseModel, Field
+
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+
+from core.config import settings
+from db.models import DBTrade, DBClientProfile
+from services.cache import CacheService, get_cache_service, key_trade_lock, TTL_TRADE_LOCK
+from services.audit_logger import AuditLogger, get_audit_logger
 
 try:
     from alpaca.trading.client import TradingClient
@@ -10,55 +31,481 @@ try:
 except ImportError:
     HAS_ALPACA = False
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("wealth_advisor.agents.execution_module")
+
+
+# ============================================================================
+# Custom Exception Hierarchy (all inherit from ValueError)
+# ============================================================================
+
+class ExecutionError(ValueError):
+    """Base exception for execution module errors."""
+    pass
+
+
+class UnapprovedTradeError(ExecutionError):
+    """Raised when trade lacks explicit client authorization (REG-003)."""
+    pass
+
+
+class ExpiredApprovalError(ExecutionError):
+    """Raised when client approval timestamp exceeds 15-minute window (REG-004)."""
+    pass
+
+
+class KYCUnverifiedError(ExecutionError):
+    """Raised when client profile is unverified for KYC."""
+    pass
+
+
+class DuplicateTradeError(ExecutionError):
+    """Raised when distributed lock detects duplicate submission within 30s."""
+    pass
+
+
+# ============================================================================
+# Result Schemas
+# ============================================================================
+
+class TradeExecutionResult(BaseModel):
+    """Structured result returned by ExecutionModule.execute_trade."""
+    success: bool = Field(..., description="Whether execution was completed")
+    order_id: Optional[str] = Field(None, description="Alpaca or simulated order ID")
+    trade_id: Optional[str] = Field(None, description="Database DBTrade record UUID")
+    client_id: str = Field(..., description="Client identifier")
+    proposal_id: str = Field(..., description="Trade proposal identifier")
+    symbol: str = Field(..., description="Asset ticker symbol")
+    side: str = Field(..., description="Order side: BUY or SELL")
+    qty: float = Field(..., description="Quantity of shares")
+    filled_price: Optional[float] = Field(None, description="Executed price per share")
+    filled_qty: Optional[float] = Field(None, description="Total executed quantity")
+    status: str = Field(..., description="Order status: FILLED, PENDING, BLOCKED, REJECTED")
+    executed_at: datetime = Field(..., description="Execution timestamp (UTC)")
+    dry_run: bool = Field(default=False, description="Whether execution ran in dry-run mode")
+    error: Optional[str] = Field(None, description="Error message if blocked or failed")
+
+    # Dictionary access compatibility for legacy callers
+    def __getitem__(self, item: str) -> Any:
+        return getattr(self, item)
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return getattr(self, key, default)
+
+
+# Realistic fallback prices for simulated dry-run fills
+SIMULATED_PRICES: Dict[str, float] = {
+    "SPY": 510.50,
+    "QQQ": 440.25,
+    "BND": 72.40,
+    "VTI": 260.10,
+    "AAPL": 185.00,
+    "MSFT": 420.00,
+    "GOOGL": 175.00,
+    "AMZN": 185.00,
+    "NVDA": 125.00,
+    "AGG": 98.50,
+    "SHY": 82.20,
+    "DEFAULT": 100.00,
+}
+
+
+# ============================================================================
+# ExecutionModule Implementation
+# ============================================================================
 
 class ExecutionModule:
-    def __init__(self):
-        self.api_key = os.getenv("ALPACA_API_KEY", "")
-        self.secret_key = os.getenv("ALPACA_SECRET_KEY", "")
+    """
+    Hardened Execution Agent for Wealth Advisory Agent.
+    Enforces non-discretionary approval, freshness windows, KYC checks,
+    mutual-exclusion locks, database persistence, and cryptographic audit logs.
+    """
+
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        secret_key: Optional[str] = None,
+        paper: bool = True,
+        cache_service: Optional[CacheService] = None,
+        audit_logger: Optional[AuditLogger] = None,
+    ):
+        # 1. Hard Paper Trading Enforcement Guard
+        if not paper or not getattr(settings, "alpaca_paper", True):
+            raise RuntimeError(
+                "CRITICAL SECURITY GUARD: Live trading is strictly prohibited! "
+                "ExecutionModule operates exclusively in paper trading mode (paper=True)."
+            )
         self.paper = True
-        
-        if HAS_ALPACA and self.api_key and self.secret_key:
-            self.client = TradingClient(self.api_key, self.secret_key, paper=self.paper)
+
+        # 2. Broker Credentials & Settings
+        self.api_key = api_key or getattr(settings, "alpaca_api_key", "") or os.getenv("ALPACA_API_KEY", "")
+        self.secret_key = secret_key or getattr(settings, "alpaca_secret_key", "") or os.getenv("ALPACA_SECRET_KEY", "")
+        self.cache_service = cache_service or get_cache_service()
+        self.audit_logger = audit_logger or get_audit_logger()
+
+        # 3. Client Initialization with Graceful DRY_RUN Fallback
+        is_global_dry_run = getattr(settings, "dry_run", False)
+        if HAS_ALPACA and self.api_key and self.secret_key and not is_global_dry_run:
+            try:
+                self.client = TradingClient(self.api_key, self.secret_key, paper=True)
+                logger.info("Alpaca TradingClient initialized successfully in paper trading mode.")
+            except Exception as e:
+                logger.warning(f"Failed to initialize Alpaca TradingClient: {e}. Falling back to DRY_RUN mode.")
+                self.client = None
         else:
             self.client = None
-            logger.warning("Alpaca credentials not found or alpaca-py not installed. Execution will run in dry-run mode.")
+            logger.info("ExecutionModule running in DRY_RUN mode (credentials missing or dry_run configured).")
+
+    async def execute_trade(
+        self,
+        db: AsyncSession,
+        client_id: str,
+        proposal_id: str,
+        symbol: str,
+        side: str,
+        qty: float,
+        approved: bool,
+        approval_timestamp: datetime,
+        dry_run: Optional[bool] = None,
+    ) -> TradeExecutionResult:
+        """
+        Executes a trade order subject to strict pre-trade validation gates,
+        distributed locks, database persistence, and audit logging.
+        """
+        symbol_clean = symbol.strip().upper() if symbol else ""
+        side_clean = side.strip().upper() if side else ""
+        now_utc = datetime.now(timezone.utc)
+
+        # ---------------------------------------------------------------------
+        # Pre-Trade Validation Gates
+        # ---------------------------------------------------------------------
+
+        # Gate 0: Input Argument Validation
+        if not symbol_clean:
+            raise ValueError("Trade rejected: Symbol cannot be empty.")
+        if side_clean not in ("BUY", "SELL"):
+            raise ValueError(f"Trade rejected: Invalid side '{side}'. Must be BUY or SELL.")
+        if qty <= 0:
+            raise ValueError(f"Trade rejected: Quantity must be positive, got {qty}.")
+
+        # Gate 1: Non-Discretionary User Approval (REG-003)
+        if not approved:
+            await self._log_block(
+                db=db,
+                client_id=client_id,
+                proposal_id=proposal_id,
+                symbol=symbol_clean,
+                side=side_clean,
+                qty=qty,
+                gate="REG-003",
+                reason="Non-discretionary user approval required. Trade is not approved.",
+            )
+            raise UnapprovedTradeError(
+                "Trade rejected: Non-discretionary user approval required (REG-003). approved must be True."
+            )
+
+        # Gate 2: 15-Minute Approval Freshness Window (REG-004)
+        if approval_timestamp.tzinfo is None:
+            ts_utc = approval_timestamp.replace(tzinfo=timezone.utc)
+        else:
+            ts_utc = approval_timestamp.astimezone(timezone.utc)
+
+        elapsed_seconds = (now_utc - ts_utc).total_seconds()
+        # Disallow future timestamps beyond 60s clock skew
+        if elapsed_seconds < -60.0:
+            await self._log_block(
+                db=db,
+                client_id=client_id,
+                proposal_id=proposal_id,
+                symbol=symbol_clean,
+                side=side_clean,
+                qty=qty,
+                gate="REG-004",
+                reason=f"Approval timestamp is invalid in future ({ts_utc.isoformat()}).",
+            )
+            raise ExpiredApprovalError("Trade rejected: Approval timestamp cannot be in the future.")
+
+        if elapsed_seconds > 900.0:  # 15 minutes = 900 seconds
+            await self._log_block(
+                db=db,
+                client_id=client_id,
+                proposal_id=proposal_id,
+                symbol=symbol_clean,
+                side=side_clean,
+                qty=qty,
+                gate="REG-004",
+                reason=f"Approval expired. Elapsed {elapsed_seconds:.1f}s exceeds 15-minute window (900s).",
+            )
+            raise ExpiredApprovalError(
+                f"Trade rejected: Approval timestamp expired (REG-004). "
+                f"Approvals are valid for 15 minutes; elapsed {elapsed_seconds:.1f}s."
+            )
+
+        # Gate 3: KYC Verification Check
+        stmt = select(DBClientProfile).where(DBClientProfile.client_id == client_id)
+        result = await db.execute(stmt)
+        profile = result.scalars().first()
+
+        if profile is None:
+            await self._log_block(
+                db=db,
+                client_id=client_id,
+                proposal_id=proposal_id,
+                symbol=symbol_clean,
+                side=side_clean,
+                qty=qty,
+                gate="KYC_VERIFICATION",
+                reason=f"Client profile '{client_id}' not found.",
+            )
+            raise KYCUnverifiedError(f"Trade rejected: Client profile '{client_id}' not found.")
+
+        if not getattr(profile, "kyc_verified", False):
+            await self._log_block(
+                db=db,
+                client_id=client_id,
+                proposal_id=proposal_id,
+                symbol=symbol_clean,
+                side=side_clean,
+                qty=qty,
+                gate="KYC_VERIFICATION",
+                reason=f"KYC verification incomplete for client '{client_id}'.",
+            )
+            raise KYCUnverifiedError(
+                f"Trade rejected: KYC verification required. Client '{client_id}' is not KYC verified."
+            )
+
+        # Gate 4: 30-Second Double-Submit Lock
+        lock_key = key_trade_lock(client_id)
+        lock_acquired = await self.cache_service.acquire_lock(lock_key, timeout_seconds=TTL_TRADE_LOCK)
+        if not lock_acquired:
+            await self._log_block(
+                db=db,
+                client_id=client_id,
+                proposal_id=proposal_id,
+                symbol=symbol_clean,
+                side=side_clean,
+                qty=qty,
+                gate="DOUBLE_SUBMIT_LOCK",
+                reason=f"Duplicate trade submission detected within 30-second window for client '{client_id}'.",
+            )
+            raise DuplicateTradeError(
+                f"Duplicate submit rejected: trade in progress within 30 seconds for client '{client_id}'."
+            )
+
+        # ---------------------------------------------------------------------
+        # Order Execution Flow (Dual-Engine)
+        # ---------------------------------------------------------------------
+        is_global_dry_run = getattr(settings, "dry_run", False)
+        is_dry_run = dry_run if dry_run is not None else (is_global_dry_run or self.client is None)
+
+        if is_dry_run:
+            # Engine B: Simulated Dry-Run Execution
+            order_id = f"dry-run-{uuid.uuid4()}"
+            status = "FILLED"
+            filled_price = SIMULATED_PRICES.get(symbol_clean, SIMULATED_PRICES["DEFAULT"])
+            filled_qty = float(qty)
+            executed_at = now_utc
+            logger.info(f"[DRY-RUN] Executed simulated {side_clean} {qty} {symbol_clean} @ ${filled_price:.2f}")
+        else:
+            # Engine A: Alpaca Paper Trading Execution
+            order_side = OrderSide.BUY if side_clean == "BUY" else OrderSide.SELL
+            order_request = MarketOrderRequest(
+                symbol=symbol_clean,
+                qty=qty,
+                side=order_side,
+                time_in_force=TimeInForce.DAY,
+            )
+            try:
+                # Alpaca SDK submit_order is synchronous; run non-blocking in threadpool
+                order = await asyncio.to_thread(self.client.submit_order, order_request)
+                order_id = str(order.id)
+                status = str(order.status.value if hasattr(order.status, "value") else order.status).upper()
+                filled_price = float(order.filled_avg_price) if getattr(order, "filled_avg_price", None) else None
+                filled_qty = float(order.filled_qty) if getattr(order, "filled_qty", None) else 0.0
+                cand_time = getattr(order, "filled_at", None) or getattr(order, "submitted_at", None)
+                executed_at = cand_time if isinstance(cand_time, datetime) else now_utc
+            except Exception as e:
+                logger.error(f"Alpaca API order submission error: {e}")
+                await self._log_block(
+                    db=db,
+                    client_id=client_id,
+                    proposal_id=proposal_id,
+                    symbol=symbol_clean,
+                    side=side_clean,
+                    qty=qty,
+                    gate="BROKER_API_ERROR",
+                    reason=f"Alpaca API execution failed: {str(e)}",
+                )
+                raise
+
+        # ---------------------------------------------------------------------
+        # Database Persistence (`trades` table / DBTrade)
+        # ---------------------------------------------------------------------
+        trade_id = str(uuid.uuid4())
+        db_trade = DBTrade(
+            id=trade_id,
+            client_id=client_id,
+            symbol=symbol_clean,
+            qty=float(qty),
+            side=side_clean,
+            order_type="MARKET",
+            status=status,
+            filled_price=filled_price,
+            filled_qty=filled_qty,
+            alpaca_order_id=order_id,
+            compliance_report={
+                "proposal_id": proposal_id,
+                "approved": approved,
+                "approval_timestamp": ts_utc.isoformat(),
+                "dry_run": is_dry_run,
+                "validation_gates": ["REG-003", "REG-004", "KYC", "30S_LOCK"],
+            },
+            user_approved_at=ts_utc,
+            filled_at=executed_at,
+            created_at=now_utc,
+        )
+        db.add(db_trade)
+        await db.commit()
+        await db.refresh(db_trade)
+
+        # ---------------------------------------------------------------------
+        # Cryptographic Audit Logging (TRADE_EXECUTED)
+        # ---------------------------------------------------------------------
+        await self.audit_logger.log_audit_entry(
+            db=db,
+            client_id=client_id,
+            event_type="TRADE_EXECUTED",
+            actor="SYSTEM:EXECUTION_MODULE",
+            details={
+                "trade_id": trade_id,
+                "order_id": order_id,
+                "proposal_id": proposal_id,
+                "symbol": symbol_clean,
+                "side": side_clean,
+                "qty": qty,
+                "filled_price": filled_price,
+                "filled_qty": filled_qty,
+                "status": status,
+                "dry_run": is_dry_run,
+            },
+            status="PASS",
+        )
+
+        return TradeExecutionResult(
+            success=True,
+            order_id=order_id,
+            trade_id=trade_id,
+            client_id=client_id,
+            proposal_id=proposal_id,
+            symbol=symbol_clean,
+            side=side_clean,
+            qty=qty,
+            filled_price=filled_price,
+            filled_qty=filled_qty,
+            status=status,
+            executed_at=executed_at,
+            dry_run=is_dry_run,
+        )
+
+    async def get_order_status(self, order_id: str) -> Dict[str, Any]:
+        """
+        Polls or retrieves order status from Alpaca or simulated engine.
+        """
+        if order_id.startswith(("dry-run-", "mock-", "sim-")) or not self.client:
+            return {
+                "order_id": order_id,
+                "status": "FILLED",
+                "filled_qty": None,
+                "filled_price": None,
+                "dry_run": True,
+            }
+
+        try:
+            order = await asyncio.to_thread(self.client.get_order_by_id, order_id)
+            return {
+                "order_id": str(order.id),
+                "status": str(order.status.value if hasattr(order.status, "value") else order.status).upper(),
+                "symbol": str(order.symbol),
+                "qty": float(order.qty),
+                "filled_qty": float(order.filled_qty or 0.0),
+                "filled_avg_price": float(order.filled_avg_price) if getattr(order, "filled_avg_price", None) else None,
+                "created_at": getattr(order, "created_at", None),
+                "filled_at": getattr(order, "filled_at", None),
+                "dry_run": False,
+            }
+        except Exception as e:
+            logger.error(f"Failed to fetch order status for {order_id}: {e}")
+            return {
+                "order_id": order_id,
+                "status": "UNKNOWN",
+                "error": str(e),
+                "dry_run": False,
+            }
+
+    async def _log_block(
+        self,
+        db: AsyncSession,
+        client_id: str,
+        proposal_id: str,
+        symbol: str,
+        side: str,
+        qty: float,
+        gate: str,
+        reason: str,
+    ) -> None:
+        """Helper to record blocked trade attempts in the cryptographic audit log."""
+        try:
+            await self.audit_logger.log_audit_entry(
+                db=db,
+                client_id=client_id,
+                event_type="TRADE_BLOCKED",
+                actor="SYSTEM:EXECUTION_MODULE",
+                details={
+                    "proposal_id": proposal_id,
+                    "symbol": symbol,
+                    "side": side,
+                    "qty": qty,
+                    "gate": gate,
+                    "reason": reason,
+                },
+                status="BLOCK",
+            )
+        except Exception as e:
+            logger.error(f"Failed to write audit entry for blocked trade: {e}")
 
     def place_order(self, symbol: str, qty: float, side: str, user_approved: bool) -> Dict[str, Any]:
-        """
-        Place a market order via Alpaca after confirming user approval.
-        """
+        """Backward-compatible synchronous order execution wrapper."""
         if not user_approved:
             raise ValueError("Cannot execute trade: User has not approved.")
-            
+
+        symbol_clean = symbol.strip().upper()
+        side_clean = side.strip().upper()
+
         if not self.client:
-            logger.info(f"[DRY-RUN] Placing {side} order for {qty} shares of {symbol}")
+            logger.info(f"[DRY-RUN] Placing {side_clean} order for {qty} shares of {symbol_clean}")
             return {
                 "status": "mock_filled",
-                "symbol": symbol,
+                "symbol": symbol_clean,
                 "qty": qty,
-                "side": side,
-                "filled_price": 100.0, # dummy
-                "order_id": "dummy-order-123"
+                "side": side_clean,
+                "filled_price": SIMULATED_PRICES.get(symbol_clean, SIMULATED_PRICES["DEFAULT"]),
+                "order_id": f"dummy-order-{uuid.uuid4().hex[:8]}",
             }
-            
-        order_side = OrderSide.BUY if side.upper() == "BUY" else OrderSide.SELL
-        
+
+        order_side = OrderSide.BUY if side_clean == "BUY" else OrderSide.SELL
         order_request = MarketOrderRequest(
-            symbol=symbol,
+            symbol=symbol_clean,
             qty=qty,
             side=order_side,
-            time_in_force=TimeInForce.DAY
+            time_in_force=TimeInForce.DAY,
         )
-        
         try:
             order = self.client.submit_order(order_request)
             return {
-                "status": order.status,
+                "status": str(order.status.value if hasattr(order.status, "value") else order.status),
                 "symbol": order.symbol,
                 "qty": order.qty,
                 "side": order.side,
-                "order_id": str(order.id)
+                "order_id": str(order.id),
             }
         except Exception as e:
             logger.error(f"Alpaca API error: {e}")
