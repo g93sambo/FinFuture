@@ -19,7 +19,7 @@ from typing import Any, Dict, Optional, Set
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect, status
 from sqlalchemy import select
 
-from agents.orchestrator import TradeBlocked
+from agents.orchestrator import TradeBlocked, build_container
 from core.security import decode_access_token
 from db.database import AsyncSessionLocal
 from db.models import DBClientProfile, DBUser
@@ -112,6 +112,8 @@ async def _handle_connection(websocket: WebSocket, session_id: Optional[str], to
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Invalid or missing token")
             return
 
+        if not hasattr(websocket.app.state, "container") or websocket.app.state.container is None:
+            websocket.app.state.container = build_container()
         orch = websocket.app.state.container.orchestrator
 
         # Resolve or create session
@@ -137,15 +139,15 @@ async def _handle_connection(websocket: WebSocket, session_id: Optional[str], to
         try:
             # Emit session_started with backward-compatible agent_response format
             welcome_text = (
-                "Connected. How can I help with your portfolio?"
+                "Connected! How can I help you navigate your wealth and portfolio today?"
                 if session.get("stage") in ("ADVICE_GENERATION", "advising")
-                else "Connected. Let's build your risk profile - tell me a bit about yourself."
+                else "Connected! I'm your AI Wealth Advisor. Ask me anything about stocks, market trends, or company supply chains — or let me know whenever you'd like to build your personalized investment portfolio."
             )
             await websocket.send_json(
                 {
                     "event": "agent_response",
                     "structured_event": "session_started",
-                    "agent": "Orchestrator",
+                    "agent": "WealthAdvisor",
                     "session_id": session_id,
                     "stage": session.get("stage"),
                     "client_id": session.get("client_id"),
@@ -167,16 +169,28 @@ async def _handle_connection(websocket: WebSocket, session_id: Optional[str], to
                     pass
 
                 try:
-                    if action in ("approve", "reject") and proposal_id:
-                        if action == "approve":
-                            events = await orch.handle_trade_approval(db, user.id, proposal_id, approved=True, session_id=session_id)
-                        else:
+                    if action in ("approve", "reject"):
+                        if not proposal_id or str(proposal_id).lower() in ("undefined", "null", ""):
+                            sess = await orch.load_session(session_id, user.id)
+                            proposal_id = sess.get("pending_proposal_id")
+                        if action == "approve" and proposal_id:
+                            events = await orch.handle_trade_approval(db, user.id, str(proposal_id), approved=True, session_id=session_id)
+                        elif action == "reject" and proposal_id:
                             await orch.c.cache.delete(f"proposal:{proposal_id}")
                             events = [
                                 {
                                     "event": "agent_response",
                                     "agent": "Orchestrator",
                                     "text": "Proposal cancelled; nothing was sent to the broker.",
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                }
+                            ]
+                        else:
+                            events = [
+                                {
+                                    "event": "error",
+                                    "agent": "Orchestrator",
+                                    "text": "No active trade proposal found to approve or reject.",
                                     "timestamp": datetime.now(timezone.utc).isoformat(),
                                 }
                             ]
@@ -191,11 +205,11 @@ async def _handle_connection(websocket: WebSocket, session_id: Optional[str], to
                             db=db,
                         )
                 except TradeBlocked as blocked:
-                    events = blocked.events + [
+                    events = blocked.events if blocked.events else [
                         {
                             "event": "error",
                             "structured_event": "error",
-                            "agent": "ExecutionModule",
+                            "agent": "ComplianceGuard",
                             "error": blocked.error_type,
                             "text": blocked.reason,
                             "violations": [v.to_dict() if hasattr(v, "to_dict") else dict(v) for v in blocked.violations],
@@ -240,3 +254,53 @@ async def chat_ws_session(websocket: WebSocket, session_id: str, token: Optional
 @router.websocket("/ws/chat")
 async def chat_ws_root(websocket: WebSocket, session_id: Optional[str] = Query(None), token: Optional[str] = Query(None)):
     await _handle_connection(websocket, session_id, token)
+
+
+@router.get(
+    "/ws/chat",
+    summary="WebSocket Chat (Specification)",
+    description=(
+        "**WebSocket Endpoint**: `ws://<host>:<port>/ws/chat?token=<jwt>`\n\n"
+        "Connect via a WebSocket client (e.g., Postman, browser WebSocket, or frontend).\n"
+        "- **Protocol**: WebSocket (`ws://` or `wss://`)\n"
+        "- **Auth**: Pass JWT access token via `?token=<jwt>` query parameter.\n"
+        "- **Client Payload**: Send JSON `{\"type\": \"message\", \"text\": \"...\"}` or `{\"type\": \"approve\", \"proposal_id\": \"...\"}`\n"
+        "- **Server Events**: Emits `agent_response`, `agent_thought`, `profile_updated`, `bias_alert`, `compliance_check`, `trade_proposal`, `trade_executed`, `error`."
+    ),
+    tags=["websocket"],
+)
+async def ws_chat_docs(token: Optional[str] = Query(None, description="JWT Bearer token")):
+    """Documentation endpoint for Swagger UI."""
+    return {
+        "endpoint": "/ws/chat",
+        "protocol": "websocket",
+        "usage": "Connect using ws://<host>:<port>/ws/chat?token=<JWT_TOKEN>",
+        "query_params": {"token": "JWT Bearer access token", "session_id": "Optional existing session ID"},
+        "client_messages": [
+            {"type": "message", "text": "Your query or conversation"},
+            {"type": "approve", "proposal_id": "<uuid>"},
+            {"type": "reject", "proposal_id": "<uuid>"},
+        ],
+    }
+
+
+@router.get(
+    "/ws/chat/{session_id}",
+    summary="WebSocket Chat with Session ID (Specification)",
+    description=(
+        "**WebSocket Endpoint**: `ws://<host>:<port>/ws/chat/{session_id}?token=<jwt>`\n\n"
+        "Connect via WebSocket specifying the `session_id` in the URL path."
+    ),
+    tags=["websocket"],
+)
+async def ws_chat_session_docs(
+    session_id: str,
+    token: Optional[str] = Query(None, description="JWT Bearer token"),
+):
+    """Documentation endpoint for Swagger UI."""
+    return {
+        "endpoint": f"/ws/chat/{session_id}",
+        "protocol": "websocket",
+        "session_id": session_id,
+        "usage": f"Connect using ws://<host>:<port>/ws/chat/{session_id}?token=<JWT_TOKEN>",
+    }

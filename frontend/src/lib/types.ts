@@ -386,6 +386,20 @@ export interface MacroResponse {
   as_of: string;
 }
 
+export interface PriceHistoryPoint {
+  date: string;
+  close: number;
+}
+
+export interface PriceHistoryResponse {
+  symbol: string;
+  period: string;
+  points: PriceHistoryPoint[];
+  start_price: number;
+  end_price: number;
+  period_return_pct: number;
+}
+
 /** Error body of a blocked trade (403 / 409 / 400 from /trade/execute). */
 export interface TradeBlockedDetail {
   error: string;

@@ -170,5 +170,7 @@ export const api = {
 
   // market data
   quote: (symbol: string) => request<Quote>(`/api/v1/market/quote/${encodeURIComponent(symbol)}`),
+  history: (symbol: string, period = "6mo") =>
+    request<import("./types").PriceHistoryResponse>(`/api/v1/market/history/${encodeURIComponent(symbol)}?period=${encodeURIComponent(period)}`),
   macro: () => request<MacroResponse>("/api/v1/market/macro"),
 };

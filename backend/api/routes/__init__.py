@@ -2,6 +2,7 @@
 
 from api.routes import (
     advisory,
+    asyncapi,
     audit,
     auth,
     chat,
@@ -13,10 +14,12 @@ from api.routes import (
     session,
     trade,
     ws,
+    research,
 )
 
 __all__ = [
     "advisory",
+    "asyncapi",
     "audit",
     "auth",
     "chat",
@@ -28,4 +31,5 @@ __all__ = [
     "session",
     "trade",
     "ws",
+    "research",
 ]

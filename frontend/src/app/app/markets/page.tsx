@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { LineChart } from "@/components/charts/LineChart";
 import { Button } from "@/components/ui/Button";
 import { ErrorNotice, Loading, Tag } from "@/components/ui/Feedback";
@@ -9,11 +9,17 @@ import { Ledger, PageHeader, Panel } from "@/components/ui/Layout";
 import { Table, Td, Th } from "@/components/ui/Table";
 import { api } from "@/lib/api";
 import { big, dateTime, fixed, humanize, money, points } from "@/lib/format";
-import type { Quote } from "@/lib/types";
+import type { PriceHistoryResponse, Quote } from "@/lib/types";
 import { useAction, useRequest } from "@/lib/useRequest";
 
 const tenorOrder = ["1M", "2M", "3M", "6M", "1Y", "2Y", "3Y", "5Y", "7Y", "10Y", "20Y", "30Y"];
-const quick = ["SPY", "VTI", "QQQ", "BND", "AGG", "GLD", "VXUS"];
+const quick = ["SPY", "VTI", "QQQ", "BND", "AGG", "GLD", "VXUS", "NVDA", "AAPL", "MSFT"];
+const periods = [
+  { id: "1mo", label: "1M" },
+  { id: "3mo", label: "3M" },
+  { id: "6mo", label: "6M" },
+  { id: "1y", label: "1Y" },
+] as const;
 
 const macroLabels: Record<string, string> = {
   cpi: "Inflation (CPI)",
@@ -30,10 +36,26 @@ function sourceLabel(s: string) {
   return humanize(s);
 }
 
-function QuoteBlock() {
-  const [input, setInput] = useState("SPY");
+function QuoteBlock({
+  activeSymbol,
+  onSelectSymbol,
+}: {
+  activeSymbol: string;
+  onSelectSymbol: (sym: string) => void;
+}) {
+  const [input, setInput] = useState(activeSymbol);
   const [quote, setQuote] = useState<Quote | null>(null);
-  const { run, pending, error } = useAction(async (s: string) => setQuote(await api.quote(s)));
+  const { run, pending, error } = useAction(async (s: string) => {
+    const q = await api.quote(s);
+    setQuote(q);
+    onSelectSymbol(s);
+  });
+
+  useEffect(() => {
+    void run(activeSymbol);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const lookup = (s: string) => {
     setInput(s);
     void run(s);
@@ -57,7 +79,14 @@ function QuoteBlock() {
       </form>
       <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm">
         {quick.map((s) => (
-          <button key={s} type="button" onClick={() => lookup(s)} className="figures text-primary underline decoration-primary/30 underline-offset-4">
+          <button
+            key={s}
+            type="button"
+            onClick={() => lookup(s)}
+            className={`figures underline underline-offset-4 ${
+              activeSymbol === s ? "font-semibold text-ink decoration-ink" : "text-primary decoration-primary/30"
+            }`}
+          >
             {s}
           </button>
         ))}
@@ -100,7 +129,30 @@ function QuoteBlock() {
 }
 
 export default function MarketsPage() {
+  const [activeSymbol, setActiveSymbol] = useState("SPY");
+  const [period, setPeriod] = useState<string>("6mo");
+
+  const { data: historyData, loading: historyLoading, error: historyError } = useRequest<PriceHistoryResponse>(
+    `history:${activeSymbol}:${period}`,
+    () => api.history(activeSymbol, period)
+  );
+
   const { data, error, loading, reload } = useRequest("macro", () => api.macro());
+
+  const pricePoints = historyData?.points
+    ? historyData.points.map((pt, idx) => ({
+        x: idx,
+        y: pt.close,
+        label: pt.date.slice(5), // MM-DD
+      }))
+    : [];
+
+  // Downsample labels if many points so x-axis stays crisp
+  const sampledPricePoints =
+    pricePoints.length > 14
+      ? pricePoints.filter((_, i) => i === 0 || i === pricePoints.length - 1 || i % Math.ceil(pricePoints.length / 8) === 0).map((p, idx) => ({ ...p, x: idx }))
+      : pricePoints;
+
   const curve = data
     ? tenorOrder.filter((t) => typeof data.yield_curve[t] === "number").map((t, i) => ({ x: i, y: data.yield_curve[t], label: t }))
     : [];
@@ -110,18 +162,63 @@ export default function MarketsPage() {
 
   return (
     <>
-      <PageHeader title="Markets" lede="Prices, the Treasury curve and the macro figures the Advisor uses for context." />
+      <PageHeader title="Markets" lede="Live equity & ETF price history, the sovereign US Treasury yield curve, and macroeconomic benchmarks." />
       <div className="grid gap-8 xl:grid-cols-12">
         <div className="xl:col-span-5">
-          <QuoteBlock />
+          <QuoteBlock activeSymbol={activeSymbol} onSelectSymbol={setActiveSymbol} />
         </div>
         <div className="space-y-8 xl:col-span-7">
+          {/* Dynamic Ticker Historical Price Chart */}
+          <Panel
+            title={`${activeSymbol} price performance`}
+            aside={
+              <div className="flex items-center gap-3">
+                {historyData ? (
+                  <Tag tone={historyData.period_return_pct >= 0 ? "success" : "danger"}>
+                    {historyData.period_return_pct >= 0 ? "+" : ""}
+                    {fixed(historyData.period_return_pct, 2)}% ({period.toUpperCase()})
+                  </Tag>
+                ) : null}
+                <div className="flex border border-line bg-surface">
+                  {periods.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setPeriod(p.id)}
+                      className={`px-2 py-0.5 text-[12px] font-medium ${
+                        period === p.id ? "bg-primary text-on-primary" : "text-muted hover:text-ink"
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            }
+          >
+            {historyLoading && !historyData ? <Loading label={`Loading ${activeSymbol} price history`} /> : null}
+            <ErrorNotice error={historyError} />
+            {sampledPricePoints.length > 1 ? (
+              <LineChart
+                title={`${activeSymbol} historical closing price`}
+                points={sampledPricePoints}
+                categoricalX
+                xLabel="Date"
+                yLabel="Price (USD)"
+                formatX={(v) => String(v)}
+                formatY={(v) => `$${v.toFixed(0)}`}
+              />
+            ) : !historyLoading ? (
+              <p className="text-sm text-muted">No historical price series available for {activeSymbol}.</p>
+            ) : null}
+          </Panel>
+
           {loading && !data ? <Loading label="Loading the yield curve" /> : null}
           <ErrorNotice error={error} onRetry={reload} />
           {data ? (
             <>
               <Panel
-                title="US Treasury yield curve"
+                title="US Treasury yield curve (Sovereign benchmark)"
                 aside={
                   spread !== null ? (
                     <Tag tone={spread < 0 ? "warning" : "neutral"}>

@@ -50,6 +50,8 @@ openai>=1.13.3
 httpx>=0.25.2
 tenacity>=8.2.3
 datasets>=2.16.0
+ddgs>=9.16.0
+beautifulsoup4>=4.12.0
 
 # --- Testing, Coverage & Test Infrastructure ---
 pytest>=7.4.3
