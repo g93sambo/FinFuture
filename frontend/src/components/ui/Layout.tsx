@@ -1,0 +1,68 @@
+import type { ReactNode } from "react";
+
+/** Page title block. Title on the left, actions on the right, a rule underneath. */
+export function PageHeader({ title, lede, actions }: { title: string; lede?: ReactNode; actions?: ReactNode }) {
+  return (
+    <header className="mb-8 flex flex-wrap items-end justify-between gap-x-8 gap-y-4 border-b border-ink pb-5">
+      <div className="max-w-[62ch]">
+        <h1 className="text-[28px] font-semibold leading-tight text-ink">{title}</h1>
+        {lede ? <p className="mt-2 text-muted">{lede}</p> : null}
+      </div>
+      {actions ? <div className="flex flex-wrap items-center gap-3">{actions}</div> : null}
+    </header>
+  );
+}
+
+/**
+ * A titled block of content. Bordered, flat, square. `flush` removes body
+ * padding for tables that should run edge to edge.
+ */
+export function Panel({
+  title,
+  aside,
+  children,
+  flush,
+  className = "",
+  id,
+}: {
+  title?: ReactNode;
+  aside?: ReactNode;
+  children: ReactNode;
+  flush?: boolean;
+  className?: string;
+  id?: string;
+}) {
+  return (
+    <section id={id} className={`rounded-card border border-line bg-background ${className}`}>
+      {title || aside ? (
+        <div className="flex min-h-12 flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-3">
+          {title ? <h2 className="text-[15px] font-semibold text-ink">{title}</h2> : <span />}
+          {aside ? <div className="flex items-center gap-3 text-sm text-muted">{aside}</div> : null}
+        </div>
+      ) : null}
+      <div className={flush ? "" : "p-5"}>{children}</div>
+    </section>
+  );
+}
+
+/** Label / value pairs laid out as a ruled ledger, values right-aligned. */
+export function Ledger({ rows, className = "" }: { rows: { label: ReactNode; value: ReactNode; note?: ReactNode }[]; className?: string }) {
+  return (
+    <dl className={`divide-y divide-line ${className}`}>
+      {rows.map((r, i) => (
+        <div key={i} className="flex items-baseline justify-between gap-6 py-2.5">
+          <dt className="text-sm text-muted">
+            {r.label}
+            {r.note ? <span className="mt-0.5 block text-[13px] text-muted/90">{r.note}</span> : null}
+          </dt>
+          <dd className="figures text-right text-[15px] text-ink">{r.value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/** Small heading used inside a panel to group content. */
+export function SubHeading({ children }: { children: ReactNode }) {
+  return <h3 className="mb-3 text-sm font-semibold text-ink">{children}</h3>;
+}
