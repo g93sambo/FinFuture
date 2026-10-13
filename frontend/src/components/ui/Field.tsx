@@ -1,7 +1,7 @@
 import { forwardRef, useId, type ComponentProps, type ReactNode } from "react";
 
 const control =
-  "block w-full rounded-control border border-ink/25 bg-background px-3 text-[15px] text-ink placeholder:text-muted/80 hover:border-ink/45 focus:border-primary focus:outline-none aria-[invalid=true]:border-danger";
+  "block w-full rounded-control border border-ink/25 bg-background px-3 text-[15px] text-ink placeholder:text-muted/80 transition-all duration-140 ease-out hover:border-ink/45 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none aria-[invalid=true]:border-danger";
 
 interface FieldProps {
   label: string;

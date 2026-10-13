@@ -708,7 +708,30 @@ class MarketDataAgent:
 
         results = await asyncio.to_thread(_do_search)
 
+        # Auto-enrich up to 3 readable results (including PDF prospectuses) so the LLM always reads primary figures
         if results:
+            # Sort so .pdf or detailed notes get enriched first while keeping original order in results
+            candidates = sorted(
+                range(len(results)),
+                key=lambda i: (0 if results[i].get("url", "").lower().endswith(".pdf") or "investment-note" in results[i].get("url", "").lower() else 1, i)
+            )
+            enriched_count = 0
+            for idx in candidates:
+                if enriched_count >= 3:
+                    break
+                item = results[idx]
+                url_str = item.get("url", "")
+                if not url_str:
+                    continue
+                try:
+                    page_data = await self.fetch_web_page(url_str, max_chars=5000)
+                    content_str = page_data.get("content", "")
+                    if page_data.get("status") == "success" and len(content_str) > 250:
+                        item["extracted_document_text"] = content_str
+                        enriched_count += 1
+                except Exception:
+                    pass
+
             try:
                 await self.cache.set_json(cache_key, results, expire=3600)
             except Exception as e:
@@ -716,13 +739,16 @@ class MarketDataAgent:
 
         return results
 
-    async def fetch_web_page(self, url: str, max_chars: int = 4000) -> Dict[str, Any]:
+    async def fetch_web_page(self, url: str, max_chars: int = 6000) -> Dict[str, Any]:
         """
-        Fetch and parse clean text from a web page, prospectus URL, or investor filing.
+        Fetch and parse clean text from a web page, PDF prospectus URL, or investor filing.
+        Supports both HTML pages and binary PDF documents (via pypdf).
         Cache Key: data:web:page:{hash(url)}
         TTL: 3600 seconds (1h)
         """
+        import asyncio
         import hashlib
+        import io
         import httpx
         from bs4 import BeautifulSoup
 
@@ -734,7 +760,7 @@ class MarketDataAgent:
         cache_key = f"data:web:page:{u_hash}"
 
         cached = await self.cache.get_json(cache_key)
-        if cached and isinstance(cached, dict):
+        if cached and isinstance(cached, dict) and len(cached.get("content", "")) > 200:
             return cached
 
         try:
@@ -744,31 +770,60 @@ class MarketDataAgent:
                     "AppleWebKit/537.36 (KHTML, like Gecko) "
                     "Chrome/124.0.0.0 Safari/537.36"
                 ),
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept": "text/html,application/xhtml+xml,application/pdf,application/xml;q=0.9,*/*;q=0.8",
             }
-            async with httpx.AsyncClient(headers=headers, follow_redirects=True, timeout=12.0) as client:
+            async with httpx.AsyncClient(headers=headers, follow_redirects=True, timeout=15.0) as client:
                 resp = await client.get(u_clean)
                 resp.raise_for_status()
-                html = resp.text
+                content_type = resp.headers.get("content-type", "").lower()
 
-            soup = BeautifulSoup(html, "html.parser")
-            for tag in soup(["script", "style", "nav", "footer", "header", "aside", "noscript"]):
-                tag.decompose()
+                # Handle PDF prospectuses & investment reports
+                if "application/pdf" in content_type or u_clean.lower().endswith(".pdf"):
+                    def _parse_pdf(pdf_bytes: bytes) -> str:
+                        try:
+                            from pypdf import PdfReader
+                            reader = PdfReader(io.BytesIO(pdf_bytes))
+                            pages_text = []
+                            # Extract up to first 15 pages where Executive Summary & Financial Highlights reside
+                            for idx, page in enumerate(reader.pages[:15]):
+                                t = page.extract_text() or ""
+                                if t.strip():
+                                    pages_text.append(f"[Page {idx+1}] " + " ".join(t.split()))
+                            return " ".join(pages_text)
+                        except Exception as pe:
+                            return f"PDF extraction error: {pe}"
 
-            text_chunks = list(soup.stripped_strings)
-            raw_text = " ".join(text_chunks)
-            clean_text = " ".join(raw_text.split())
+                    pdf_text = await asyncio.to_thread(_parse_pdf, resp.content)
+                    if len(pdf_text) > max_chars:
+                        pdf_text = pdf_text[:max_chars] + "... [truncated]"
+                    res = {
+                        "url": u_clean,
+                        "title": u_clean.split("/")[-1],
+                        "status": "success" if len(pdf_text) > 100 else "partial",
+                        "document_type": "pdf_prospectus",
+                        "content": pdf_text or "PDF had no extractable text layer.",
+                    }
+                else:
+                    html = resp.text
+                    soup = BeautifulSoup(html, "html.parser")
+                    for tag in soup(["script", "style", "nav", "footer", "header", "aside", "noscript"]):
+                        tag.decompose()
 
-            if len(clean_text) > max_chars:
-                clean_text = clean_text[:max_chars] + "... [truncated]"
+                    text_chunks = list(soup.stripped_strings)
+                    raw_text = " ".join(text_chunks)
+                    clean_text = " ".join(raw_text.split())
 
-            title = soup.title.string.strip() if (soup.title and soup.title.string) else ""
-            res = {
-                "url": u_clean,
-                "title": title,
-                "status": "success",
-                "content": clean_text or "No text content found.",
-            }
+                    if len(clean_text) > max_chars:
+                        clean_text = clean_text[:max_chars] + "... [truncated]"
+
+                    title = soup.title.string.strip() if (soup.title and soup.title.string) else ""
+                    res = {
+                        "url": u_clean,
+                        "title": title,
+                        "status": "success",
+                        "document_type": "html",
+                        "content": clean_text or "No text content found.",
+                    }
         except Exception as e:
             logger.warning(f"Failed to fetch web page {u_clean}: {e}")
             res = {
@@ -779,7 +834,8 @@ class MarketDataAgent:
             }
 
         try:
-            await self.cache.set_json(cache_key, res, expire=3600)
+            if res.get("status") == "success" and len(res.get("content", "")) > 200:
+                await self.cache.set_json(cache_key, res, expire=3600)
         except Exception as e:
             logger.warning(f"Failed to cache fetched web page: {e}")
 

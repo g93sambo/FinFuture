@@ -80,12 +80,72 @@ export function ErrorNotice({ error, onRetry }: { error: string | null; onRetry?
   );
 }
 
-/** Plain loading line. No spinners, no pulsing. */
+/** Skeleton block that matches content layout to eliminate layout shift */
+export function Skeleton({
+  className = "",
+  rounded = "rounded-control",
+  width,
+  height,
+  style,
+}: {
+  className?: string;
+  rounded?: string;
+  width?: string | number;
+  height?: string | number;
+  style?: import("react").CSSProperties;
+}) {
+  const customStyle: import("react").CSSProperties = {
+    ...(width !== undefined ? { width } : {}),
+    ...(height !== undefined ? { height } : {}),
+    ...style,
+  };
+  return (
+    <div
+      aria-hidden
+      className={`skeleton-shimmer ${rounded} ${!height && !customStyle.height ? "h-4" : ""} ${
+        !width && !customStyle.width ? "w-full" : ""
+      } ${className}`}
+      style={customStyle}
+    />
+  );
+}
+
+export function TableSkeleton({
+  rows = 4,
+  cols = 4,
+  columns,
+}: {
+  rows?: number;
+  cols?: number;
+  columns?: number;
+}) {
+  const count = columns ?? cols;
+  return (
+    <div className="space-y-3 py-4" aria-busy="true" aria-label="Loading content">
+      <Skeleton className="h-6 w-1/3" />
+      <div className="space-y-2">
+        {Array.from({ length: rows }).map((_, r) => (
+          <div key={r} className="flex gap-4">
+            {Array.from({ length: count }).map((_, c) => (
+              <Skeleton key={c} className="h-5 flex-1" />
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Plain loading line with subtle spinner and stage indication */
 export function Loading({ label = "Loading" }: { label?: string }) {
   return (
-    <p className="py-10 text-sm text-muted" role="status">
-      {label}…
-    </p>
+    <div className="flex items-center gap-3 py-8 text-sm text-muted animate-fade-in" role="status">
+      <svg className="h-4 w-4 animate-spin text-primary" viewBox="0 0 24 24" fill="none">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+      </svg>
+      <span>{label}…</span>
+    </div>
   );
 }
 

@@ -6,7 +6,7 @@ import { ComplianceSummary, Violations } from "@/components/domain/Compliance";
 import { ExecutionReceipt, ProposalTicket } from "@/components/domain/TradeTicket";
 import { RequireProfile } from "@/components/shell/RequireProfile";
 import { Button } from "@/components/ui/Button";
-import { ErrorNotice, Loading, Notice, Tag } from "@/components/ui/Feedback";
+import { ErrorNotice, Loading, Notice, TableSkeleton, Tag } from "@/components/ui/Feedback";
 import { Field, Input, Segmented } from "@/components/ui/Field";
 import { PageHeader, Panel } from "@/components/ui/Layout";
 import { Table, Td, Th, Tr } from "@/components/ui/Table";
@@ -194,9 +194,7 @@ function TradeDesk({ clientId }: { clientId: string }) {
 
         <Panel title="Order history" flush aside={history.data ? <span>{history.data.trades.length} orders</span> : null}>
           {history.loading && !history.data ? (
-            <div className="px-5">
-              <Loading label="Loading orders" />
-            </div>
+            <TableSkeleton rows={4} columns={5} />
           ) : history.error ? (
             <div className="p-5">
               <ErrorNotice error={history.error} onRetry={history.reload} />

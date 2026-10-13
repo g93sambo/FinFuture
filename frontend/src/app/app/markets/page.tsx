@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { LineChart } from "@/components/charts/LineChart";
 import { Button } from "@/components/ui/Button";
-import { ErrorNotice, Loading, Tag } from "@/components/ui/Feedback";
+import { ErrorNotice, Loading, Skeleton, Tag } from "@/components/ui/Feedback";
 import { Field, Input } from "@/components/ui/Field";
 import { Ledger, PageHeader, Panel } from "@/components/ui/Layout";
 import { Table, Td, Th } from "@/components/ui/Table";
@@ -83,7 +83,7 @@ function QuoteBlock({
             key={s}
             type="button"
             onClick={() => lookup(s)}
-            className={`figures underline underline-offset-4 ${
+            className={`figures underline underline-offset-4 transition-all duration-140 ease-out active:scale-95 ${
               activeSymbol === s ? "font-semibold text-ink decoration-ink" : "text-primary decoration-primary/30"
             }`}
           >
@@ -94,7 +94,7 @@ function QuoteBlock({
       <div className="mt-5">
         <ErrorNotice error={error} />
         {quote ? (
-          <>
+          <div className={`transition-opacity duration-140 ${pending ? "opacity-60" : "opacity-100"}`}>
             <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b border-ink pb-3">
               <p className="text-lg font-semibold text-ink">{quote.symbol}</p>
               <p className="figures text-[26px] text-ink">{money(quote.price)}</p>
@@ -119,10 +119,25 @@ function QuoteBlock({
               <Tag tone={quote.source === "fixture" ? "warning" : "neutral"}>{sourceLabel(quote.source)}</Tag>
               as of {dateTime(quote.timestamp)}
             </p>
-          </>
-        ) : !pending ? (
+          </div>
+        ) : pending ? (
+          <div className="space-y-4 py-2 animate-fadeIn">
+            <div className="flex gap-4 items-baseline border-b border-line pb-3">
+              <Skeleton height="20px" width="60px" />
+              <Skeleton height="32px" width="100px" />
+            </div>
+            <div className="space-y-3">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="flex justify-between">
+                  <Skeleton height="14px" width="80px" />
+                  <Skeleton height="14px" width="90px" />
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
           <p className="text-sm text-muted">Pick a ticker to see the latest price.</p>
-        ) : null}
+        )}
       </div>
     </Panel>
   );
@@ -185,8 +200,8 @@ export default function MarketsPage() {
                       key={p.id}
                       type="button"
                       onClick={() => setPeriod(p.id)}
-                      className={`px-2 py-0.5 text-[12px] font-medium ${
-                        period === p.id ? "bg-primary text-on-primary" : "text-muted hover:text-ink"
+                      className={`px-2 py-0.5 text-[12px] font-medium transition-all duration-140 ease-out active:scale-95 ${
+                        period === p.id ? "bg-primary text-on-primary" : "text-muted hover:text-ink hover:bg-black/5"
                       }`}
                     >
                       {p.label}
@@ -196,7 +211,11 @@ export default function MarketsPage() {
               </div>
             }
           >
-            {historyLoading && !historyData ? <Loading label={`Loading ${activeSymbol} price history`} /> : null}
+            {historyLoading && !historyData ? (
+              <div className="h-[220px] flex items-center justify-center border border-dashed border-line bg-surface/30">
+                <Loading label={`Loading ${activeSymbol} price history`} />
+              </div>
+            ) : null}
             <ErrorNotice error={historyError} />
             {sampledPricePoints.length > 1 ? (
               <LineChart
@@ -213,7 +232,13 @@ export default function MarketsPage() {
             ) : null}
           </Panel>
 
-          {loading && !data ? <Loading label="Loading the yield curve" /> : null}
+          {loading && !data ? (
+            <Panel title="US Treasury yield curve (Sovereign benchmark)">
+              <div className="h-[220px] flex items-center justify-center border border-dashed border-line bg-surface/30">
+                <Loading label="Loading the yield curve" />
+              </div>
+            </Panel>
+          ) : null}
           <ErrorNotice error={error} onRetry={reload} />
           {data ? (
             <>

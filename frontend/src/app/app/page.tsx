@@ -4,7 +4,7 @@ import Link from "next/link";
 import { BulletBars } from "@/components/charts/BulletBars";
 import { RequireProfile } from "@/components/shell/RequireProfile";
 import { ButtonLink } from "@/components/ui/Button";
-import { Empty, ErrorNotice, Loading, Tag } from "@/components/ui/Feedback";
+import { Empty, ErrorNotice, Skeleton, TableSkeleton, Tag } from "@/components/ui/Feedback";
 import { Ledger, PageHeader, Panel } from "@/components/ui/Layout";
 import { Table, Td, Th, Tr } from "@/components/ui/Table";
 import { api } from "@/lib/api";
@@ -12,12 +12,58 @@ import { useAuth } from "@/lib/auth";
 import { dateTime, fixed, humanize, money, pct, qty } from "@/lib/format";
 import { useRequest } from "@/lib/useRequest";
 
+function OverviewSkeleton() {
+  return (
+    <div className="space-y-8 animate-fadeIn" aria-busy="true" aria-label="Loading portfolio">
+      <div className="mb-10 grid grid-cols-2 border-y border-ink md:grid-cols-4">
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className={`px-0 py-4 md:px-5 ${i > 1 ? "md:border-l md:border-line" : ""}`}>
+            <Skeleton height="14px" width="80px" />
+            <div className="mt-2">
+              <Skeleton height="26px" width="120px" />
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="grid gap-8 xl:grid-cols-12">
+        <div className="space-y-8 xl:col-span-8">
+          <Panel title="Holdings" flush>
+            <TableSkeleton rows={4} columns={5} />
+          </Panel>
+        </div>
+        <div className="space-y-8 xl:col-span-4">
+          <Panel title="Your profile">
+            <div className="space-y-4 py-2">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="flex justify-between items-center">
+                  <Skeleton height="14px" width="100px" />
+                  <Skeleton height="14px" width="80px" />
+                </div>
+              ))}
+            </div>
+          </Panel>
+          <Panel title="Recent orders" flush>
+            <div className="p-4 space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="flex justify-between items-center py-1">
+                  <Skeleton height="14px" width="110px" />
+                  <Skeleton height="14px" width="60px" />
+                </div>
+              ))}
+            </div>
+          </Panel>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Overview({ clientId }: { clientId: string }) {
   const { data, error, loading, reload } = useRequest(`overview:${clientId}`, () =>
     Promise.all([api.portfolio(clientId), api.profile(clientId), api.trades(clientId, 6)]),
   );
 
-  if (loading && !data) return <Loading label="Loading your portfolio" />;
+  if (loading && !data) return <OverviewSkeleton />;
   if (error) return <ErrorNotice error={error} onRetry={reload} />;
   if (!data) return null;
   const [pf, profile, { trades }] = data;

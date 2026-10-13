@@ -25,17 +25,30 @@ from typing import (
     Union,
 )
 
-from backend.tools.base import (
-    BaseTool,
-    ToolResult,
-    ExecutionContext,
-    ToolCategory,
-    ToolError,
-    ToolNotFoundError,
-    ToolAuthorizationError,
-    ToolValidationError,
-    ToolExecutionTimeoutError,
-)
+try:
+    from backend.tools.base import (
+        BaseTool,
+        ToolResult,
+        ExecutionContext,
+        ToolCategory,
+        ToolError,
+        ToolNotFoundError,
+        ToolAuthorizationError,
+        ToolValidationError,
+        ToolExecutionTimeoutError,
+    )
+except ImportError:
+    from tools.base import (
+        BaseTool,
+        ToolResult,
+        ExecutionContext,
+        ToolCategory,
+        ToolError,
+        ToolNotFoundError,
+        ToolAuthorizationError,
+        ToolValidationError,
+        ToolExecutionTimeoutError,
+    )
 
 logger = logging.getLogger("wealth_advisor.tools.registry")
 
@@ -367,7 +380,10 @@ class ToolRegistry:
                 )
                 logger.warning(err_msg)
                 if raise_on_error:
-                    from backend.tools.adapters import CircuitBreakerOpenError
+                    try:
+                        from backend.tools.adapters import CircuitBreakerOpenError
+                    except ImportError:
+                        from tools.adapters import CircuitBreakerOpenError
                     raise CircuitBreakerOpenError(service_name=name, cooldown_remaining=getattr(cb, 'cooldown_remaining', 0.0))
                 return ToolResult(
                     tool_name=name,

@@ -65,15 +65,26 @@ export const theme = {
     card: "0px",
     control: "2px",
   },
+  motion: {
+    durInstant: "80ms",
+    durFast: "140ms",
+    durBase: "200ms",
+    durSlow: "320ms",
+    easeOut: "cubic-bezier(0.2, 0, 0, 1)",
+    easeIn: "cubic-bezier(0.4, 0, 1, 1)",
+    easeInOut: "cubic-bezier(0.65, 0, 0.35, 1)",
+    pressScale: "0.97",
+    liftShadow: "0 4px 14px rgba(15, 61, 46, 0.12)",
+  },
 } as const;
 
 export type ThemeColor = keyof typeof theme.colors;
 
 const kebab = (key: string) => key.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
 
-/** Serialises every token to `:root{--primary:#…;--radius-card:0px;…}`. */
 export function themeToCss(): string {
   const colorVars = Object.entries(theme.colors).map(([k, v]) => `--${kebab(k)}:${v};`);
   const radiusVars = Object.entries(theme.radius).map(([k, v]) => `--radius-${kebab(k)}:${v};`);
-  return `:root{${[...colorVars, ...radiusVars].join("")}}`;
+  const motionVars = Object.entries(theme.motion).map(([k, v]) => `--${kebab(k)}:${v};`);
+  return `:root{${[...colorVars, ...radiusVars, ...motionVars].join("")}}`;
 }
