@@ -77,11 +77,80 @@ body {
   color: var(--ink);
 }
 
+/* Instant tactile feedback across all interactive controls */
+button,
+a,
+input,
+select,
+textarea {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:active:not(:disabled),
+.interactive-tap:active {
+  transform: scale(var(--press-scale, 0.97));
+}
+
+/* Smooth micro-transitions for interactive states */
+.interactive {
+  transition: transform var(--dur-fast, 140ms) var(--ease-out, cubic-bezier(0.2, 0, 0, 1)),
+              box-shadow var(--dur-fast, 140ms) var(--ease-out, cubic-bezier(0.2, 0, 0, 1)),
+              background-color var(--dur-fast, 140ms) var(--ease-out, cubic-bezier(0.2, 0, 0, 1)),
+              border-color var(--dur-fast, 140ms) var(--ease-out, cubic-bezier(0.2, 0, 0, 1));
+}
+
+.interactive:hover {
+  box-shadow: var(--lift-shadow, 0 4px 14px rgba(15, 61, 46, 0.12));
+}
+
+.interactive:active {
+  transform: scale(var(--press-scale, 0.97));
+}
+
+/* Skeleton animation for zero-layout-shift loading */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--surface) 25%,
+    var(--surface-muted) 50%,
+    var(--surface) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite ease-in-out;
+}
+
+/* Smooth entrance animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn var(--dur-base, 200ms) var(--ease-out, cubic-bezier(0.2, 0, 0, 1)) forwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

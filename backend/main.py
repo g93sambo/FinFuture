@@ -8,12 +8,14 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select
 
 from agents.compliance_guard import DEFAULT_COMPLIANCE_RULES
 from agents.orchestrator import build_container
 from api.routes import (
+    asyncapi,
     audit,
     auth,
     chat,
@@ -25,6 +27,7 @@ from api.routes import (
     session,
     trade,
     ws,
+    research,
 )
 from api.routes.ws import ws_manager
 from core.config import settings
@@ -154,11 +157,19 @@ app.include_router(audit.router)
 app.include_router(market.router)
 app.include_router(compliance.router)
 app.include_router(ws.router)
+app.include_router(asyncapi.router)
+app.include_router(research.router)
 
 
 @app.get("/", tags=["health"])
 async def root():
     return {"status": "ok", "service": settings.app_name, "version": settings.app_version}
+
+
+@app.get("/chat", include_in_schema=False)
+async def chat_ui():
+    html_file = Path(__file__).resolve().parent / "chat_client.html"
+    return HTMLResponse(content=html_file.read_text(encoding="utf-8"))
 
 
 @app.get("/health", tags=["health"])
@@ -173,6 +184,9 @@ async def health():
 
 
 if __name__ == "__main__":
+    import os
     import uvicorn
 
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+    port = int(os.getenv("PORT", "8000"))
+    print(f"Starting Wealth Advisor API on http://127.0.0.1:{port}")
+    uvicorn.run("main:app", host="127.0.0.1", port=port, reload=True)

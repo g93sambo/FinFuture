@@ -3,7 +3,7 @@
 import { BulletBars } from "@/components/charts/BulletBars";
 import { RequireProfile } from "@/components/shell/RequireProfile";
 import { Button, ButtonLink } from "@/components/ui/Button";
-import { ErrorNotice, Loading, Notice, Tag, type Tone } from "@/components/ui/Feedback";
+import { ErrorNotice, Notice, Skeleton, Tag, type Tone } from "@/components/ui/Feedback";
 import { Ledger, PageHeader, Panel } from "@/components/ui/Layout";
 import { Table, Td, Th, Tr } from "@/components/ui/Table";
 import { api } from "@/lib/api";
@@ -244,9 +244,45 @@ function Report({ r, rerun, pending }: { r: HealthReport; rerun: () => void; pen
   );
 }
 
+function HealthSkeleton() {
+  return (
+    <div className="space-y-8 animate-fadeIn" aria-busy="true" aria-label="Running health review">
+      <div className="flex justify-between items-center border-b border-line pb-4">
+        <Skeleton height="16px" width="300px" />
+        <Skeleton height="32px" width="90px" />
+      </div>
+      <div className="grid gap-8 xl:grid-cols-12">
+        <Panel title="Health score" className="xl:col-span-7">
+          <div className="flex items-baseline gap-4">
+            <Skeleton height="40px" width="70px" />
+            <Skeleton height="20px" width="80px" />
+          </div>
+          <div className="mt-6">
+            <Skeleton height="24px" width="100%" />
+          </div>
+          <div className="mt-6 space-y-2">
+            <Skeleton height="16px" width="100%" />
+            <Skeleton height="16px" width="90%" />
+          </div>
+        </Panel>
+        <Panel title="How the score is built" className="xl:col-span-5">
+          <div className="space-y-4 py-2">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div key={i} className="flex justify-between items-center">
+                <Skeleton height="14px" width="120px" />
+                <Skeleton height="14px" width="50px" />
+              </div>
+            ))}
+          </div>
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
 function Health({ clientId }: { clientId: string }) {
   const { data, error, loading, reload } = useRequest(`health:${clientId}`, () => api.healthReport(clientId));
-  if (loading && !data) return <Loading label="Running the health review" />;
+  if (loading && !data) return <HealthSkeleton />;
   if (error && !data) return <ErrorNotice error={error} onRetry={reload} />;
   if (!data) return null;
   return <Report r={data} rerun={reload} pending={loading} />;

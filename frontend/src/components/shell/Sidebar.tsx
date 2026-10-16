@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { Wordmark } from "./Wordmark";
@@ -36,6 +36,8 @@ const groups: { heading: string; items: { href: string; label: string }[] }[] = 
 
 function NavList({ onNavigate }: { onNavigate?: () => void }) {
   const path = usePathname();
+  const router = useRouter();
+
   return (
     <nav aria-label="Main" className="space-y-7">
       {groups.map((g) => (
@@ -48,10 +50,13 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
                 <li key={it.href}>
                   <Link
                     href={it.href}
+                    prefetch={true}
+                    onPointerEnter={() => router.prefetch(it.href)}
+                    onTouchStart={() => router.prefetch(it.href)}
                     onClick={onNavigate}
                     aria-current={active ? "page" : undefined}
-                    className={`flex h-9 items-center px-3 text-[14.5px] transition-colors ${
-                      active ? "bg-on-primary font-semibold text-primary" : "text-on-primary hover:bg-on-primary/10"
+                    className={`flex h-9 items-center px-3 text-[14.5px] select-none rounded-[1px] transition-all duration-140 ease-out active:scale-[0.98] ${
+                      active ? "bg-on-primary font-semibold text-primary shadow-xs" : "text-on-primary hover:bg-on-primary/10 active:bg-on-primary/15"
                     }`}
                   >
                     {it.label}
@@ -74,7 +79,7 @@ function AccountBlock() {
       <p className="truncate text-on-primary" title={user?.email}>
         {user?.email}
       </p>
-      <button onClick={logout} className="mt-3 text-on-primary underline decoration-on-primary/40 underline-offset-4 hover:decoration-on-primary">
+      <button onClick={logout} className="mt-3 text-on-primary underline decoration-on-primary/40 underline-offset-4 hover:decoration-on-primary transition-all duration-140 ease-out active:scale-95">
         Sign out
       </button>
       <p className="mt-5 border border-on-primary/30 px-2 py-1.5 text-on-primary/85">
@@ -120,7 +125,7 @@ export function MobileBar() {
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
           aria-controls="mobile-nav"
-          className="h-9 border border-on-primary/40 px-3 text-sm text-on-primary"
+          className="h-9 border border-on-primary/40 px-3 text-sm text-on-primary transition-all duration-140 ease-out active:scale-95"
         >
           {open ? "Close" : "Menu"}
         </button>

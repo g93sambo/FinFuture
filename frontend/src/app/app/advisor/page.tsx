@@ -28,11 +28,12 @@ const profilingTopics = [
 const prompts = [
   "Recommend a portfolio for me",
   "Compare SPY VTI QQQ",
-  "Compare BND AGG SHY bonds",
+  "What is the yield curve doing?",
   "How is my portfolio doing?",
   "Rebalance my portfolio",
-  "What is the yield curve doing?",
   "Buy 5 shares of BND",
+  "I am based in Nigeria, optimize my tax strategy for least legal tax",
+  "Simulate $10M to $100M wealth plan over 10 years with $500k withdrawals",
 ];
 
 const connectionText: Record<Connection, string> = {

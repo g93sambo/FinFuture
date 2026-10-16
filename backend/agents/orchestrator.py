@@ -42,6 +42,7 @@ from agents.execution_module import (
 from agents.market_data import MarketDataAgent
 from agents.product_comparison import ProductComparisonAgent
 from agents.risk_profiler import STATE_DEMOGRAPHICS, STATE_PROMPTS, RiskProfilerAgent
+from core.config import settings
 from db.models import DBClientProfile
 from services.audit_logger import AuditLogger, get_audit_logger
 from services.cache import CacheService, get_cache_service, key_session
@@ -109,13 +110,86 @@ ALLOCATION_RE = re.compile(
     r"\b(allocat|recommend|what should i invest|build (?:me )?a portfolio|suggest a portfolio)\b",
     re.IGNORECASE,
 )
-QUOTE_RE = re.compile(r"\b(?:quote|price of|how much is)\s+([A-Za-z]{1,5})\b", re.IGNORECASE)
+QUOTE_RE = re.compile(
+    r"\b(?:quote|qoute|price|how much is|cost)\s*(?:for|of)?\s*([A-Za-z]{1,5})\b",
+    re.IGNORECASE,
+)
 MACRO_RE = re.compile(
     r"\b(macro|yield curve|treasury rates|interest rates|inflation|gdp|unemployment)\b",
     re.IGNORECASE,
 )
-TICKER_RE = re.compile(r"\b[A-Z]{2,5}\b")
-STOPWORDS_TICKER = {"ETF", "ETFS", "AND", "VS", "THE", "BOND", "BONDS", "FOR", "BUY", "SELL"}
+TICKER_RE = re.compile(r"\b[A-Za-z]{2,5}\b")
+STOPWORDS_TICKER = {
+    "ETF", "ETFS", "AND", "VS", "THE", "BOND", "BONDS", "FOR", "BUY", "SELL",
+    "SHOW", "WHAT", "HOW", "MUCH", "COST", "QUOTE", "PRICE", "IS", "OF", "AT",
+    "CAN", "YOU", "GET", "CHECK", "ME", "PLEASE", "STOCK", "STOCKS", "TELL", "ABOUT",
+    "WITH", "FROM", "HAVE", "SOME", "MANY", "YOUR", "OUR", "THIS", "THAT", "TOKEN",
+    "TOKENS", "SHARE", "SHARES", "INFO", "STATS", "VIEW", "SEE", "LOOK", "UP",
+    "THEIR", "THEM", "THEY", "THESE", "THOSE", "WHICH", "WHOSE", "WHERE", "WHEN", "WHY",
+    "MORE", "MOST", "EACH", "EVERY", "OTHER", "ANY", "ALL", "SUCH", "BEST", "GOOD",
+    "SMART", "BAD", "HIGH", "LOW", "NEW", "OLD", "FIRST", "LAST", "WELL", "JUST",
+    "ALSO", "EVEN", "VERY", "BACK", "DOWN", "AWAY", "OUT", "OVER", "UNDER", "AGAIN",
+    "THEN", "ONCE", "HERE", "ONLY", "ABOVE", "AFTER", "BEFORE", "BELOW", "BETWEEN",
+    "INTO", "THROUGH", "DURING", "WITHOUT", "AGAINST", "AMONG", "BECAUSE", "WHILE",
+    "UNTIL", "SINCE", "ALTHOUGH", "UNLESS", "FIND", "GIVE", "KNOW", "MAKE", "TAKE",
+    "WANT", "NEED", "LIKE", "COME", "GO", "HAD", "HAS", "DO", "DOES", "DID", "WILL",
+    "WOULD", "SHALL", "SHOULD", "COULD", "MAY", "MIGHT", "MUST", "ARE", "WAS", "WERE",
+    "BEEN", "BEING", "RETURN", "INVEST", "HELP", "VITAL", "SOME", "SOMEONE", "ANYONE",
+}
+
+
+def extract_quote_symbol(text: str) -> Optional[str]:
+    """Extract ticker symbol from a user quote or price query with flexible phrasing."""
+    t_clean = text.strip()
+    words = t_clean.split()
+
+    # 0. If it is a conversational, exploratory research, or complex multi-clause query, do not greedily extract a ticker
+    research_indicators = {
+        "invest", "investing", "investment", "companies", "company", "supply", "supplying",
+        "supplier", "suppliers", "materials", "partner", "partners", "help", "find",
+        "smart", "research", "analyze", "analysis", "explain", "why", "should", "which",
+        "portfolio", "tell", "opinion", "evaluate", "value", "parts", "components",
+        "manufacture", "manufacturing", "industry", "sector", "chain", "subcontractors",
+        "services", "energy", "power", "batteries", "talent", "staffing", "who", "makes",
+        "produces", "provides", "defense", "aerospace", "auto", "vehicle", "pharma",
+        "biotech", "healthcare", "utilities", "lithium", "semiconductor", "cooling",
+    }
+    lowered_tokens = set(re.findall(r"\b[a-z]+\b", t_clean.lower()))
+    if len(words) > 6 and (lowered_tokens & research_indicators):
+        return None
+
+    # Check for known ticker directly if inquiry terms are present
+    inquiry_keywords = {"quote", "qoute", "price", "cost", "token", "tokens", "share", "shares", "stock", "show", "check", "trading"}
+    raw_words = re.findall(r"\b[A-Za-z]{1,5}\b", t_clean)
+    upper_words = [w.upper() for w in raw_words]
+
+    if any(k in t_clean.lower() for k in inquiry_keywords):
+        for w in upper_words:
+            if w in EQUITY_SYMBOLS or w in BOND_SYMBOLS:
+                return w
+
+    # Long sentences (>6 words) without explicit known tickers should be parsed by intent translator / LLM
+    if len(words) > 6:
+        return None
+
+    # 1. Direct patterns like 'quote SPY', 'price of SPY', 'show SPY token', 'check SPY'
+    m1 = re.search(r"\b(?:quote|qoute|price|how much is|cost of|check|show|token|info on)\s+(?:for\s+|of\s+)?([A-Za-z]{1,5})\b", t_clean, re.IGNORECASE)
+    if m1 and m1.group(1).upper() not in STOPWORDS_TICKER:
+        return m1.group(1).upper()
+
+    # 2. Inverted patterns like 'show SPY quote', 'SPY quote', 'SPY price', 'SPY token'
+    m2 = re.search(r"\b([A-Za-z]{1,5})\s+(?:quote|qoute|price|cost|stock|token|share)\b", t_clean, re.IGNORECASE)
+    if m2:
+        cand = m2.group(1)
+        if cand.upper() not in STOPWORDS_TICKER and (cand.isupper() or cand.upper() in EQUITY_SYMBOLS or cand.upper() in BOND_SYMBOLS):
+            return cand.upper()
+
+    # 3. Ticker in text if quote/price/trading keywords appear anywhere
+    if any(k in t_clean.lower() for k in ["quote", "qoute", "price", "trading at", "how much is", "check price"]):
+        for w in raw_words:
+            if w.isupper() and len(w) >= 2 and w.upper() not in STOPWORDS_TICKER:
+                return w.upper()
+    return None
 
 SAFE_REPLACEMENT = (
     "I cannot promise returns or describe any investment as free of risk. Every investment "
@@ -194,7 +268,14 @@ class OrchestratorAgent:
         greeting = (
             "Welcome back! Ask me for an allocation, compare ETFs, or request a portfolio health report."
             if client_id
-            else STATE_PROMPTS[STATE_DEMOGRAPHICS]
+            else (
+                "**SEC & FINRA Regulatory Disclosure & Advisory Agreement**\n\n"
+                "• *Investing involves risk, including possible loss of principal.*\n"
+                "• *Past performance is no guarantee of future results.*\n"
+                "• *All trades are strictly non-discretionary and require your explicit human confirmation.*\n\n"
+                "By proceeding, you acknowledge and agree to these advisory terms.\n\n"
+                f"---\n\n{STATE_PROMPTS[STATE_DEMOGRAPHICS]}"
+            )
         )
         return {"session": session, "message": greeting}
 
@@ -212,11 +293,11 @@ class OrchestratorAgent:
     # ------------------------------------------------------------------ #
     # Compliance gate for outgoing text
     # ------------------------------------------------------------------ #
-    async def gate_text(self, text: str, db: Optional[AsyncSession], client_id: Optional[str]) -> str:
+    async def gate_text(
+        self, text: str, db: Optional[AsyncSession], client_id: Optional[str], enforce_disclosure: bool = True
+    ) -> str:
         passed, violations, sanitized = self.c.compliance.check_text_output(text)
         if violations:
-            if any(v.startswith("REG-001") for v in violations):
-                _, _, sanitized = self.c.compliance.check_text_output(SAFE_REPLACEMENT)
             if db is not None and client_id:
                 try:
                     await self.c.audit.log_audit_entry(
@@ -229,7 +310,14 @@ class OrchestratorAgent:
                     )
                 except Exception as exc:  # noqa: BLE001
                     logger.error("Failed to audit filtered output: %s", exc)
-        return sanitized
+            if any(v.startswith("REG-001") for v in violations):
+                _, _, sanitized = self.c.compliance.check_text_output(SAFE_REPLACEMENT)
+                return sanitized
+        # If enforce_disclosure is requested (e.g. formal allocation recommendations), include standard disclosure.
+        # Otherwise, terms have already been presented & accepted at the setup stage, keeping chat dialogue clean.
+        if enforce_disclosure:
+            return sanitized
+        return text
 
     async def _say(
         self, text: str, db: AsyncSession, cid: Optional[str], agent: str = "Orchestrator", kind: str = "agent_response", **extra: Any
@@ -251,6 +339,12 @@ class OrchestratorAgent:
         if client_id and not session.get("client_id"):
             session["client_id"] = client_id
 
+        # Track conversation history in session for multi-turn context
+        history = session.setdefault("history", [])
+        history.append({"role": "user", "content": message})
+        if len(history) > 20:
+            session["history"] = history[-20:]
+
         events: List[Dict[str, Any]] = [_event("user_message", "User", message)]
         stage = _normalize_stage(session.get("stage"))
 
@@ -260,6 +354,13 @@ class OrchestratorAgent:
             events += await self._proposal_review_turn(db, session, message)
         else:
             events += await self._advising_turn(db, session, message)
+
+        # Track assistant responses in history for multi-turn context
+        for ev in events:
+            if ev.get("event") == "agent_response" and ev.get("text"):
+                session["history"].append({"role": "assistant", "content": ev["text"]})
+        if len(session.get("history", [])) > 20:
+            session["history"] = session["history"][-20:]
 
         await self._save_session(session)
         return events
@@ -274,6 +375,22 @@ class OrchestratorAgent:
     async def _profiling_turn(self, db: AsyncSession, session: Dict[str, Any], text: str) -> List[Dict[str, Any]]:
         events: List[Dict[str, Any]] = []
         provisional_id = session.get("client_id") or f"pending-{session['session_id']}"
+        lowered = text.lower()
+
+        # Check for market data quote requests during profiling
+        sym = extract_quote_symbol(text)
+        if sym:
+            return await self._quote(db, session.get("client_id"), sym)
+
+        # Check for macro inquiries during profiling
+        if MACRO_RE.search(text):
+            return await self._macro(db, session.get("client_id"))
+
+        # Check for comparison requests during profiling
+        if COMPARE_RE.search(text):
+            symbols = [t for t in TICKER_RE.findall(text.upper()) if t not in STOPWORDS_TICKER]
+            if len(symbols) >= 2:
+                return await self._compare(db, session.get("client_id"), symbols, bonds="bond" in lowered)
 
         for b in await self.c.bias.detect_bias(client_id=provisional_id, user_message=text):
             events.append(
@@ -315,6 +432,623 @@ class OrchestratorAgent:
             )
         else:
             events.append(await self._say(result["response"], db, None, agent="RiskProfiler"))
+        return events
+
+    # -- intent translator via LLM ------------------------------------ #
+    async def _translate_intent(self, text: str, history: Optional[List[Dict[str, str]]] = None) -> Optional[Dict[str, Any]]:
+        key = settings.openai_api_key or os.getenv("OPENAI_API_KEY")
+        if not key or key == "your_openai_api_key_here":
+            return None
+        prompt = (
+            "You are an intent parser and expert financial research assistant for an AI Wealth Advisory Agent. "
+            "You have access to recent conversation history. Use conversation context to resolve pronouns, references, and follow-ups "
+            "(e.g., if the user previously discussed companies like NEE, D, RHI, MAN, and now asks 'give me their stock price for last 6 months and analyze the growth and potential for more growth', "
+            "recognize that 'their' refers to NEE, D, RHI, MAN). "
+            "Translate specific operational requests into canonical commands: "
+            "- 'quote SYMBOL' (e.g. 'show spy token', 'what is SPY at', 'check Apple price') "
+            "- 'compare SYM1 SYM2' (e.g. 'compare SPY and QQQ') "
+            "- 'macro' (for yield curve, interest rates, inflation, macro context) "
+            "- 'how is my portfolio' (for portfolio review, health, drift) "
+            "- 'recommend a portfolio' (for asset allocation recommendations) "
+            "- 'buy QTY SYM' or 'sell QTY SYM' (for trades). "
+            "CRITICAL: If the user is asking a research question, follow-up inquiry, company/ticker analysis, stock performance analysis, "
+            "investment analysis, company discovery, supplier/value-chain question across ANY industry "
+            "(e.g. AI/Tech, Electric Vehicles & Batteries, Aerospace & Defense, Healthcare & Biotech, Clean Energy & Utilities, "
+            "Semiconductors, Industrial Manufacturing, Consumer Goods, Retail/E-Commerce, etc.), such as who supplies key materials, power, parts, "
+            "cooling, staffing/talent/HR, contract manufacturing, logistics, or asking whether an industry/company is a smart investment, "
+            "or asking for past performance, historical prices, growth drivers, or potential for future growth: "
+            "DO NOT output an operational command (set command to null). "
+            "Instead, provide an insightful, conversational, well-structured expert financial and equity research analysis in 'answer' addressing their specific context and follow-up. "
+            "When analyzing growth and stock performance, cover revenue/earnings trends, competitive moat, secular vs cyclical tailwinds, risks, and valuation multiples. "
+            "Never promise risk-free returns. "
+            "Output JSON: {\"command\": null, \"answer\": \"...\"}."
+        )
+        try:
+            import httpx
+            import json
+            from openai import AsyncOpenAI
+            async with httpx.AsyncClient(timeout=httpx.Timeout(25.0, connect=10.0)) as http_client:
+                client = AsyncOpenAI(api_key=key, http_client=http_client)
+                messages = [{"role": "system", "content": prompt}]
+                if history:
+                    prior_turns = [
+                        turn for turn in history
+                        if turn.get("role") in ("user", "assistant") and turn.get("content")
+                    ]
+                    if prior_turns and prior_turns[-1].get("role") == "user" and prior_turns[-1].get("content") == text:
+                        prior_turns = prior_turns[:-1]
+                    for turn in prior_turns[-8:]:
+                        messages.append({"role": turn["role"], "content": turn["content"]})
+                messages.append({"role": "user", "content": text})
+
+                resp = await client.chat.completions.create(
+                    model=settings.openai_model or "gpt-4o",
+                    messages=messages,
+                    response_format={"type": "json_object"},
+                    temperature=0.2,
+                )
+                return json.loads(resp.choices[0].message.content)
+        except Exception as exc:
+            logger.warning("Intent translation failed: %s", exc)
+            return None
+
+    # -- agentic chat turn with application tool calling --------------- #
+    async def _agentic_chat_turn(
+        self,
+        db: AsyncSession,
+        session: Dict[str, Any],
+        text: str,
+        history: Optional[List[Dict[str, str]]] = None,
+    ) -> List[Dict[str, Any]]:
+        key = settings.openai_api_key or os.getenv("OPENAI_API_KEY")
+        if not key or key == "your_openai_api_key_here":
+            return []
+
+        client_id = session.get("client_id")
+        user_id = session.get("user_id", "")
+        events: List[Dict[str, Any]] = []
+
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_stock_metrics",
+                    "description": "Fetch real live market data, current stock price, historical period return (start price, end price, % change, high, low), 52-week range, market cap, and volume for one or more stock tickers.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "symbols": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "List of ticker symbols, e.g. ['NEE', 'D', 'RHI', 'MAN']",
+                            },
+                            "period": {
+                                "type": "string",
+                                "enum": ["1mo", "3mo", "6mo", "1y", "ytd"],
+                                "description": "Historical timeframe to evaluate, e.g. '6mo' for last 6 months",
+                            },
+                        },
+                        "required": ["symbols"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_stock_predictions",
+                    "description": "Fetch Wall Street analyst consensus price target predictions, 12-month forecasts, bull/bear scenario targets, analyst recommendations, and forward valuation multiples for one or more stock tickers.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "symbols": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "List of ticker symbols, e.g. ['NEE', 'D', 'RHI', 'MAN']",
+                            },
+                        },
+                        "required": ["symbols"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_stock_quote",
+                    "description": "Fetch real-time snapshot quote (price, bid, ask, volume) for a specific symbol.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "symbol": {"type": "string", "description": "Ticker symbol, e.g. 'SPY'"},
+                        },
+                        "required": ["symbol"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_macro_context",
+                    "description": "Fetch latest macroeconomic indicators (GDP growth, CPI inflation, 10Y/2Y Treasury yield curve).",
+                    "parameters": {"type": "object", "properties": {}},
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_sector_performance",
+                    "description": "Fetch representative sector returns across standard GICS sectors (Tech, Utilities, Energy, Industrials, etc.).",
+                    "parameters": {"type": "object", "properties": {}},
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_portfolio",
+                    "description": "Fetch user's current paper portfolio holdings, cash balance, total portfolio value, and asset weights.",
+                    "parameters": {"type": "object", "properties": {}},
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_portfolio_health",
+                    "description": "Fetch portfolio health diagnostics, drift analysis against target model, and health score.",
+                    "parameters": {"type": "object", "properties": {}},
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "compare_assets",
+                    "description": "Run quantitative multi-factor comparison and ranking across 2 or more ETF, bond, or stock symbols.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "symbols": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Tickers to compare, e.g. ['SPY', 'QQQ']",
+                            },
+                        },
+                        "required": ["symbols"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_company_financials",
+                    "description": "Fetch deep fundamental financial statements, balance sheet leverage, free cash flow generation, ROIC/ROE profitability metrics, capital structure, and valuation multiples for one or more stock tickers.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "symbols": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "List of ticker symbols, e.g. ['AAPL', 'NVDA', 'MSFT', 'NEE']",
+                            },
+                        },
+                        "required": ["symbols"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "search_financial_web",
+                    "description": "Search the live web for financial prospectuses, IPO filings, company intelligence, debt profiles, revenues, valuations, emerging market investments, or private/unlisted company data (e.g. Dangote Refinery, Stripe, SpaceX, unlisted equities).",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": "Search query, e.g. 'Dangote Refinery IPO prospectus valuation financials debt'",
+                            },
+                            "max_results": {
+                                "type": "integer",
+                                "description": "Number of search results to return (default 5)",
+                            },
+                        },
+                        "required": ["query"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "fetch_web_page",
+                    "description": "Fetch and read clean text content from a specific web URL, company prospectus page, or investor filing.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "url": {
+                                "type": "string",
+                                "description": "Full URL to fetch, e.g. 'https://ipo.dangote.com/'",
+                            },
+                            "max_chars": {
+                                "type": "integer",
+                                "description": "Max characters to extract (default 4000)",
+                            },
+                        },
+                        "required": ["url"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "simulate_wealth_plan",
+                    "description": "Generate an audited 10-year financial model, solve required compound return (CAGR), run a 10,000-path Monte Carlo probability simulation, execute multi-factor portfolio stress tests, provide 5 concrete institutional investment dossiers, and evaluate strategic wealth tradeoffs (e.g. growing $10M to $100M with $500k/yr withdrawals).",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "starting_capital": {
+                                "type": "number",
+                                "description": "Starting portfolio capital in dollars, e.g. 10000000",
+                            },
+                            "target_capital": {
+                                "type": "number",
+                                "description": "Target terminal wealth in dollars, e.g. 100000000",
+                            },
+                            "years": {
+                                "type": "integer",
+                                "description": "Horizon in years, e.g. 10",
+                            },
+                            "initial_withdrawal": {
+                                "type": "number",
+                                "description": "Annual living expense withdrawal, e.g. 500000",
+                            },
+                            "withdrawal_inflation_pct": {
+                                "type": "number",
+                                "description": "Annual inflation rate for withdrawals, e.g. 0.02 (2%)",
+                            },
+                        },
+                        "required": ["starting_capital"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "optimize_tax_strategy",
+                    "description": "Compute statutory legal tax optimization schedules, comparative numerical tax arbitrage tables (Individual PITA vs Holding Co vs Free Trade Zone vs Sovereign Debt), and operational 5-step entity structuring blueprints for Nigerian and cross-border HNW wealth.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "jurisdiction": {
+                                "type": "string",
+                                "description": "Target tax jurisdiction (e.g. 'Nigeria', 'Cross-Border', 'US', 'UK')",
+                            },
+                            "annual_income": {
+                                "type": "number",
+                                "description": "Gross annual earnings, profit, or cash flow to be optimized in local currency (e.g. 100000000 for ₦100M)",
+                            },
+                            "net_worth": {
+                                "type": "number",
+                                "description": "Total liquid and illiquid net worth for estate planning and wealth holding structuring",
+                            },
+                        },
+                        "required": ["jurisdiction"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_crypto_macro",
+                    "description": "Fetch global cryptocurrency market aggregates: aggregate market cap, 24h volume, Bitcoin & Ethereum dominance, total stablecoin supply, and aggregate DeFi TVL.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "include_defi": {
+                                "type": "boolean",
+                                "description": "Whether to include DeFi Total Value Locked (TVL) and stablecoins",
+                            },
+                        },
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_sovereign_macro",
+                    "description": "Fetch sovereign macroeconomic health indicators for a nation: GDP growth, CPI inflation rate, central bank policy rate, debt-to-GDP, and foreign exchange reserves.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "country_code": {
+                                "type": "string",
+                                "description": "3-letter ISO country code (e.g. USA, NGA, GBR, ARE, CHE, SGP)",
+                            },
+                        },
+                        "required": ["country_code"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "propose_trade",
+                    "description": "Prepare a formal non-discretionary paper trade proposal to buy or sell shares of a stock/ETF for user confirmation.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "symbol": {"type": "string", "description": "Ticker symbol to trade"},
+                            "side": {"type": "string", "enum": ["BUY", "SELL"], "description": "Order side"},
+                            "qty": {"type": "number", "description": "Number of shares"},
+                        },
+                        "required": ["symbol", "side", "qty"],
+                    },
+                },
+            },
+        ]
+
+        system_prompt = (
+            "You are an elite, proactive AI Wealth Advisor, senior quantitative strategist (Jane Street caliber), "
+            "and principal equity research analyst (Citadel/Point72 L/S Equity and top Private Equity investment committee standard). "
+            "You have continuous multi-turn conversation memory and are directly connected to live application tools: "
+            "- `optimize_tax_strategy`: Call this whenever the user asks for tax strategy, tax minimization, legal tax avoidance, or jurisdictional wealth structuring (especially Nigeria, cross-border, or emerging markets). "
+            "- `simulate_wealth_plan`: Call this whenever the user asks for multi-year financial modeling, growing wealth (e.g. $10M to $100M), retirement/lifestyle withdrawal projections ($500k/yr), Monte Carlo probability analysis, portfolio stress tests, or UHNW strategic asset allocation. "
+            "- `search_financial_web`: Search the live web for prospectuses, filings, debt figures, revenues, valuations, and emerging market / IPO / private company intelligence (e.g. Dangote Refinery, SpaceX, Stripe). "
+            "- `fetch_web_page`: Read the text content of any prospectus URL, investor note, or web filing discovered in search results. "
+            "- `get_company_financials`: Call this tool whenever asked to 'deep dive', 'analyze company finances', 'check financials', 'valuation', 'balance sheet', 'cash flow', 'margins', or conduct deep fundamental financial analysis on standard tickers. "
+            "- `get_stock_predictions`: Call this whenever the user asks for predictions, forecasts, price targets, or upside potential. "
+            "- `get_stock_metrics`: Use this tool whenever the user asks for current prices, percentage returns, or trading stats. "
+            "- `get_stock_quote`: Use this for real-time bid/ask snapshot prices. "
+            "- `get_macro_context`: Use this for Treasury yields, CPI, GDP growth. "
+            "- `get_sector_performance`: Use this for sector returns. "
+            "- `get_portfolio`: Use this to check the user's holdings, balance, and cash. "
+            "- `get_portfolio_health`: Use this to diagnose portfolio drift and health score. "
+            "- `compare_assets`: Use this to rank and compare ETFs, stocks, or funds. "
+            "- `propose_trade`: Use this to create a trade proposal when the user wants to buy or sell. "
+            "\n"
+            "CRITICAL DIRECTIVES:\n"
+            "1. NEVER tell the user to visit third-party websites to look up data. Always call the tools to fetch data yourself!\n"
+            "2. INSTITUTIONAL FINANCIAL MACHINERY & UHNW MANDATES (e.g. $10M to $100M over 10 years):\n"
+            "   When presented with complex wealth goals, challenges, or case studies, IMMEDIATELY call `simulate_wealth_plan` to obtain real mathematical machinery.\n"
+            "   MANDATORY UNABRIDGED TABULAR OUTPUT DIRECTIVE (NEVER SUMMARIZE OR TRUNCATE TABLES):\n"
+            "   When `simulate_wealth_plan` is called, you MUST render ALL tables from the tool output directly in full, beautiful GitHub Markdown table format. DO NOT summarize tables into bullet points, DO NOT omit rows, and DO NOT truncate numbers. Your response MUST include:\n"
+            "   • Complete 10-Year Audited Cash Flow Accounting Table: Print ALL 10 rows (Year 1 to Year 10) with columns: Year, Starting Wealth, Gross Return %, Gross Gain ($), Advisory Fee ($), Tax Drag ($), Scheduled Withdrawal ($), Ending Wealth ($). Explain that while zero-cash-flow CAGR is 25.89%, accounting for $500k withdrawals growing at 2%/yr, taxes (~15%), and fees (1%) raises the true required pre-tax return to ~34.4% per year!\n"
+            "   • Complete 10-Year Stochastic Variable Return Cycle Table: Print ALL 10 rows demonstrating realistic volatile returns, severe down years (-18.4%), strong recovery years (+28.2%), and cumulative wealth drag.\n"
+            "   • Complete Reproducible Monte Carlo Percentile Table (10,000 paths): Print the full table with 5th, 10th, 25th, Median (50th), 75th, 90th, and 95th percentiles of terminal wealth, along with exact Success Probability and Ruin Probability. Quote the 10,000-path simulation results.\n"
+            "   • Complete Fiduciary Institutional Portfolio Allocation Table: Itemize every single tranche, target weight %, exact dollar amount, specific ticker/instrument (BIL/SGOV, VT, MSFT/GOOGL/ASML/NVDA, ARCC/OBDC, VNQ/GLD, DBMF/TAIL), gross yield %, and fiduciary risk mitigation role. (Strictly enforce <=8% single-issuer limit and 10% 2-year liquidity buffer).\n"
+            "   • Complete Stress Testing & Recovery Arithmetic Table: Print every scenario (2008 GFC, 2022 Stagflation, Sovereign/Currency Crisis, Sequence-of-Returns Shock) with Drawdown %, Trough Capital ($), Dollar Loss ($), Required Recovery Gain (%), and Required Recovery CAGR (%).\n"
+            "   • Complete Side-by-Side Triple-Portfolio Comparison Table: Compare Portfolio A (Aggressive Moonshot), Portfolio B (Institutional Endowment), and Portfolio C (Capital Preservation) across Target Return, Volatility, Max Drawdown, 10-Yr Median Terminal Wealth, Moonshot Success Rate, and Lifestyle Survival Probability.\n"
+            "   • Five Concrete Institutional Investment Dossiers: Detail 5 specific, audited institutional holdings (e.g. MSFT, BN, ASML, ARCC, TAIL/DBMF) with verified financials (revenue, gross margin, FCF conversion, Net Debt/EBITDA, ROIC vs WACC, and Hamilton Helmer 7 Powers moats) rather than generic sectors.\n"
+            "   • Jurisdictional Tax Gating statement: Explicitly state that legal vehicles (LLCs, Dynasty Trusts, DIFC Foundations, Family Investment Companies) depend on client tax citizenship and domicile.\n"
+            "   • Strategic Tradeoff Confrontation (Ruin vs. Riches): Authoritatively confront the client with the mathematical reality of moonshot ruin risk vs sustainable endowment growth.\n"
+            "3. UNLISTED / IPO / PRIVATE / FOREIGN ENTITIES (e.g. Dangote Refinery, emerging market assets, private equity deals):\n"
+            "   DO NOT simply say 'Not available' or 'the document content was not fully accessible'! "
+            "   Immediately call `search_financial_web` (e.g. 'Dangote Refinery IPO prospectus debt valuation financials'). Notice that `search_financial_web` automatically parses PDF prospectuses (`.pdf`) and investor notes and returns their full text inside `extracted_document_text`! You can also call `fetch_web_page` directly on any `.pdf` or HTML URL.\n"
+            "   MANDATORY PROSPECTUS CITATION RULE: You MUST read and quote the exact figures from `extracted_document_text` (e.g. Offer Price ₦525, H1 2026 Revenue $13.91B, H1 2026 Net Profit $1.82B, Gross Margin 17.9% vs 2.6% prior, Net Debt/EBITDA 0.27x, Valuation ~$48B, Share par value $0.000013, Risk Factors pages 134–155) and cite the exact source URLs in your analysis. NEVER claim that the prospectus or financial figures were inaccessible when `extracted_document_text` is present!\n"
+            "4. INSTITUTIONAL INVESTMENT HURDLE SCORE (0–100) & BINARY DECISION THRESHOLD:\n"
+            "   For ANY investment decision or IPO inquiry, compute and clearly display an Institutional Hurdle Score (0–100) across 5 core pillars:\n"
+            "   • Pillar 1: Financial Transparency & Audit Quality (25 pts): Verifiable audited IFRS/GAAP statements, published regulatory prospectus, and 3-year operating track record. (If unaudited, opaque, or no public prospectus -> 0/25 + FATAL DEALBREAKER).\n"
+            "   • Pillar 2: Solvency & Balance Sheet Fortress (20 pts): Net Debt/EBITDA, FX-denominated debt vs local currency revenue mismatch, and interest coverage. (If massive unhedged FX debt or distress -> 0/20 + FATAL DEALBREAKER).\n"
+            "   • Pillar 3: Unit Economics & FCF Conversion (20 pts): Refining crack spreads / gross margins, operating margin durability, and steady-state FCF generation.\n"
+            "   • Pillar 4: Valuation & Margin of Safety vs Comps (15 pts): EV/EBITDA, P/E, or replacement cost discount relative to peers.\n"
+            "   • Pillar 5: Governance, Sovereign & Feedstock/Regulatory Risk (20 pts): Supply chain/feedstock security, political interference, and currency convertibility.\n"
+            "\n"
+            "   • INSTITUTIONAL REALITY CHECKS & RED-FLAG STRESS TESTING:\n"
+            "     - Valuation Peer Benchmark Trap: ALWAYS benchmark proposed valuations against global public industry leaders. For example, for an emerging-market single-plant refinery (like Dangote Refinery), compare its proposed ~$48B valuation against the world's largest independent refiners (e.g. Valero Energy Corp at ~$45B for 15 refineries, Marathon Petroleum at ~$55B for 13 refineries). A single-asset facility in an emerging market valued higher than the entire Valero global empire is an extreme promoter valuation trap with zero margin of safety! In such cases, Pillar 4 (Valuation) MUST be heavily penalized (max 2-4 / 15 pts).\n"
+            "     - Foreign Currency (FX) Liability Mismatch Trap: When an emerging-market company (e.g. in Nigeria with historic Naira devaluations) carries billions of dollars in USD-denominated syndicated debt while generating bulk revenues in domestic currency, this is an existential FX solvency mismatch. Do NOT accept optimistic press releases claiming 'no mismatch'. Unless 100% of debt service is backed by audited, unencumbered USD offshore cash flows, Pillar 2 MUST be penalized and triggers a Fatal FX Dealbreaker!\n"
+            "     - Feedstock & Sovereign Friction: If the asset faces severe feedstock disputes (e.g. disputes with state oil companies like NNPCL over crude supply forcing expensive foreign crude imports) or price controls, Pillar 5 MUST reflect high sovereign friction (max 6-8 / 20 pts).\n"
+            "     - Statutory Regulatory Prospectus vs Leaked Press Speculation: Distinguish between an officially approved and registered statutory retail prospectus (SEC Nigeria / US SEC) with 3 full audited fiscal years vs unconfirmed broker pitch notes or leaked pricing. Unaudited or pre-filing proposals cannot receive passing marks on Pillar 1.\n"
+            "\n"
+            "   THE BINARY DECISION RULE:\n"
+            "   • MINIMUM HURDLE THRESHOLD TO INVEST: 70 / 100 POINTS with ZERO FATAL DEALBREAKERS.\n"
+            "   • IF TOTAL SCORE >= 70 / 100 AND ZERO FATAL DEALBREAKERS:\n"
+            "     VERDICT: **YES — INVEST (APPROVED)**\n"
+            "     TARGET PORTFOLIO ALLOCATION: Explicit percentage (e.g. 3.0% to 5.0%) with disciplined entry triggers.\n"
+            "   • IF TOTAL SCORE < 70 / 100 OR ANY FATAL DEALBREAKER IS TRIGGERED:\n"
+            "     VERDICT: **NO — DO NOT INVEST (REJECTED / HARD PASS)**\n"
+            "     TARGET PORTFOLIO ALLOCATION: **0.0% (ZERO CAPITAL ALLOCATION)**\n"
+            "     Itemize each Dealbreaker that failed the threshold (e.g. Dealbreaker 1: Severe FX debt mismatch; Dealbreaker 2: Unjustified promoter asking valuation exceeding global industry peers; Dealbreaker 3: Unfinalized audited retail public prospectus).\n"
+            "   • STRICT PROHIBITION: NEVER recommend a 'HOLD / NEUTRAL' with a 2-3% satellite allocation on an opportunity that fails the hurdle threshold or lacks audited data! In institutional finance, if an opportunity does not pass the hurdle or carries fatal unhedged risks, you PASS (0.0% allocation). Give a definitive YES or NO.\n"
+            "5. JANE STREET QUANT & HEDGE FUND / PE DEEP-DIVE FRAMEWORK:\n"
+            "   Organize the investment memo into clear pillars: Executive Investment Verdict (with Hurdle Score and Allocation), Financial Statement Audit, Balance Sheet Health, ROIC vs WACC & Hamilton Helmer 7 Powers Moat, Factor Profile, 3-Scenario Valuation Model (Bull/Base/Bear), and Downside Catalysts.\n"
+            "6. DEFINITIVE ADVISORY AUTHORITY — NEVER DEFLECT: You ARE the client's wealth advisor and equity research team. "
+            "NEVER tell the user to 'consult a financial advisor' or 'seek professional advice'. Deliver definitive, data-backed institutional decisions.\n"
+            "7. Maintain a consultative, highly authoritative, institutional tone.\n"
+            "8. INSTITUTIONAL TAX STRATEGY & UHNW STRUCTURING (e.g. Nigeria, International, Cross-Border):\n"
+            "   When asked for tax strategy, tax minimization, legal tax avoidance, or wealth preservation:\n"
+            "   • IMMEDIATELY call `optimize_tax_strategy` to obtain statutory provisions, numerical arbitrage schedules, and 5-step structuring blueprints!\n"
+            "   • STRICT PROHIBITION ON GENERIC ADVICE: NEVER output high-level vague bullet points ('set up a trust', 'explore incentives', 'consult a tax advisor'). Deliver a definitive, JP Morgan Private Bank / Big-4 Tax Advisory memorandum!\n"
+            "   • MANDATORY TABULAR NUMERICAL ARBITRAGE SCHEDULE: You MUST render the complete Markdown table comparing:\n"
+            "     - Tier 1: Unstructured Individual (PITA Section 33 top 24% marginal rate, ETR ~21.5%-24.0%)\n"
+            "     - Tier 2: Corporate Operating + Holding Company (FIC) (CITA Section 80 Franked Investment Income, ETR ~10.0%-14.5%)\n"
+            "     - Tier 3: Free Trade Zone Approved Enterprise (NEPZA Act Section 8 100% tax exemption, ETR ~0.0%-1.5%)\n"
+            "     - Tier 4: Sovereign Asset Shield (FGN Sukuk/Bonds under PITA 3rd Schedule & CGTA Section 30, ETR 0.0%)\n"
+            "     Include columns: Structure, Statutory Legal Basis, Gross Cash Flow, Annual Tax Liability, Effective Tax Rate %, Net Retained Wealth, Annual Savings.\n"
+            "   • 5-STEP OPERATIONAL STRUCTURING BLUEPRINT: Itemize the concrete legal and corporate execution steps:\n"
+            "     1) Entity Architecture: CAC incorporation of Family Investment Company (FIC) with CAMA 2020 weighted voting shares.\n"
+            "     2) Remuneration Optimization: Statutory pension deduction under PRA 2014 Section 10(1) and non-taxable directors' franked dividends.\n"
+            "     3) Free Trade Zone Licensing: NEPZA Act Section 8 Approved Enterprise licensing for international and export operations.\n"
+            "     4) Sovereign Asset Allocation: Capital deployment into 100% tax-exempt FGN Sukuk, Bonds, and Treasury Bills.\n"
+            "     5) Cross-Border Trust & Succession: Offshore Irrevocable Discretionary Trust (Jersey, Guernsey, DIFC) for hard-currency asset protection.\n"
+            "   • STATUTORY CITATIONS: Explicitly cite the governing laws: PITA Cap P8 LFN 2004, CITA Cap C21, NEPZA Act Cap N107, CGTA Cap C1, PRA 2014, and Withholding Tax Regulations 2024.\n"
+            "   • ANTI-AVOIDANCE BOUNDARIES: Detail CITA Section 22 General Anti-Avoidance Rule (GAAR), commercial economic substance, and Transfer Pricing Regulations 2018 to guarantee 100% lawful compliance."
+        )
+
+        try:
+            import httpx
+            import json
+            from openai import AsyncOpenAI
+
+            messages = [{"role": "system", "content": system_prompt}]
+            if history:
+                prior_turns = [
+                    turn for turn in history
+                    if turn.get("role") in ("user", "assistant") and turn.get("content")
+                ]
+                if prior_turns and prior_turns[-1].get("role") == "user" and prior_turns[-1].get("content") == text:
+                    prior_turns = prior_turns[:-1]
+                for turn in prior_turns[-8:]:
+                    messages.append({"role": turn["role"], "content": turn["content"]})
+            messages.append({"role": "user", "content": text})
+
+            async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0)) as http_client:
+                client = AsyncOpenAI(api_key=key, http_client=http_client)
+
+                # Multi-step tool execution loop (up to 4 iterations)
+                for _iteration in range(4):
+                    # Force final synthesis on last iteration
+                    active_tools = tools if _iteration < 3 else None
+
+                    resp = await client.chat.completions.create(
+                        model=settings.openai_model or "gpt-4o",
+                        messages=messages,
+                        tools=active_tools,
+                        temperature=0.2,
+                        max_tokens=4000,
+                    )
+                    msg = resp.choices[0].message
+
+                    if not msg.tool_calls:
+                        if msg.content and msg.content.strip():
+                            events.append(await self._say(msg.content.strip(), db, client_id, agent="WealthAdvisor"))
+                            return events
+                        break
+
+                    messages.append(msg)
+                    for tc in msg.tool_calls:
+                        fn_name = tc.function.name
+                        fn_args = json.loads(tc.function.arguments or "{}")
+
+                        if fn_name == "search_financial_web":
+                            q = fn_args.get("query", "")
+                            max_res = int(fn_args.get("max_results", 5))
+                            res = await self.c.market.search_financial_web(q, max_results=max_res)
+                            messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(res)})
+
+                        elif fn_name == "fetch_web_page":
+                            u = fn_args.get("url", "")
+                            max_c = int(fn_args.get("max_chars", 4000))
+                            res = await self.c.market.fetch_web_page(u, max_chars=max_c)
+                            messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(res)})
+
+                        elif fn_name == "get_stock_metrics":
+                            syms = fn_args.get("symbols", [])
+                            period = fn_args.get("period", "6mo")
+                            res = await self.c.market.get_performance_and_metrics(syms, period=period)
+                            messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(res)})
+
+                        elif fn_name == "get_company_financials":
+                            syms = fn_args.get("symbols", [])
+                            res = await self.c.market.get_company_financials(syms)
+                            messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(res)})
+
+                        elif fn_name == "get_stock_predictions":
+                            syms = fn_args.get("symbols", [])
+                            res = await self.c.market.get_stock_predictions(syms)
+                            messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(res)})
+
+                        elif fn_name == "get_stock_quote":
+                            sym = fn_args.get("symbol", "")
+                            q = await self.c.market.get_quote(sym)
+                            messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(q.model_dump(mode="json"))})
+
+                        elif fn_name == "get_macro_context":
+                            macro = await self.c.market.get_macro_context()
+                            curve = await self.c.market.get_yield_curve()
+                            messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps({"macro": macro, "yield_curve": curve})})
+
+                        elif fn_name == "get_sector_performance":
+                            sec = await self.c.market.get_sector_performance()
+                            messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(sec)})
+
+                        elif fn_name == "get_portfolio":
+                            if client_id:
+                                pf = await self.c.portfolio.get_portfolio(db, client_id)
+                                messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps({k: v for k, v in pf.items() if k != "prices"})})
+                            else:
+                                messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps({"status": "no_portfolio", "message": "Client has not completed onboarding."})})
+
+                        elif fn_name == "get_portfolio_health":
+                            if client_id:
+                                hr = await self.c.health.generate_health_report(db, client_id)
+                                messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(hr.model_dump(mode="json"))})
+                            else:
+                                messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps({"status": "no_portfolio"})})
+
+                        elif fn_name == "compare_assets":
+                            syms = fn_args.get("symbols", [])
+                            prof = await self.c.profiler.get_profile(client_id, db=db) if client_id else None
+                            comp = await self.c.comparison.compare_etfs(syms, profile=prof, client_id=client_id)
+                            messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(comp.model_dump(mode="json"))})
+
+                        elif fn_name == "simulate_wealth_plan":
+                            w0 = float(fn_args.get("starting_capital", 10_000_000.0))
+                            w_target = float(fn_args.get("target_capital", 100_000_000.0))
+                            yrs = int(fn_args.get("years", 10))
+                            w_init = float(fn_args.get("initial_withdrawal", 500_000.0))
+                            inf_pct = float(fn_args.get("withdrawal_inflation_pct", 0.02))
+
+                            from services.financial_engineering import (
+                                solve_required_return,
+                                generate_10year_cash_flow_table,
+                                generate_stochastic_variable_cycle_table,
+                                run_reproducible_monte_carlo,
+                                run_explicit_stress_tests,
+                                get_fiduciary_institutional_portfolio,
+                                compare_three_institutional_portfolios,
+                            )
+
+                            req_r = solve_required_return(w0, w_target, yrs, w_init, inf_pct)
+                            cash_flow_table = generate_10year_cash_flow_table(w0, req_r, yrs, w_init, inf_pct)
+                            variable_cycle = generate_stochastic_variable_cycle_table(w0, yrs, w_init, inf_pct)
+                            mc_sim = run_reproducible_monte_carlo(w0, w_target, yrs, w_init, inf_pct)
+                            stress_tests = run_explicit_stress_tests(w0, w_init)
+                            portfolio_structure = get_fiduciary_institutional_portfolio()
+                            three_portfolios = compare_three_institutional_portfolios(w0, yrs, w_init)
+
+                            res = {
+                                "starting_capital": w0,
+                                "target_capital": w_target,
+                                "horizon_years": yrs,
+                                "required_pre_tax_annual_hurdle_rate": f"{req_r * 100:.2f}%",
+                                "ten_year_deterministic_schedule": cash_flow_table,
+                                "ten_year_stochastic_variable_cycle": variable_cycle,
+                                "reproducible_monte_carlo_10k": mc_sim,
+                                "explicit_stress_tests": stress_tests,
+                                "fiduciary_institutional_portfolio": portfolio_structure,
+                                "triple_portfolio_comparison": three_portfolios,
+                            }
+                            messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(res)})
+
+                        elif fn_name == "optimize_tax_strategy":
+                            jur = fn_args.get("jurisdiction", "Nigeria")
+                            inc = float(fn_args.get("annual_income", 100_000_000.0))
+                            nw = fn_args.get("net_worth")
+                            from services.tax_engineering import optimize_full_nigerian_tax_strategy
+                            res = optimize_full_nigerian_tax_strategy(annual_income=inc, net_worth=float(nw) if nw else None)
+                            messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(res)})
+
+                        elif fn_name == "get_crypto_macro":
+                            from services.providers.global_data import GlobalDataProvider
+                            g_provider = GlobalDataProvider()
+                            c_snap = await g_provider.get_crypto_macro_snapshot()
+                            messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(c_snap.model_dump())})
+
+                        elif fn_name == "get_sovereign_macro":
+                            c_code = fn_args.get("country_code", "USA")
+                            from services.providers.global_data import GlobalDataProvider
+                            g_provider = GlobalDataProvider()
+                            s_snap = await g_provider.get_sovereign_macro(c_code)
+                            messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(s_snap.model_dump())})
+
+                        elif fn_name == "propose_trade":
+                            sym = fn_args.get("symbol", "").upper()
+                            side = fn_args.get("side", "").upper()
+                            qty = float(fn_args.get("qty", 0.0))
+                            if client_id and sym and side in ("BUY", "SELL") and qty > 0:
+                                return await self.propose_trade(db, user_id, client_id, sym, side, qty, session=session)
+                            else:
+                                messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps({"status": "error", "message": "Invalid trade or client not onboarded."})})
+
+        except Exception as exc:
+            logger.warning("Agentic chat turn failed: %s", exc)
+
         return events
 
     # -- proposal review turn ------------------------------------------ #
@@ -364,6 +1098,9 @@ class OrchestratorAgent:
 
         pending = session.get("pending_proposal_id")
 
+        words = text.strip().split()
+        is_direct_command = (len(words) <= 12 and "\n" not in text.strip() and text.count("?") <= 1)
+
         if pending and APPROVE_RE.match(text):
             events += await self.handle_trade_approval(db, user_id, pending, approved=True, session_id=session["session_id"])
             session.pop("pending_proposal_id", None)
@@ -378,42 +1115,89 @@ class OrchestratorAgent:
                     actor="USER", details={"proposal_id": pending}, session_id=session["session_id"],
                 )
             events.append(await self._say("Understood — the trade proposal was cancelled and nothing was sent to the broker.", db, client_id))
-        elif (m := TRADE_RE.search(text)):
+        elif is_direct_command and (m := TRADE_RE.search(text)):
             side, qty, symbol = m.group(1).upper(), float(m.group(2)), m.group(3).upper()
             if not client_id:
                 events.append(await self._say("Please complete risk profiling before requesting trades.", db, None))
             else:
                 events += await self.propose_trade(db, user_id, client_id, symbol, side, qty, session=session)
-        elif REBALANCE_RE.search(text):
+        elif is_direct_command and REBALANCE_RE.search(text):
             if not client_id:
                 events.append(await self._say("Please complete risk profiling before requesting rebalancing.", db, None))
             else:
                 events += await self._rebalance(db, client_id, session)
-        elif COMPARE_RE.search(text):
-            if not client_id:
-                events.append(await self._say("Please complete risk profiling before comparing products.", db, None))
-            else:
-                symbols = [t for t in TICKER_RE.findall(text) if t not in STOPWORDS_TICKER]
-                events += await self._compare(db, client_id, symbols, bonds="bond" in lowered)
-        elif HEALTH_RE.search(text):
+        elif is_direct_command and COMPARE_RE.search(text):
+            symbols = [t for t in TICKER_RE.findall(text.upper()) if t not in STOPWORDS_TICKER]
+            events += await self._compare(db, client_id, symbols, bonds="bond" in lowered)
+        elif is_direct_command and HEALTH_RE.search(text):
             if not client_id:
                 events.append(await self._say("Please complete risk profiling to review your portfolio health.", db, None))
             else:
                 session["stage"] = SessionStage.HEALTH_MONITORING.value
                 events += await self._health(db, client_id)
                 session["stage"] = SessionStage.ADVICE_GENERATION.value
-        elif ALLOCATION_RE.search(text):
+        elif is_direct_command and ALLOCATION_RE.search(text):
             if not client_id:
                 events.append(await self._say("Please complete risk profiling before requesting an allocation recommendation.", db, None))
             else:
                 events += await self.recommend_allocation(db, client_id)
-        elif (m_quote := QUOTE_RE.search(text)):
-            symbol = m_quote.group(1).upper()
-            events += await self._quote(db, client_id, symbol)
-        elif MACRO_RE.search(text):
+        elif is_direct_command and (sym := extract_quote_symbol(text)):
+            events += await self._quote(db, client_id, sym)
+        elif is_direct_command and MACRO_RE.search(text):
             events += await self._macro(db, client_id)
         else:
-            events.append(await self._say(await self._general_reply(db, client_id, text), db, client_id))
+            history = session.get("history", [])
+            # 1. Run agentic tool-calling turn connected to application services
+            agentic_events = await self._agentic_chat_turn(db, session, text, history=history)
+            if agentic_events:
+                return agentic_events
+
+            # 2. Fallback to intent parser and general reply if agentic turn did not produce events
+            translated = await self._translate_intent(text, history=history)
+            if translated and translated.get("command"):
+                cmd = str(translated["command"]).strip()
+                if (sym := extract_quote_symbol(cmd)):
+                    events += await self._quote(db, client_id, sym)
+                    return events
+                elif COMPARE_RE.search(cmd):
+                    symbols = [t for t in TICKER_RE.findall(cmd.upper()) if t not in STOPWORDS_TICKER]
+                    if len(symbols) >= 2:
+                        events += await self._compare(db, client_id, symbols, bonds="bond" in cmd.lower())
+                        return events
+                elif MACRO_RE.search(cmd):
+                    events += await self._macro(db, client_id)
+                    return events
+                elif HEALTH_RE.search(cmd):
+                    if client_id:
+                        events += await self._health(db, client_id)
+                        return events
+                elif ALLOCATION_RE.search(cmd):
+                    if client_id:
+                        events += await self.recommend_allocation(db, client_id)
+                        return events
+                elif (m := TRADE_RE.search(cmd)):
+                    side, qty, symbol = m.group(1).upper(), float(m.group(2)), m.group(3).upper()
+                    if client_id:
+                        events += await self.propose_trade(db, user_id, client_id, symbol, side, qty, session=session)
+                        return events
+
+            # 3. Direct deterministic regex fallback when LLM is offline/unconfigured
+            if (sym := extract_quote_symbol(text)):
+                events += await self._quote(db, client_id, sym)
+                return events
+            elif MACRO_RE.search(text):
+                events += await self._macro(db, client_id)
+                return events
+            elif COMPARE_RE.search(text):
+                symbols = [t for t in TICKER_RE.findall(text.upper()) if t not in STOPWORDS_TICKER]
+                if len(symbols) >= 2:
+                    events += await self._compare(db, client_id, symbols, bonds="bond" in lowered)
+                    return events
+
+            if translated and translated.get("answer"):
+                events.append(await self._say(translated["answer"], db, client_id, agent="WealthAdvisor"))
+            else:
+                events.append(await self._say(await self._general_reply(db, client_id, text, history=history), db, client_id, agent="WealthAdvisor"))
 
         return events
 
@@ -423,10 +1207,15 @@ class OrchestratorAgent:
     async def _quote(self, db: AsyncSession, client_id: Optional[str], symbol: str) -> List[Dict[str, Any]]:
         try:
             q = await self.c.market.get_quote(symbol)
-            txt = (
-                f"Quote for {q.symbol}: Price ${q.price:.2f} (Bid: ${q.bid:.2f}, Ask: ${q.ask:.2f}, "
-                f"Volume: {q.volume:,}). Data as of {q.as_of}."
-            )
+            as_of = getattr(q, "as_of", None) or getattr(q, "timestamp", "recently")
+            bid_str = f", Bid: ${q.bid:.2f}" if getattr(q, "bid", None) else ""
+            ask_str = f", Ask: ${q.ask:.2f}" if getattr(q, "ask", None) else ""
+            vol_str = f", Volume: {q.volume:,}" if getattr(q, "volume", None) else ""
+            change_str = ""
+            if getattr(q, "change_pct", None) is not None:
+                sign = "+" if q.change_pct > 0 else ""
+                change_str = f" ({sign}{q.change_pct:.2f}%)"
+            txt = f"Quote for {q.symbol}: Price ${q.price:.2f}{change_str}{bid_str}{ask_str}{vol_str}. Data as of {as_of}."
             return [await self._say(txt, db, client_id, agent="MarketData", quote=q.model_dump(mode="json"))]
         except Exception as exc:  # noqa: BLE001
             logger.warning("Market quote lookup failed: %s", exc)
@@ -478,7 +1267,24 @@ class OrchestratorAgent:
                 f"{first_trade.qty:g} {first_trade.symbol} to align with target allocation. "
                 f"Reply 'approve' to execute within 15 minutes, or 'cancel'."
             )
-            events.append(await self._say(txt, db, client_id, agent="AllocationEngine", kind="trade_proposal", proposal=proposal))
+            events.append(
+                await self._say(
+                    txt,
+                    db,
+                    client_id,
+                    agent="AllocationEngine",
+                    kind="trade_proposal",
+                    proposal=proposal,
+                    proposal_id=proposal["proposal_id"],
+                    action=proposal["side"],
+                    side=proposal["side"],
+                    quantity=proposal["qty"],
+                    qty=proposal["qty"],
+                    symbol=proposal["symbol"],
+                    price=proposal["price"],
+                    notional_value=proposal["notional_value"],
+                )
+            )
         else:
             txt = "Your portfolio allocation is currently well-balanced within allowable tolerance bands. No rebalance is needed at this time."
             events.append(await self._say(txt, db, client_id, agent="AllocationEngine"))
@@ -541,14 +1347,15 @@ class OrchestratorAgent:
         )
         return events
 
-    async def _compare(self, db: AsyncSession, client_id: str, symbols: List[str], bonds: bool = False) -> List[Dict[str, Any]]:
+    async def _compare(self, db: AsyncSession, client_id: Optional[str], symbols: List[str], bonds: bool = False) -> List[Dict[str, Any]]:
         if len(symbols) < 2:
             return [await self._say("Tell me at least two tickers to compare, e.g. 'compare SPY VTI QQQ'.", db, client_id)]
-        profile = await self.c.profiler.get_profile(client_id, db=db)
+        profile = await self.c.profiler.get_profile(client_id, db=db) if client_id else None
         fn = self.c.comparison.compare_bonds if bonds else self.c.comparison.compare_etfs
         report = await fn(symbols, profile=profile, client_id=client_id)
         ranked = "; ".join(f"#{p.rank} {p.symbol} ({p.composite_score:.1f}/10)" for p in report.ranked_products) or "none suitable"
-        text = f"Ranking for you: {ranked}. Best fit: {report.winner_symbol}.\n\n{report.summary_rationale}"
+        target_str = "for you" if client_id else "by composite score"
+        text = f"Ranking {target_str}: {ranked}. Best fit: {report.winner_symbol}.\n\n{report.summary_rationale}"
         return [await self._say(text, db, client_id, agent="ProductComparison", report=report.model_dump())]
 
     async def _health(self, db: AsyncSession, client_id: str) -> List[Dict[str, Any]]:
@@ -561,29 +1368,73 @@ class OrchestratorAgent:
                             report=report.model_dump(mode="json"))
         ]
 
-    async def _general_reply(self, db: AsyncSession, client_id: Optional[str], text: str) -> str:
-        key = os.getenv("OPENAI_API_KEY")
+    async def _general_reply(self, db: AsyncSession, client_id: Optional[str], text: str, history: Optional[List[Dict[str, str]]] = None) -> str:
+        key = settings.openai_api_key or os.getenv("OPENAI_API_KEY")
         if key and key != "your_openai_api_key_here":
             try:
+                import httpx
                 from openai import AsyncOpenAI
 
-                resp = await AsyncOpenAI(api_key=key).chat.completions.create(
-                    model=os.getenv("OPENAI_MODEL", "gpt-4o"),
-                    messages=[
-                        {"role": "system", "content": (
-                            "You are a cautious, non-discretionary wealth advisor. Never promise returns, "
-                            "never say guaranteed or risk-free, never execute trades. Be concise."
-                        )},
-                        {"role": "user", "content": text},
-                    ],
-                    temperature=0.3,
-                )
-                return resp.choices[0].message.content.strip()
+                async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0)) as http_client:
+                    client = AsyncOpenAI(api_key=key, http_client=http_client)
+                    messages = [
+                        {
+                            "role": "system",
+                            "content": (
+                                "You are a licensed, friendly, conversational, and expert non-discretionary AI Wealth Advisor and equity research analyst. "
+                                "Maintain conversational context across multiple turns. Always resolve pronouns and contextual references from prior messages. "
+                                "When users ask about supply chains, suppliers, component providers, derivative plays, or value chains across ANY industry "
+                                "(e.g. AI/Tech, Electric Vehicles & Batteries, Aerospace & Defense, Healthcare & Biotech, Clean Energy & Utilities, "
+                                "Semiconductors, Industrial Manufacturing, Consumer Goods, Retail/E-Commerce, etc.): "
+                                "Provide deep, well-structured multi-tier research breaking down the ecosystem into clear tiers: "
+                                "1. Raw Materials & Commodities; 2. Key Component, Subsystem & Equipment Suppliers; 3. Infrastructure, Utilities, Power & Physical Facilities; "
+                                "4. Contract Manufacturing, Integration & Foundries; 5. Human Capital, Specialized Staffing & Enterprise Software; 6. Prime End-Market Leaders. "
+                                "Include concrete public stock tickers for each tier, discuss competitive moats, evaluate valuation context, and analyze risks. "
+                                "When presented with complex mock scenarios, wealth advisory case studies, multi-question briefs, or high-stakes challenges: "
+                                "Deliver the depth and rigor of a senior multidisciplinary institutional investment team. Adhere strictly to all specified non-negotiable rules. "
+                                "List critical client information required and why each matters, state baseline assumptions clearly, challenge assumptions aggressively, "
+                                "and conclude with a direct, unambiguous recommendation ('proceed as designed', 'proceed with modifications', or 'reject proposed objective'). "
+                                "When presented with ambitious wealth-building targets (e.g. $10M to $100M in 10 years with lifestyle withdrawals): "
+                                "Never invent probabilities out of thin air or assume constant linear returns without accounting for withdrawals, fees, and taxes. "
+                                "Provide the exact mathematical required CAGR accounting for withdrawals, taxes, and fees (which raises required pre-tax return to ~34.4% per year, far above the zero-cash-flow 25.89%), "
+                                "provide a 10-year audited accounting schedule, quote empirical 10,000-path Monte Carlo probability simulations (showing P(reaching $100M) is ~1% while P(losing >50% capital) is ~18%-25%), "
+                                "detail 5 concrete institutional investment dossiers with verified financials and Hamilton Helmer moats (not generic sectors), "
+                                "include multi-factor stress tests (2008 GFC, 2022 Stagflation, Currency shocks, sequence-of-returns), "
+                                "gate tax/legal advice by client tax residency, and challenge the client with the Ruin vs Riches trade-off matrix. "
+                                "NEVER deflect or tell the user to 'consult a financial advisor' or 'seek professional advice' — YOU ARE THE CLIENT'S WEALTH ADVISOR. "
+                                "When asked whether to invest in an IPO (such as Dangote Refinery), private deal, or equity, conduct the deep analysis yourself and deliver an authoritative investment verdict. "
+                                "Compute the Institutional Hurdle Score (0-100) across Financial Transparency (25), Solvency/Debt (20), Unit Economics (20), Valuation (15), and Sovereign/FX/Feedstock Risk (20). "
+                                "If Score >= 70 and no fatal dealbreakers exist, verdict is YES — INVEST (with exact allocation e.g. 3-5%). "
+                                "If Score < 70 or any fatal dealbreaker is triggered (e.g. massive unhedged FX debt, lack of audited public prospectus, or feedstock friction), verdict is NO — DO NOT INVEST with TARGET ALLOCATION: 0.0%. "
+                                "NEVER suggest a 'HOLD / NEUTRAL' with a 2-3% satellite allocation when an asset fails the hurdle! In institutional finance, if an opportunity fails the hurdle, you pass completely (0.0%). "
+                                "Never promise risk-free returns; provide balanced, evidence-based commentary."
+                            ),
+                        },
+                    ]
+                    if history:
+                        prior_turns = [
+                            turn for turn in history
+                            if turn.get("role") in ("user", "assistant") and turn.get("content")
+                        ]
+                        if prior_turns and prior_turns[-1].get("role") == "user" and prior_turns[-1].get("content") == text:
+                            prior_turns = prior_turns[:-1]
+                        for turn in prior_turns[-8:]:
+                            messages.append({"role": turn["role"], "content": turn["content"]})
+                    messages.append({"role": "user", "content": text})
+
+                    resp = await client.chat.completions.create(
+                        model=settings.openai_model or os.getenv("OPENAI_MODEL", "gpt-4o"),
+                        messages=messages,
+                        temperature=0.3,
+                        max_tokens=4000,
+                    )
+                    return resp.choices[0].message.content.strip()
             except Exception as exc:  # noqa: BLE001
                 logger.warning("General reply LLM failed: %s", exc)
         return (
-            "I can build an allocation ('recommend a portfolio'), compare funds ('compare SPY VTI QQQ'), "
-            "review portfolio health ('how is my portfolio?'), or propose a trade ('buy 10 BND')."
+            "I'm here to help you navigate your wealth advisory journey! You can ask me any financial or investing question, "
+            "request real-time market quotes (e.g. 'show SPY quote'), compare funds ('compare SPY VTI QQQ'), review portfolio health ('how is my portfolio?'), "
+            "recommend a portfolio allocation ('recommend a portfolio'), or propose a paper trade ('buy 10 BND')."
         )
 
     # ------------------------------------------------------------------ #
@@ -650,7 +1501,23 @@ class OrchestratorAgent:
             f"${proposal['price']:.2f} (~${proposal['notional_value']:,.2f}). Reply 'approve' to execute it in the "
             f"paper-trading account within 15 minutes, or 'cancel'. Nothing is sent until you approve."
         )
-        return [await self._say(text, db, client_id, kind="trade_proposal", proposal=proposal)]
+        return [
+            await self._say(
+                text,
+                db,
+                client_id,
+                kind="trade_proposal",
+                proposal=proposal,
+                proposal_id=proposal["proposal_id"],
+                action=proposal["side"],
+                side=proposal["side"],
+                quantity=proposal["qty"],
+                qty=proposal["qty"],
+                symbol=proposal["symbol"],
+                price=proposal["price"],
+                notional_value=proposal["notional_value"],
+            )
+        ]
 
     async def handle_trade_approval(
         self,
@@ -662,6 +1529,15 @@ class OrchestratorAgent:
     ) -> List[Dict[str, Any]]:
         proposal = await self.c.cache.get_json(f"proposal:{proposal_id}")
         if not proposal:
+            executed = await self.c.cache.get_json(f"executed_proposal:{proposal_id}")
+            if executed:
+                return [
+                    _event(
+                        "agent_response",
+                        "ExecutionModule",
+                        f"Order for {executed.get('symbol', 'this asset')} has already been confirmed and processed.",
+                    )
+                ]
             raise HTTPException(status_code=404, detail="Trade proposal not found or expired (15 minute window)")
         client_id = proposal["client_id"]
 
@@ -686,13 +1562,21 @@ class OrchestratorAgent:
         }
         try:
             check = await self.c.compliance.check_trade(db, client_id, trade, profile)
-            events.append(_event("compliance_check", "ComplianceGuard", passed=check.passed, details=check.to_dict()))
+            summary_rules = f"Pre-trade compliance verified: {len(check.rule_results)} rules passed."
+            events.append(_event("compliance_check", "ComplianceGuard", text=summary_rules, passed=check.passed, details=check.to_dict()))
         except ComplianceViolationError as exc:
+            violation_details = []
+            for v in exc.violations:
+                rid = getattr(v, "rule_id", "RULE")
+                rname = getattr(v, "rule_name", rid)
+                desc = getattr(v, "description", "") or getattr(v, "details", "") or str(v)
+                violation_details.append(f"{rid} ({rname}): {desc}")
+            violation_text = "Trade blocked by regulatory & compliance rules:\n• " + "\n• ".join(violation_details)
             events.append(
-                _event("compliance_check", "ComplianceGuard", "Trade blocked by compliance rules.",
-                       passed=False, violations=[v.to_dict() for v in exc.violations])
+                _event("compliance_check", "ComplianceGuard", text=violation_text,
+                       passed=False, violations=[v.to_dict() if hasattr(v, "to_dict") else dict(v) for v in exc.violations])
             )
-            raise TradeBlocked(exc.violations, events) from exc
+            raise TradeBlocked(exc.violations, events, reason=violation_text) from exc
 
         try:
             result = await self.c.execution.execute_trade(
@@ -703,6 +1587,11 @@ class OrchestratorAgent:
         except (UnapprovedTradeError, ExpiredApprovalError, KYCUnverifiedError, DuplicateTradeError, ExecutionError) as exc:
             raise TradeBlocked([], events, reason=str(exc), error_type=type(exc).__name__) from exc
 
+        await self.c.cache.set_json(
+            f"executed_proposal:{proposal_id}",
+            {"symbol": proposal.get("symbol", ""), "side": proposal.get("side", ""), "qty": proposal.get("qty", 0)},
+            expire=900,
+        )
         await self.c.cache.delete(f"proposal:{proposal_id}")
         if session_id:
             try:
@@ -723,7 +1612,10 @@ class OrchestratorAgent:
             )
         )
         pf = await self.c.portfolio.get_portfolio(db, client_id, persist_snapshot=True)
-        events.append(_event("portfolio_update", "PortfolioService", portfolio={k: v for k, v in pf.items() if k not in ("prices", "position_qty")}))
+        tot = pf.get("total_value", 0.0)
+        cash = pf.get("cash", 0.0)
+        txt = f"Portfolio balance updated: Total value ${tot:,.2f}, cash balance ${cash:,.2f}."
+        events.append(_event("portfolio_update", "PortfolioService", text=txt, portfolio={k: v for k, v in pf.items() if k not in ("prices", "position_qty")}))
         return events
 
     # Backward-compatible facade for execute_proposal

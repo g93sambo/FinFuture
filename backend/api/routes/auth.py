@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
@@ -48,11 +48,45 @@ async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
     return UserResponse(id=user.id, email=user.email)
 
 
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
 @router.post("/login", response_model=TokenResponse)
-async def login(form: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(DBUser).where(DBUser.email == form.username.lower()))
+async def login(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    email: Optional[str] = None
+    password: Optional[str] = None
+
+    # Detect Content-Type to support both application/json and application/x-www-form-urlencoded
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        try:
+            body = await request.json()
+            email = body.get("email") or body.get("username")
+            password = body.get("password")
+        except Exception:
+            pass
+    else:
+        try:
+            form = await request.form()
+            email = form.get("username") or form.get("email")
+            password = form.get("password")
+        except Exception:
+            pass
+
+    if not email or not password:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Missing username/email or password in request",
+        )
+
+    result = await db.execute(select(DBUser).where(DBUser.email == email.lower()))
     user = result.scalars().first()
-    if user is None or not verify_password(form.password, user.hashed_password):
+    if user is None or not verify_password(password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",

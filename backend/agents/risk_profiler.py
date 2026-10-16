@@ -216,9 +216,14 @@ class RiskProfilerAgent:
         inc_match = re.search(r"\b(?:income|earn|make|salary)\s*(?:is|of|around|about|:)?\s*\$?(\d[\d,]*(?:\.\d+)?)\s*([kmb])?\b", text_lower)
         if inc_match:
             extracted["annual_income"] = self._parse_currency_value(inc_match.group(1), inc_match.group(2))
-        elif re.search(r"\$?(\d[\d,]*(?:\.\d+)?)\s*([kmb])?\s*(?:per year|annually|a year|annual)", text_lower):
-            m = re.search(r"\$?(\d[\d,]*(?:\.\d+)?)\s*([kmb])?\s*(?:per year|annually|a year|annual)", text_lower)
+        elif re.search(r"\$?(\d[\d,]*(?:\.\d+)?)\s*([kmb])?\s*(?:dollars?|bucks|usd)?\s*(?:per year|annually|a year|annual|\/yr)", text_lower):
+            m = re.search(r"\$?(\d[\d,]*(?:\.\d+)?)\s*([kmb])?\s*(?:dollars?|bucks|usd)?\s*(?:per year|annually|a year|annual|\/yr)", text_lower)
             extracted["annual_income"] = self._parse_currency_value(m.group(1), m.group(2))
+        elif current_extracted.get("annual_income") is None:
+            # Stand-alone dollar amount when asking for income
+            lone_match = re.search(r"(?:like|around|about|approx)?\s*\$?(\d[\d,]*(?:\.\d+)?)\s*([kmb])?\s*(?:dollars?|bucks|usd)?\b", text_lower)
+            if lone_match and lone_match.group(1) and float(lone_match.group(1).replace(",", "")) > 1000:
+                extracted["annual_income"] = self._parse_currency_value(lone_match.group(1), lone_match.group(2))
 
         # Liquid Assets / Savings
         liq_match = re.search(r"\b(?:savings|liquid(?:ity)?|cash|in bank)\s*(?:is|of|around|about|:)?\s*\$?(\d[\d,]*(?:\.\d+)?)\s*([kmb])?\b", text_lower)
@@ -253,16 +258,20 @@ class RiskProfilerAgent:
             if not (extracted.get("age") == val_h and re.search(rf"\b{val_h}\s*years?\s*old\b", text_lower)):
                 extracted["investment_horizon_years"] = val_h
 
-        # Primary goal
-        if re.search(r"\b(capital preservation|protect|preserve capital|safety)\b", text_lower):
+        # Primary goal (personal investment goals)
+        if re.search(r"\b(capital preservation|preserve capital|safety of principal)\b", text_lower):
             extracted["primary_goal"] = "capital_preservation"
-        elif re.search(r"\b(income|dividends?|cash flow)\b", text_lower):
+        elif re.search(r"\b(?:(?:my\s+)?(?:primary\s+)?(?:goal|objective|aim|target)\b.*)?\b(income|dividends?|cash flow)\b", text_lower):
             extracted["primary_goal"] = "income"
-        elif re.search(r"\b(balanced|moderate|neutral)\b", text_lower):
+        elif re.search(r"\b(?:(?:my\s+)?(?:primary\s+)?(?:goal|objective|aim|target)\b.*)?\b(balanced|moderate)\b", text_lower):
             extracted["primary_goal"] = "balanced"
         elif re.search(r"\b(aggressive growth|maximum growth|speculat\w+)\b", text_lower):
             extracted["primary_goal"] = "aggressive_growth"
-        elif re.search(r"\b(growth|wealth accumulation|retire(?:ment)?|long[- ]term)\b", text_lower):
+        elif (
+            re.search(r"\b(?:(?:my\s+)?(?:primary\s+)?(?:goal|objective|aim|target)|seeking|investing for|saving for|for (?:wealth )?growth)\b", text_lower)
+            or re.search(r"\b(wealth accumulation|planning for retirement)\b", text_lower)
+            or (re.search(r"\bgrowth\b", text_lower) and not re.search(r"\b(analyze|potential for|stock|price|earnings|revenue|market|gdp|historical|supplier|supply|chain)\b", text_lower))
+        ):
             extracted["primary_goal"] = "growth"
 
         # Liquidity Needs
@@ -358,35 +367,35 @@ class RiskProfilerAgent:
         if state == STATE_DEMOGRAPHICS:
             age = data.get("age")
             if age is None:
-                return False, "Could you please specify your age?"
+                return False, "To tailor our advisory strategy, could you share your approximate age?"
             if age < 18:
-                return False, "Clients must be at least 18 years old to open an advisory account."
+                return False, "Under regulatory requirements, advisory clients must be at least 18 years old."
             if not data.get("employment_status"):
-                return False, "What is your current employment status (e.g. employed, self-employed, retired, student)?"
+                return False, "Thanks! What is your current employment status (e.g., employed, self-employed, or retired)?"
             return True, None
 
         elif state == STATE_FINANCIAL_SITUATION:
             if data.get("annual_income") is None:
-                return False, "What is your approximate annual income?"
+                return False, "Could you share your approximate annual income so we can assess your cash flow capacity?"
             if data.get("liquid_assets") is None:
-                return False, "How much do you hold in liquid savings or cash reserves?"
+                return False, "Roughly how much do you have set aside in liquid savings or emergency reserves?"
             return True, None
 
         elif state == STATE_TIME_HORIZON:
             if data.get("investment_horizon_years") is None:
-                return False, "What is your intended investment time horizon in years?"
+                return False, "What timeframe are you looking at for these investments (e.g., 2 years, 5 years, or long-term 10+ years)?"
             if not data.get("primary_goal"):
-                return False, "What is your primary investment goal (e.g., capital preservation, income, growth, aggressive growth)?"
+                return False, "What is your main financial objective (such as capital preservation, steady income, or long-term growth)?"
             return True, None
 
         elif state == STATE_RISK_TOLERANCE:
             if data.get("risk_tolerance_score") is None:
-                return False, "How would you rate your risk tolerance on a scale of 1 to 10?"
+                return False, "On a scale from 1 (very conservative) to 10 (very aggressive), how comfortable are you taking on portfolio volatility?"
             return True, None
 
         elif state == STATE_EXPERIENCE:
             if not data.get("investment_experience"):
-                return False, "How would you rate your investment experience (none, novice, intermediate, advanced)?"
+                return False, "How would you describe your overall investment experience (none, novice, intermediate, or advanced)?"
             return True, None
 
         elif state == STATE_PROFILE_SYNTHESIS:

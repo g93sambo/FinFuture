@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.config import settings
 from db.database import AsyncSessionLocal
 from db.models import DBBehavioralMemory, DBClientProfile
 from services.cache import CacheService, get_cache_service
@@ -173,10 +174,12 @@ class BehavioralBiasAgent:
         self.client = openai_client
         if self.client is None:
             try:
-                api_key = os.getenv("OPENAI_API_KEY")
+                api_key = settings.openai_api_key or os.getenv("OPENAI_API_KEY")
                 if api_key and api_key != "your_openai_api_key_here":
+                    import httpx
                     from openai import AsyncOpenAI
-                    self.client = AsyncOpenAI(api_key=api_key)
+                    http_client = httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=10.0))
+                    self.client = AsyncOpenAI(api_key=api_key, http_client=http_client)
             except Exception as e:
                 logger.warning(f"Could not initialize AsyncOpenAI client: {e}")
 
@@ -250,10 +253,23 @@ class BehavioralBiasAgent:
 
         # Attempt Layer 2 if LLM client is available
         llm_used = False
-        if self.client is not None and bool(os.getenv("OPENAI_API_KEY")):
+        api_key = settings.openai_api_key or os.getenv("OPENAI_API_KEY")
+        client = self.client
+        if client is None and bool(api_key) and api_key != "your_openai_api_key_here":
             try:
-                response = await self.client.chat.completions.create(
-                    model="gpt-4o",
+                import httpx
+                from openai import AsyncOpenAI
+
+                http_client = httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=10.0))
+                client = AsyncOpenAI(api_key=api_key, http_client=http_client)
+            except Exception as e:
+                logger.warning(f"Could not initialize AsyncOpenAI client: {e}")
+                client = None
+
+        if client is not None:
+            try:
+                response = await client.chat.completions.create(
+                    model=settings.openai_model or os.getenv("OPENAI_MODEL", "gpt-4o"),
                     messages=[
                         {"role": "system", "content": BIAS_PROMPT},
                         {"role": "user", "content": user_message},

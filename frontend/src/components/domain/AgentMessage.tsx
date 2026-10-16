@@ -21,6 +21,8 @@ const agentNames: Record<string, string> = {
   MarketData: "Market data",
   ExecutionModule: "Execution",
   PortfolioService: "Portfolio",
+  FinancialAnalyst: "Financial analyst",
+  TaxStrategy: "Tax architect",
   User: "You",
 };
 
@@ -33,18 +35,130 @@ function splitDisclosure(text: string): [string, boolean] {
   return [text.replace(DISCLOSURE, "\n").trim(), true];
 }
 
+function renderInlineBold(line: string) {
+  const parts = line.split(/(\*\*.*?\*\*)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return (
+        <strong key={i} className="font-semibold text-ink">
+          {part.slice(2, -2)}
+        </strong>
+      );
+    }
+    return part;
+  });
+}
+
 function Body({ text }: { text?: string }) {
   if (!text) return null;
   const [main, hadDisclosure] = splitDisclosure(text);
+  if (!main) return null;
+
+  const lines = main.split("\n");
+  const blocks: React.ReactNode[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i].trim();
+
+    // Markdown table block detection
+    if (line.startsWith("|") && line.endsWith("|") && i + 1 < lines.length && lines[i + 1].trim().startsWith("|")) {
+      const tableLines: string[] = [];
+      while (i < lines.length && lines[i].trim().startsWith("|")) {
+        tableLines.push(lines[i].trim());
+        i++;
+      }
+      if (tableLines.length >= 2) {
+        const parseRow = (r: string) =>
+          r
+            .slice(1, -1)
+            .split("|")
+            .map((c) => c.trim());
+        const headers = parseRow(tableLines[0]);
+        const dataRows = tableLines.slice(2).map(parseRow);
+        blocks.push(
+          <div key={`tbl-${i}`} className="my-3 overflow-x-auto border border-line bg-surface">
+            <table className="w-full border-collapse text-left text-[13px]">
+              <thead>
+                <tr className="border-b border-line bg-surface-muted">
+                  {headers.map((h, hi) => (
+                    <th key={hi} className="px-3 py-2 font-semibold text-ink">
+                      {renderInlineBold(h)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {dataRows.map((row, ri) => (
+                  <tr key={ri} className="hover:bg-surface-muted/50">
+                    {row.map((cell, ci) => (
+                      <td key={ci} className="figures px-3 py-2 text-ink">
+                        {renderInlineBold(cell)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+        continue;
+      }
+    }
+
+    // Headings
+    if (line.startsWith("### ")) {
+      blocks.push(
+        <h4 key={i} className="mt-4 mb-1 text-[15px] font-semibold text-ink">
+          {renderInlineBold(line.slice(4))}
+        </h4>
+      );
+      i++;
+      continue;
+    }
+    if (line.startsWith("## ")) {
+      blocks.push(
+        <h3 key={i} className="mt-5 mb-1.5 text-[16px] font-semibold text-ink">
+          {renderInlineBold(line.slice(3))}
+        </h3>
+      );
+      i++;
+      continue;
+    }
+    if (line.startsWith("# ")) {
+      blocks.push(
+        <h2 key={i} className="mt-5 mb-2 text-[17px] font-semibold text-ink">
+          {renderInlineBold(line.slice(2))}
+        </h2>
+      );
+      i++;
+      continue;
+    }
+
+    // Empty line
+    if (!line) {
+      i++;
+      continue;
+    }
+
+    // Standard paragraph / list line
+    blocks.push(
+      <p key={i} className="max-w-[82ch] whitespace-pre-line text-[14.5px] leading-relaxed text-ink">
+        {renderInlineBold(lines[i])}
+      </p>
+    );
+    i++;
+  }
+
   return (
-    <>
-      {main ? <p className="max-w-[72ch] whitespace-pre-line text-[15px] text-ink">{main}</p> : null}
+    <div className="space-y-2">
+      {blocks}
       {hadDisclosure ? (
         <p className="mt-2 max-w-[72ch] text-[12.5px] text-muted">
           Investing involves risk, including possible loss of principal. Past performance is no guarantee of future results.
         </p>
       ) : null}
-    </>
+    </div>
   );
 }
 

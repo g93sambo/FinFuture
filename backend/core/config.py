@@ -91,6 +91,9 @@ class Settings(BaseSettings):
     openai_api_key: Optional[str] = Field(default=None, description="OpenAI API key")
     openai_model: str = Field(default="gpt-4o", description="Default LLM model name")
     fred_api_key: Optional[str] = Field(default=None, description="Federal Reserve Economic Data API Key")
+    fmp_api_key: Optional[str] = Field(default=None, description="Financial Modeling Prep API Key")
+    polygon_api_key: Optional[str] = Field(default=None, description="Polygon.io Market Data API Key")
+    coingecko_api_key: Optional[str] = Field(default=None, description="CoinGecko API Key (optional pro key)")
 
     # --- Execution Controls ---
     dry_run: bool = Field(
