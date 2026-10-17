@@ -3,60 +3,10 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { TranscriptRow } from "@/components/domain/AgentMessage";
 import { ButtonLink } from "@/components/ui/Button";
-import { Loading, Tag, type Tone } from "@/components/ui/Feedback";
+import { Loading } from "@/components/ui/Feedback";
 import { useAuth } from "@/lib/auth";
 import type { ChatMessageAttachment, ChatSessionItem } from "@/lib/types";
 import { useAdvisor, type Connection } from "@/lib/useAdvisor";
-
-const dagPipeline: {
-  id: string;
-  agent: string;
-  role: string;
-  tier: "GREEN" | "YELLOW" | "RED";
-  tierTone: Tone;
-  activeIn: string[];
-}[] = [
-  {
-    id: "intent",
-    agent: "Orchestrator",
-    role: "Intent & Multimodal Guard (RULE-09)",
-    tier: "GREEN",
-    tierTone: "success",
-    activeIn: ["PROFILING", "ADVICE_GENERATION", "PROPOSAL_REVIEW", "EXECUTION", "HEALTH_MONITORING"],
-  },
-  {
-    id: "profiler",
-    agent: "RiskProfiler",
-    role: "Stated + Behavioral Calibration",
-    tier: "GREEN",
-    tierTone: "success",
-    activeIn: ["PROFILING", "ADVICE_GENERATION"],
-  },
-  {
-    id: "quant",
-    agent: "AllocationEngine",
-    role: "CVaR / Student-t Monte Carlo / Tax",
-    tier: "GREEN",
-    tierTone: "success",
-    activeIn: ["ADVICE_GENERATION", "HEALTH_MONITORING"],
-  },
-  {
-    id: "compliance",
-    agent: "ComplianceGuard",
-    role: "12-Rule Deterministic Firewall",
-    tier: "GREEN",
-    tierTone: "success",
-    activeIn: ["ADVICE_GENERATION", "PROPOSAL_REVIEW", "EXECUTION"],
-  },
-  {
-    id: "execution",
-    agent: "ExecutionAgent",
-    role: "Human-in-the-Loop + Step-Up MFA Gate",
-    tier: "RED",
-    tierTone: "danger",
-    activeIn: ["PROPOSAL_REVIEW", "EXECUTION"],
-  },
-];
 
 const starterPrompts = [
   "Compare WeBank Smart Wealth & GBA Wealth Connect funds (WBKCASH, WBK6M, GBAHK, SPY)",
@@ -157,7 +107,6 @@ export default function AdvisorPage() {
   const [reasoningActive, setReasoningActive] = useState(true);
   const [deepResearchActive, setDeepResearchActive] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  const [showDagDrawer, setShowDagDrawer] = useState(false);
   const [sessionDropdownOpen, setSessionDropdownOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -359,58 +308,18 @@ export default function AdvisorPage() {
             </svg>
           </div>
           <p className="mt-3 text-base font-semibold text-ink">Drop charts, images, or documents here</p>
-          <p className="text-xs text-muted">Orion will perform multimodal vision inspection</p>
-        </div>
-      )}
-
-      {/* Optional Collapsible Multi-Agent Strategy Compiler DAG */}
-      {showDagDrawer && (
-        <div className="mb-5 rounded-2xl border border-line bg-surface/90 p-4 shadow-xs animate-fade-in">
-          <div className="flex items-center justify-between border-b border-line pb-2.5">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold tracking-wider text-ink uppercase">
-                Multi-Agent Compiler DAG & Permission Matrix
-              </span>
-              <Tag tone="success">Stage: {stage}</Tag>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowDagDrawer(false)}
-              className="text-xs font-medium text-muted hover:text-ink"
-            >
-              ✕ Close
-            </button>
-          </div>
-          <div className="mt-3 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-5">
-            {dagPipeline.map((node, idx) => (
-              <div
-                key={node.id}
-                className={`rounded-xl border p-3 transition-all ${
-                  node.activeIn.includes(stage)
-                    ? "border-accent bg-background shadow-xs ring-1 ring-accent/20"
-                    : "border-line bg-surface opacity-75"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="figures text-[10px] font-semibold text-muted">0{idx + 1}</span>
-                  <Tag tone={node.tierTone}>{node.tier}</Tag>
-                </div>
-                <p className="mt-1 text-xs font-semibold text-ink">{node.agent}</p>
-                <p className="mt-0.5 text-[11px] leading-snug text-muted">{node.role}</p>
-              </div>
-            ))}
-          </div>
+          <p className="text-xs text-muted">Orion will analyze your financial documents</p>
         </div>
       )}
 
       {/* 2-Column Layout: Main Chat Card on Left/Center, "History Chat" Sidebar on Right */}
       <div className="grid gap-5 lg:grid-cols-[1fr_275px] xl:grid-cols-[1fr_310px] items-start">
-        {/* 1. Main Advisory Conversation Window (Dribbble Layout) */}
+        {/* 1. Main Advisory Conversation Window */}
         <section
           aria-label="AI Advisory Conversation"
           className="flex min-h-[82vh] flex-col overflow-hidden rounded-3xl border border-line bg-background shadow-[0_2px_20px_rgba(15,41,34,0.04)]"
         >
-          {/* Header Bar matching Image 2: "New AI chat ▾" + "Private" on left, action icons on right */}
+          {/* Header Bar */}
           <div className="flex items-center justify-between border-b border-line bg-surface/50 px-4 py-3 sm:px-6">
             {/* Left: Session Dropdown + Private Pill */}
             <div ref={sessionDropdownRef} className="relative flex items-center gap-2 sm:gap-2.5">
@@ -513,16 +422,6 @@ export default function AdvisorPage() {
                 </svg>
               </button>
 
-              {/* Multi-Agent DAG toggle */}
-              <button
-                type="button"
-                onClick={() => setShowDagDrawer((v) => !v)}
-                className="hidden sm:flex items-center gap-1.5 rounded-full border border-line bg-background px-2.5 py-1 text-xs font-medium text-muted hover:text-ink hover:bg-surface transition-colors shadow-2xs"
-              >
-                <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-                <span>DAG</span>
-              </button>
-
               {/* Share Button */}
               <button
                 type="button"
@@ -565,17 +464,6 @@ export default function AdvisorPage() {
                   >
                     <span className="text-accent">+</span>
                     <span>New conversation</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMenuOpen(false);
-                      setShowDagDrawer((v) => !v);
-                    }}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-ink hover:bg-surface transition-colors"
-                  >
-                    <span className="text-accent">⚙</span>
-                    <span>Inspect Multi-Agent DAG</span>
                   </button>
                   <button
                     type="button"
@@ -640,7 +528,7 @@ export default function AdvisorPage() {
                 </div>
               </div>
             ) : (
-              /* Active Transcript Stream with Bubble Layout matching Image 2 */
+              /* Active Transcript Stream */
               <ol className="space-y-1" aria-live="polite">
                 {items.map((it) => (
                   <TranscriptRow
@@ -656,7 +544,7 @@ export default function AdvisorPage() {
                 {waiting && (
                   <li className="flex items-center gap-2.5 my-4 animate-fade-in pl-1">
                     <span className="h-2 w-2 rounded-full bg-accent animate-ping" />
-                    <span className="text-xs font-medium text-muted">Generating project workflow & quantitative models…</span>
+                    <span className="text-xs font-medium text-muted">Analyzing your portfolio and market conditions…</span>
                   </li>
                 )}
               </ol>
@@ -664,7 +552,7 @@ export default function AdvisorPage() {
             <div ref={endRef} />
           </div>
 
-          {/* Bottom Elevated Composer matching Image 2 */}
+          {/* Bottom Elevated Composer */}
           <div className="border-t border-line bg-surface/30 p-4">
             <form
               onSubmit={submit}
@@ -721,7 +609,7 @@ export default function AdvisorPage() {
                 className="w-full resize-none bg-transparent px-1 pt-0.5 text-sm text-ink placeholder:text-muted focus:outline-hidden"
               />
 
-              {/* Bottom Controls Strip matching Image 2 */}
+              {/* Bottom Controls Strip */}
               <div className="mt-2 flex items-center justify-between border-t border-line/60 pt-2">
                 {/* Left tools */}
                 <div className="flex items-center gap-1.5 sm:gap-2">
@@ -734,13 +622,6 @@ export default function AdvisorPage() {
                   >
                     <span className="text-base font-bold leading-none">+</span>
                   </button>
-
-                  {/* Model Selector Pill */}
-                  <div className="inline-flex items-center gap-1 rounded-full border border-line bg-surface px-2.5 py-0.5 text-[11px] font-medium text-ink shadow-2xs">
-                    <span className="text-accent text-[11px]">✦</span>
-                    <span>Orion gpt-4o</span>
-                    <span className="text-[9px] text-muted">▾</span>
-                  </div>
 
                   {/* Reasoning toggle button */}
                   <button

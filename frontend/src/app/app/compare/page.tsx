@@ -99,7 +99,6 @@ function Results({ res }: { res: CompareResponse }) {
           <div className="rounded-r-xl border-l-3 border-accent bg-accent-soft/40 py-2 pl-5 pr-4">
             <div className="flex items-center gap-2">
               <p className="text-sm text-muted">Best fit for your profile</p>
-              <Tag tone="neutral">GREEN TIER · Read-Only Screening</Tag>
             </div>
             <p className="mt-1 text-[22px] font-semibold text-ink">
               {winner.symbol} <span className="font-normal text-muted">· {winner.name}</span>

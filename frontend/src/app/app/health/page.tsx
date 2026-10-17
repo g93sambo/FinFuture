@@ -109,7 +109,7 @@ function Report({
             Prepared {dateTime(r.timestamp)} · {r.portfolio_summary.holdings_count} holdings · {money(r.portfolio_summary.total_value)}
           </span>
           <Tag tone={meta ? "warning" : "neutral"}>
-            {meta ? `WHAT-IF SIMULATION · ${meta.title}` : "LIVE PORTFOLIO · GREEN TIER"}
+            {meta ? `WHAT-IF SIMULATION · ${meta.title}` : "Live Portfolio"}
           </Tag>
         </div>
         <div className="flex items-center gap-2">

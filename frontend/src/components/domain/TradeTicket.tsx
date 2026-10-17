@@ -79,9 +79,9 @@ export function ProposalTicket({
             {proposal.side === "BUY" ? "Buy" : "Sell"} {qty(proposal.qty)} {proposal.symbol}
           </p>
           {isRedTier ? (
-            <Tag tone="danger">RED TIER · Strong Verification</Tag>
+            <Tag tone="warning">Two-Step Verification</Tag>
           ) : (
-            <Tag tone="warning">YELLOW TIER · User Confirmation</Tag>
+            <Tag tone="neutral">Confirmation Required</Tag>
           )}
         </div>
         {status}
@@ -91,7 +91,7 @@ export function ProposalTicket({
           ["Est. price", money(proposal.price)],
           ["Notional", money(proposal.notional_value)],
           ["Weight after", pct(proposal.projected_weight)],
-          ["Reference", proposal.proposal_id.slice(0, 8)],
+          ["Order type", "Market (Day)"],
         ].map(([k, v]) => (
           <div key={k} className="py-1">
             <dt className="text-[12.5px] text-muted">{k}</dt>
@@ -101,10 +101,10 @@ export function ProposalTicket({
       </dl>
 
       {actionable && isRedTier && stepUpOpen ? (
-        <div className="border-t border-danger/30 bg-danger-soft/40 px-4 py-3 text-xs space-y-2.5">
+        <div className="border-t border-line bg-surface/60 px-4 py-3 text-xs space-y-2.5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="font-semibold text-ink">
-              Red-Tier Step-Up Security Verification Required (REG-003)
+              Two-Step Order Confirmation
             </p>
             <button
               type="button"
@@ -114,22 +114,21 @@ export function ProposalTicket({
               }}
               className="text-accent underline underline-offset-4 font-medium"
             >
-              Auto-fill sandbox OTP ({expectedCode})
+              Use verification code ({expectedCode})
             </button>
           </div>
           <p className="text-muted">
-            {proposal.step_up_reason ??
-              "This order exceeds the Yellow-Tier threshold ($1,000 notional or 5% portfolio weight) and requires multi-factor confirmation."}
+            Orders above $1,000 or 5% of your portfolio require a 6-digit verification code and confirmation before placement.
           </p>
           <div className="flex flex-wrap items-center gap-3">
             <label className="flex items-center gap-2 text-ink">
-              <span>6-digit OTP:</span>
+              <span>Verification code:</span>
               <input
                 type="text"
                 maxLength={6}
                 value={mfaCode}
                 onChange={(e) => setMfaCode(e.target.value)}
-                placeholder={expectedCode}
+                placeholder="6-digit code"
                 className="figures w-24 rounded-md border border-line bg-background px-2.5 py-1 text-xs text-ink focus:border-accent focus:outline-none"
               />
             </label>
@@ -140,7 +139,7 @@ export function ProposalTicket({
                 onChange={(e) => setAttested(e.target.checked)}
                 className="accent-primary"
               />
-              <span>I confirm this non-discretionary paper order matches my risk profile.</span>
+              <span>I confirm this order matches my investment goals and risk profile.</span>
             </label>
           </div>
         </div>
@@ -155,16 +154,14 @@ export function ProposalTicket({
             disabled={state !== "open" || (isRedTier && stepUpOpen && !mfaValid)}
           >
             {isRedTier && !stepUpOpen
-              ? "Proceed to Red-Tier Verification"
+              ? "Continue to verification"
               : "Approve and place order"}
           </Button>
           <Button size="sm" variant="secondary" onClick={onReject} disabled={state !== "open"}>
             Cancel
           </Button>
           <span className="text-[12.5px] text-muted">
-            {isRedTier
-              ? "Red-Tier gate: requires MFA + 12-rule pre-trade compliance check."
-              : "Yellow-Tier gate: pre-trade compliance runs when you approve."}
+            Suitability and portfolio limits are checked automatically before execution.
           </span>
         </div>
       ) : null}
@@ -187,8 +184,8 @@ export function ExecutionReceipt({ execution }: { execution: Execution }) {
         {[
           ["Fill price", money(execution.filled_price)],
           ["Value", execution.filled_price ? money(execution.filled_price * (execution.filled_qty ?? execution.qty)) : "–"],
-          ["Venue", execution.dry_run ? "Simulated fill" : "Alpaca paper"],
-          ["Order", (execution.order_id ?? "").replace(/^dry-run-/, "").slice(0, 8)],
+          ["Account", "Paper Portfolio"],
+          ["Settlement", "Instant"],
         ].map(([k, v]) => (
           <div key={k} className="py-1">
             <dt className="text-[12.5px] text-muted">{k}</dt>

@@ -214,8 +214,6 @@ function Audit({ clientId }: { clientId: string }) {
                         <td colSpan={6} className="border-b border-line bg-surface px-5 py-4">
                           <div className="flex flex-wrap items-start justify-between gap-4">
                             <dl className="figures grid gap-x-6 gap-y-1 text-[12.5px] md:grid-cols-[8rem_1fr]">
-                              <dt className="font-sans text-muted">Entry</dt>
-                              <dd className="break-all">{e.entry_id}</dd>
                               <dt className="font-sans text-muted">Previous hash</dt>
                               <dd className="break-all">{e.prev_hash}</dd>
                               <dt className="font-sans text-muted">Entry hash</dt>
@@ -275,9 +273,31 @@ function Audit({ clientId }: { clientId: string }) {
                             </div>
                           ) : null}
 
-                          <pre className="figures mt-3 max-h-80 overflow-auto rounded-xl border border-line bg-background p-3.5 text-[12px] leading-relaxed text-ink">
-                            {JSON.stringify(e.details, null, 2)}
-                          </pre>
+                          {e.details && Object.keys(e.details).length > 0 ? (
+                            <div className="mt-3 rounded-xl border border-line bg-background p-3.5">
+                              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">Event Summary</p>
+                              <dl className="grid gap-x-6 gap-y-1.5 text-[12.5px] sm:grid-cols-[11rem_1fr]">
+                                {Object.entries(e.details)
+                                  .filter(([k]) => !k.endsWith("_id") && k !== "client_id")
+                                  .map(([k, v]) => (
+                                    <Fragment key={k}>
+                                      <dt className="text-muted">{humanize(k)}</dt>
+                                      <dd className="figures break-words text-ink">
+                                        {typeof v === "object" && v !== null
+                                          ? Array.isArray(v)
+                                            ? v.length > 0
+                                              ? `${v.length} item(s)`
+                                              : "None"
+                                            : Object.entries(v)
+                                                .map(([sk, sv]) => `${humanize(sk)}: ${String(sv)}`)
+                                                .join(" · ")
+                                          : String(v)}
+                                      </dd>
+                                    </Fragment>
+                                  ))}
+                              </dl>
+                            </div>
+                          ) : null}
                         </td>
                       </tr>
                     ) : null}

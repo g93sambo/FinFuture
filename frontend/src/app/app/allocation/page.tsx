@@ -132,7 +132,6 @@ function Allocation({ clientId }: { clientId: string }) {
           <p className="text-sm text-muted">
             Method: <span className="text-ink">{solverNames[solver] ?? solver}</span>
           </p>
-          <Tag tone="neutral">GREEN TIER · Read-Only Computation</Tag>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <Segmented
@@ -140,8 +139,8 @@ function Allocation({ clientId }: { clientId: string }) {
             value={explainMode}
             onChange={setExplainMode}
             options={[
-              { value: "novice", label: "Novice Plain-English" },
-              { value: "quant", label: "Institutional Quant / SHAP" },
+              { value: "novice", label: "Plain English" },
+              { value: "quant", label: "Detailed Analysis" },
             ]}
           />
           <Button variant="secondary" size="sm" onClick={() => run()} pending={pending}>
@@ -161,7 +160,7 @@ function Allocation({ clientId }: { clientId: string }) {
             title="Why this mix"
             aside={
               <Tag tone={explainMode === "novice" ? "success" : "neutral"}>
-                {explainMode === "novice" ? "Everyday Analogy View" : "Mathematical & SHAP Decomposition"}
+                {explainMode === "novice" ? "Plain-English Summary" : "Factor & Risk Breakdown"}
               </Tag>
             }
           >

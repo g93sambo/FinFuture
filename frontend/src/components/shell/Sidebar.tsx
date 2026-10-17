@@ -14,9 +14,7 @@ const navItems: { href: string; label: string; group: string }[] = [
   { href: "/app/trade", label: "Finance & Trade", group: "Portfolio" },
   { href: "/app/markets", label: "Markets", group: "Portfolio" },
   { href: "/app/health", label: "Reports & Health", group: "Reports" },
-  { href: "/app/profile", label: "Profile", group: "Records" },
-  { href: "/app/audit", label: "Audit", group: "Records" },
-  { href: "/app/compliance", label: "Compliance", group: "Records" },
+  { href: "/app/profile", label: "Profile", group: "Account" },
 ];
 
 export function TopNav() {
@@ -174,13 +172,13 @@ export function TopNav() {
           {notifOpen ? (
             <div className="absolute top-11 right-0 z-50 w-80 rounded-card border border-line bg-background p-4 shadow-lg text-xs">
               <div className="flex items-center justify-between border-b border-line pb-2.5">
-                <span className="font-semibold text-ink">Advisory Guardrails</span>
+                <span className="font-semibold text-ink">Account Protection</span>
                 <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent">Active</span>
               </div>
               <ul className="mt-2.5 space-y-2.5 text-muted">
                 <li className="flex items-start gap-2">
                   <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
-                  <span>12-rule pre-trade compliance firewall is active on all proposals.</span>
+                  <span>Pre-trade suitability and concentration checks run automatically on every order.</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
@@ -213,11 +211,18 @@ export function TopNav() {
                   Update Onboarding Questionnaire
                 </Link>
                 <Link
+                  href="/app/compliance"
+                  onClick={() => setMenuOpen(false)}
+                  className="block rounded-md px-2.5 py-1.5 text-ink hover:bg-surface"
+                >
+                  Fiduciary Safeguards & Rules
+                </Link>
+                <Link
                   href="/app/audit"
                   onClick={() => setMenuOpen(false)}
                   className="block rounded-md px-2.5 py-1.5 text-ink hover:bg-surface"
                 >
-                  Cryptographic Audit Trail
+                  Account Activity Log
                 </Link>
               </div>
               <div className="mt-3 border-t border-line pt-2.5">

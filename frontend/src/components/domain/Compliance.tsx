@@ -1,15 +1,14 @@
 import type { ComplianceDetails, Violation } from "@/lib/types";
 import { Tag } from "../ui/Feedback";
 
-/** List of rule outcomes. Each row: rule id, name, outcome in words, detail. */
+/** List of rule outcomes. Each row: name, outcome in words, detail. */
 export function RuleResults({ details }: { details: ComplianceDetails }) {
   const rows = details.rule_results ?? [];
   if (rows.length === 0) return <p className="text-sm text-muted">No rules were evaluated.</p>;
   return (
     <ul className="divide-y divide-line border-y border-line">
       {rows.map((r) => (
-        <li key={r.rule_id} className="grid grid-cols-[5.5rem_1fr_auto] gap-x-3 gap-y-0.5 py-2.5 text-sm">
-          <span className="figures text-muted">{r.rule_id}</span>
+        <li key={r.rule_id} className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5 py-2.5 text-sm">
           <span className="font-medium text-ink">{r.rule_name}</span>
           <span>
             {r.passed ? (
@@ -20,7 +19,7 @@ export function RuleResults({ details }: { details: ComplianceDetails }) {
               <Tag tone="warning">Warning</Tag>
             )}
           </span>
-          <span className="col-start-2 col-end-4 text-[13px] text-muted">{r.details}</span>
+          <span className="col-span-2 text-[13px] text-muted">{r.details}</span>
         </li>
       ))}
     </ul>
@@ -32,12 +31,9 @@ export function Violations({ violations }: { violations: Violation[] }) {
   return (
     <ul className="divide-y divide-danger/20 border-y border-danger/25">
       {violations.map((v, i) => (
-        <li key={`${v.rule_id}-${i}`} className="grid grid-cols-[5.5rem_1fr] gap-x-3 py-2.5 text-sm">
-          <span className="figures text-danger">{v.rule_id}</span>
-          <span>
-            <span className="font-medium text-ink">{v.rule_name}</span>
-            <span className="mt-0.5 block text-ink">{v.description}</span>
-          </span>
+        <li key={`${v.rule_id}-${i}`} className="py-2.5 text-sm">
+          <span className="font-medium text-ink">{v.rule_name}</span>
+          <span className="mt-0.5 block text-ink">{v.description}</span>
         </li>
       ))}
     </ul>

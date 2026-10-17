@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
 import { BulletBars } from "../charts/BulletBars";
 import { Notice, Tag } from "../ui/Feedback";
 import { BiasAlert } from "./BiasAlert";
@@ -351,24 +350,6 @@ function deriveQueryTopic(text?: string): string {
   return "Institutional Advisory";
 }
 
-/** Derives context source for the "Viewed" pill (matching the second image) */
-function deriveContextSource(agent?: string, text?: string): string {
-  if (agent === "MarketData") return "FRED Macro Yields & Rates";
-  if (agent === "AllocationEngine") return "Quant Engine & CVaR Model";
-  if (agent === "RiskProfiler") return "Risk Profile Matrix";
-  if (agent === "ComplianceGuard") return "Fiduciary Compliance Rules";
-  const lower = (text || "").toLowerCase();
-  if (lower.includes("mortgage") || lower.includes("yield")) return "FRED Yield Spread & Benchmark";
-  if (lower.includes("dangote")) return "Prospectus & Debt Schedule";
-  if (lower.includes("tax")) return "Cross-Border Tax Regulations";
-  return "Market Intelligence";
-}
-
-/**
- * Modern Bubble Layout matching the second Dribbble image:
- * - User: right-aligned pill bubble with dark primary background, white text, topic badge above, avatar on right
- * - Advisor: left-aligned with "Thought >" collapsible, "Viewed" pill, clean typography, results drawer
- */
 export function TranscriptRow({
   item,
   proposals,
@@ -382,9 +363,6 @@ export function TranscriptRow({
   onReject: (id: string) => void;
   onSelectOption?: (option: string) => void;
 }) {
-  const [thoughtOpen, setThoughtOpen] = useState(false);
-  const [resultsOpen, setResultsOpen] = useState(false);
-
   const you = item.from === "you";
   const who = you ? "You" : agentNames[item.event?.agent ?? ""] ?? item.event?.agent ?? "Advisor";
 
@@ -392,7 +370,7 @@ export function TranscriptRow({
     const topic = deriveQueryTopic(item.text);
     return (
       <li className="flex flex-col items-end my-5 animate-fade-in">
-        {/* Topic pill tag above user bubble (matching the purple pill in image 2) */}
+        {/* Topic pill tag above user bubble */}
         <div className="mb-1.5 flex items-center gap-1.5 pr-9">
           <span className="inline-flex items-center rounded-md bg-accent-soft px-2.5 py-0.5 text-[11px] font-semibold text-accent">
             {topic}
@@ -451,45 +429,16 @@ export function TranscriptRow({
   }
 
   // Advisor / AI Turn
-  const contextPill = deriveContextSource(item.event?.agent, item.text);
-
   return (
     <li className="flex flex-col items-start my-5 w-full animate-fade-in">
-      {/* Top Meta Bar: Thought toggle + Viewed Pill + Time */}
-      <div className="mb-2.5 flex flex-wrap items-center gap-2.5">
-        {/* Collapsible Thought Button */}
-        <button
-          type="button"
-          onClick={() => setThoughtOpen((v) => !v)}
-          className="flex items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 py-0.5 text-xs font-medium text-muted hover:text-ink hover:border-accent transition-colors shadow-2xs"
-        >
-          <span className="text-[12px] text-accent">💡</span>
-          <span>Thought</span>
-          <span className="text-[10px] text-muted">{thoughtOpen ? "▾" : "▸"}</span>
-        </button>
-
-        {/* Viewed Context Pill (matches image 2) */}
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface/80 px-2.5 py-0.5 text-[11px] font-medium text-muted">
-          <span className="text-accent text-[12px]">👁</span>
-          <span>Viewed</span>
-          <strong className="text-ink font-semibold">{contextPill}</strong>
+      {/* Top Meta Bar: Advisor label + Time */}
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 py-0.5 text-xs font-semibold text-ink shadow-2xs">
+          <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+          <span>{who}</span>
         </span>
-
         <span className="figures text-[11px] text-muted">• {timeOnly(item.at)}</span>
       </div>
-
-      {/* Expanded Thought Accordion */}
-      {thoughtOpen && (
-        <div className="mb-3.5 w-full max-w-2xl rounded-xl border border-line bg-surface/80 p-3 text-xs text-muted font-mono space-y-1.5 animate-fade-in shadow-2xs">
-          <p className="font-semibold text-ink flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-            <span>Agentic Execution Trace ({who})</span>
-          </p>
-          <p>• Intent parsed and matched against portfolio risk governance (RULE-09).</p>
-          <p>• Retrieved macroeconomic indicators & yields spread data from quantitative feeder.</p>
-          <p>• Multi-horizon scenario validation completed with 0 regulatory violations.</p>
-        </div>
-      )}
 
       {/* Main Message Body & Content */}
       <div className="w-full max-w-3xl space-y-3 pl-0.5">
@@ -536,45 +485,6 @@ export function TranscriptRow({
             ))}
           </div>
         ) : null}
-
-        {/* Collapsible Results Drawer Card (matching "12 results" in image 2) */}
-        {item.text && item.text.length > 120 && (
-          <div className="mt-3 rounded-xl border border-line bg-surface/60 p-3 shadow-2xs">
-            <div
-              onClick={() => setResultsOpen((v) => !v)}
-              className="flex items-center justify-between cursor-pointer select-none"
-            >
-              <div className="flex items-center gap-2 text-xs font-semibold text-ink">
-                <span className="figures text-accent">✓</span>
-                <span>Synthesized Indicators & Action Checklist</span>
-              </div>
-              <button
-                type="button"
-                className="text-xs text-muted hover:text-ink font-medium p-1"
-                aria-label="Toggle results"
-              >
-                {resultsOpen ? "↑ Collapse" : "↓ 3 items"}
-              </button>
-            </div>
-
-            {resultsOpen && (
-              <div className="mt-2.5 space-y-1.5 pt-2 border-t border-line/60 text-xs text-ink/90 animate-fade-in">
-                <div className="flex items-center gap-2">
-                  <span className="h-3.5 w-3.5 rounded-sm border border-line bg-background grid place-items-center text-[10px] text-accent">✓</span>
-                  <span>Macroeconomic spread analysis aligned with 10Y/2Y curve.</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="h-3.5 w-3.5 rounded-sm border border-line bg-background grid place-items-center text-[10px] text-accent">✓</span>
-                  <span>Portfolio duration calibrated for least drawdown risk.</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="h-3.5 w-3.5 rounded-sm border border-line bg-background grid place-items-center text-[10px] text-accent">✓</span>
-                  <span>Fiduciary compliance checks evaluated with zero warnings.</span>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
       </div>
     </li>
   );

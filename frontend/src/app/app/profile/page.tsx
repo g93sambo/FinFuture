@@ -7,7 +7,7 @@ import { Button, ButtonLink } from "@/components/ui/Button";
 import { ErrorNotice, Loading, Notice, Tag } from "@/components/ui/Feedback";
 import { Ledger, PageHeader, Panel } from "@/components/ui/Layout";
 import { api } from "@/lib/api";
-import { dateTime, fixed, humanize, money, pct } from "@/lib/format";
+import { fixed, humanize, money, pct } from "@/lib/format";
 import { useRequest } from "@/lib/useRequest";
 import { EditProfileModal } from "./EditProfileModal";
 
@@ -64,9 +64,9 @@ function Profile({ clientId }: { clientId: string }) {
       {/* Profile Actions Banner */}
       <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-line bg-surface/40 p-4 sm:p-5">
         <div>
-          <span className="text-xs uppercase tracking-wider text-muted font-medium">Investor Profile Record</span>
+          <span className="text-xs uppercase tracking-wider text-muted font-medium">Investor Profile</span>
           <div className="flex items-center gap-2 mt-0.5">
-            <h2 className="text-base font-semibold text-ink">Client Dossier &bull; {p.client_id}</h2>
+            <h2 className="text-base font-semibold text-ink">Investor Suitability & Objectives</h2>
             <Tag tone="neutral">{p.suitability_category ?? "Unclassified"}</Tag>
           </div>
           <p className="text-xs text-muted mt-1">
@@ -304,16 +304,6 @@ function Profile({ clientId }: { clientId: string }) {
             {!p.kyc_verified ? (
               <p className="mt-3 text-[13px] text-danger">Orders are refused until KYC is verified.</p>
             ) : null}
-          </Panel>
-
-          <Panel title="Record">
-            <Ledger
-              rows={[
-                { label: "Client reference", value: <span className="text-[13px]">{p.client_id}</span> },
-                { label: "Created", value: dateTime(p.created_at) },
-                { label: "Last updated", value: dateTime(p.updated_at) },
-              ]}
-            />
           </Panel>
         </div>
       </div>

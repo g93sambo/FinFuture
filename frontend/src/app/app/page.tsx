@@ -493,7 +493,6 @@ function Overview({ clientId }: { clientId: string }) {
     const reportPayload = {
       exported_at: new Date().toISOString(),
       platform: "Equify Intelligent Wealth Dashboard",
-      client_id: clientId,
       suitability_tier: profile.suitability_category,
       risk_tolerance_score: profile.risk_tolerance_score,
       portfolio: pf,
@@ -503,7 +502,7 @@ function Overview({ clientId }: { clientId: string }) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `equify-portfolio-report-${clientId.slice(0, 8)}.json`;
+    a.download = `equify-portfolio-report.json`;
     a.click();
     URL.revokeObjectURL(url);
   }
