@@ -17,11 +17,13 @@ type Kind = "etfs" | "bonds";
 
 const presets: Record<Kind, string[][]> = {
   etfs: [
+    ["GBAHK", "WBKGLD", "SPY", "VTI"],
     ["SPY", "VTI", "QQQ"],
     ["VTI", "VXUS", "SPY"],
     ["SPY", "VTI", "GLD", "VNQ"],
   ],
   bonds: [
+    ["WBKCASH", "WBK6M", "BND", "SHY"],
     ["BND", "AGG", "SHY"],
     ["IEF", "TLT", "TIP"],
     ["LQD", "VCIT", "HYG"],

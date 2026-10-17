@@ -84,8 +84,27 @@ FinFuture enforces strict data minimization and anonymization across external bo
 4. **Institutional Quantitative Engine (`backend/services/financial_engineering.py`, `backend/agents/allocation_engine.py`)**:
    - Black-Litterman posterior return blending, 95% CVaR optimization, 10,000-path Student-$t$ ($\nu=5$) Monte Carlo simulation, numerical hurdle-rate bisection solver, and multi-factor macro stress testing.
 
-5. **Tamper-Evident Audit Trail & Sepolia Anchoring (`backend/services/audit_trail.py`, `backend/services/anchoring.py`)**:
-   - Append-only SHA-256 hash chain + HMAC-SHA256 entry signatures + RFC 6962 binary Merkle tree root anchored to Ethereum Sepolia (`chain_id=11155111`) with per-entry inclusion proofs (`GET /api/v1/audit/{client_id}/merkle-proof/{entry_id}`).
+5. **Tamper-Evident Audit Trail & Dual-Ledger Anchoring (`backend/services/audit_trail.py`, `backend/services/anchoring.py`)**:
+   - Append-only SHA-256 hash chain + HMAC-SHA256 entry signatures + RFC 6962 binary Merkle tree root anchored simultaneously to **Ethereum Sepolia (`chain_id=11155111`)** and the **WeBank FISCO BCOS v3.6 Consortium Blockchain (`group0` PBFT + WeEvent topic `com.webank.finfuture.audit.anchor`)** with per-entry inclusion proofs (`GET /api/v1/audit/{client_id}/merkle-proof/{entry_id}`).
+
+---
+
+## 🏦 WeBank Open-Source Fintech Ecosystem Integration
+
+FinFuture natively integrates four core pillars of the **WeBank (微众银行)** fintech stack for the **2026 8th FinTechathon (WeBank Fintech College Students Challenge)**:
+
+1. **WeBank FISCO BCOS v3.6 Consortium Blockchain (`backend/services/anchoring.py`, `POST /api/v1/audit/{client_id}/anchor/fisco-bcos`)**:
+   - Dual-anchors RFC 6962 audit Merkle roots to both Ethereum Sepolia (`chain_id=11155111`) and a **WeBank FISCO BCOS v3.6 Consortium Ledger (`group0`, 4-node PBFT sub-second finality, `AuditAnchorConsortium.sol`)**.
+2. **WeBank WeEvent v1.12 Event-Driven Governance Mesh**:
+   - Publishes every audit Merkle anchor and compliance circuit-breaker event to the WeEvent broker topic `com.webank.finfuture.audit.anchor` with deterministic `weevent-group0-<block>-<hash>` event receipts.
+3. **WeBank FATE v2.0 Privacy-Preserving Feature Envelope (`ClientFinancialContext.to_fate_privacy_envelope()`)**:
+   - Discretizes client suitability attributes into banded federated feature vectors (`party_id="WEBANK_FINFUTURE_GUEST_9999"`, `pseudonym_id="ANON-XXXXXXXX"`, `age_band`, `net_worth_tier`, `gba_wealth_connect_eligible`) signed with a SHA-256 Paillier/PSI-ready commitment hash (`raw_pii_exposed=False`).
+4. **WeBank Smart Wealth (`微众银行财富+`) & GBA Cross-Border Wealth Connect (`跨境理财通`) Product Shelf (`backend/services/providers/screener.py`, `backend/agents/product_comparison.py`)**:
+   - First-class quantitative screening, 6-factor scoring, and compliance whitelist support for:
+     - `WBKCASH`: *WeBank Live+ Cash Management Fund (微众活期+ R1 Money Market)*
+     - `WBK6M`: *WeBank Steady+ 180D Short-Duration Bond Note (微众稳健+ R2)*
+     - `GBAHK`: *WeBank GBA Wealth Connect Multi-Asset Income ETF (跨境理财通南向通 R2)*
+     - `WBKGLD`: *WeBank Digital Gold Accumulation Trust (微众黄金 Inflation Hedge R3)*
 
 ---
 
@@ -102,6 +121,7 @@ Copy `backend/.env.example` to `backend/.env`. All secrets are read from environ
 | `AUDIT_HMAC_SECRET` | Secret key for HMAC-SHA256 audit log signatures (must be overridden in production) | Dev key |
 | `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` | Alpaca Paper Trading credentials (`paper-api.alpaca.markets`) | Dry-run paper fill fallback |
 | `SEPOLIA_RPC_URL` / `SEPOLIA_PRIVATE_KEY` | Ethereum Sepolia RPC URL & wallet key (`chain_id=11155111`, Mainnet hard-blocked) | Deterministic `dry_run` Merkle anchor |
+| `FISCO_BCOS_RPC_URL` / `WEEVENT_BROKER_URL` | Optional WeBank FISCO BCOS v3 JSON-RPC & WeEvent broker endpoint (`group0`) | Deterministic PBFT + WeEvent consortium receipt |
 | `ALLOW_AUTONOMOUS_EXECUTION` | Must remain `false` (startup validator refuses `true`) | `false` |
 
 ### 2. Backend Setup & Running

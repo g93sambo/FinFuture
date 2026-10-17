@@ -211,7 +211,7 @@ class ProductComparisonAgent:
         Calculates manager reputation score s6 based on institutional tiering.
         """
         s = f"{name} {symbol}".lower()
-        if any(b in s for b in ["vanguard", "blackrock", "ishares", "spdr", "state street"]):
+        if any(b in s for b in ["vanguard", "blackrock", "ishares", "spdr", "state street", "webank", "gba"]):
             return 10.0
         elif any(b in s for b in ["invesco", "schwab", "charles schwab", "fidelity"]):
             return 8.5

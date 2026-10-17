@@ -24,12 +24,23 @@ function Audit({ clientId }: { clientId: string }) {
   const [open, setOpen] = useState<string | null>(null);
   const [verify, setVerify] = useState<{ valid: boolean; first_invalid_entry: string | null; at: string } | null>(null);
   const [anchor, setAnchor] = useState<AnchorResult | null>(null);
+  const [fiscoReceipt, setFiscoReceipt] = useState<import("@/lib/types").FiscoBcosReceipt | null>(null);
   const [proofs, setProofs] = useState<Record<string, MerkleProofResponse>>({});
   const verifyAction = useAction(async () => {
     const r = await api.verifyAudit(clientId);
     setVerify({ ...r, at: new Date().toISOString() });
   });
-  const anchorAction = useAction(async () => setAnchor(await api.anchorAudit(clientId)));
+  const anchorAction = useAction(async () => {
+    const res = await api.anchorAudit(clientId);
+    setAnchor(res);
+    if (res.fisco_bcos_receipt) {
+      setFiscoReceipt(res.fisco_bcos_receipt);
+    }
+  });
+  const fiscoAnchorAction = useAction(async () => {
+    const receipt = await api.anchorFiscoBcos(clientId);
+    setFiscoReceipt(receipt);
+  });
   const proofAction = useAction(async (entryId: string) => {
     const res = await api.merkleProof(clientId, entryId);
     setProofs((prev) => ({ ...prev, [entryId]: res }));
@@ -69,22 +80,25 @@ function Audit({ clientId }: { clientId: string }) {
           </div>
         </Panel>
 
-        <Panel title="Anchor to a public ledger" aside={<Tag tone="success">On-Chain Challenge Bonus</Tag>}>
+        <Panel title="Dual-Ledger Anchor (Sepolia + WeBank FISCO BCOS)" aside={<Tag tone="success">WeBank FISCO BCOS v3.6 + Sepolia</Tag>}>
           <p className="text-sm text-muted">
-            Combines all entry hashes into an RFC 6962 binary Merkle tree root and writes it to the Ethereum Sepolia network (`chain_id=11155111`) with domain separation (`WEALTHTECH_AUDIT_ANCHOR_V1:`).
+            Combines all entry hashes into an RFC 6962 binary Merkle tree root and anchors it simultaneously to the Ethereum Sepolia public testnet (<code>chain_id=11155111</code>) and the WeBank FISCO BCOS v3.6 consortium ledger (<code>group0</code> PBFT + WeEvent topic <code>com.webank.finfuture.audit.anchor</code>).
           </p>
-          <div className="mt-4">
+          <div className="mt-4 flex flex-wrap gap-3">
             <Button variant="secondary" onClick={() => anchorAction.run()} pending={anchorAction.pending}>
-              Anchor Merkle root to Sepolia
+              Dual-Anchor (Sepolia + FISCO BCOS)
+            </Button>
+            <Button variant="quiet" onClick={() => fiscoAnchorAction.run()} pending={fiscoAnchorAction.pending}>
+              Anchor to WeBank FISCO BCOS only
             </Button>
           </div>
-          <div className="mt-4">
-            <ErrorNotice error={anchorAction.error} />
+          <div className="mt-4 space-y-4">
+            <ErrorNotice error={anchorAction.error ?? fiscoAnchorAction.error} />
             {anchor ? (
               <Ledger
                 rows={[
                   {
-                    label: "Status",
+                    label: "Public Ledger Status",
                     value: <Tag tone={anchor.status === "confirmed" ? "success" : anchor.status === "dry_run" ? "warning" : "neutral"}>{anchor.status === "dry_run" ? "Simulated (Deterministic)" : humanize(anchor.status)}</Tag>,
                   },
                   { label: "Entries anchored", value: anchor.entries_count },
@@ -106,6 +120,26 @@ function Audit({ clientId }: { clientId: string }) {
                   { label: "Chain ID", value: `${anchor.chain_id} (Ethereum Sepolia)` },
                 ]}
               />
+            ) : null}
+            {fiscoReceipt ? (
+              <div className="rounded-xl border border-line bg-surface/70 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-2 mb-3">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-ink">
+                    WeBank FISCO BCOS v3.6 Consortium Receipt
+                  </span>
+                  <Tag tone="success">{fiscoReceipt.consensus}</Tag>
+                </div>
+                <Ledger
+                  rows={[
+                    { label: "Consortium Engine", value: `${fiscoReceipt.engine} · Group ${fiscoReceipt.group_id}` },
+                    { label: "FISCO BCOS Tx Hash", value: <span className="text-[12.5px] break-all">{fiscoReceipt.tx_hash}</span> },
+                    { label: "PBFT Block / View", value: `Block #${fiscoReceipt.block_number} (View ${fiscoReceipt.pbft_view} · ${fiscoReceipt.validator_nodes} Validators)` },
+                    { label: "WeEvent Topic", value: <span className="text-[12.5px]">{fiscoReceipt.weevent_topic}</span> },
+                    { label: "WeEvent Event ID", value: <span className="text-[12.5px] font-medium text-primary">{fiscoReceipt.weevent_event_id}</span> },
+                    { label: "Consortium Contract", value: <span className="text-[12.5px] break-all">{fiscoReceipt.contract_address}</span> },
+                  ]}
+                />
+              </div>
             ) : null}
           </div>
         </Panel>
@@ -214,6 +248,8 @@ function Audit({ clientId }: { clientId: string }) {
                                 <dd>RFC 6962 Binary Merkle Tree (SHA-256)</dd>
                                 <dt className="font-sans text-muted">Network</dt>
                                 <dd>{proof.network ?? "Ethereum Sepolia Testnet"} (Chain ID {proof.chain_id ?? 11155111})</dd>
+                                <dt className="font-sans text-muted">Consortium Ledger</dt>
+                                <dd>{proof.consortium_ledger ?? "WeBank FISCO BCOS v3.6 (PBFT · WeEvent Topic: com.webank.finfuture.audit.anchor)"}</dd>
                                 <dt className="font-sans text-muted">Leaf Hash (0x00)</dt>
                                 <dd className="break-all">{proof.leaf_hash}</dd>
                                 <dt className="font-sans text-muted">Computed Root</dt>

@@ -280,6 +280,55 @@ class AssetScreenerProvider:
                 risk_level=4,
                 suitable_horizons=["LONG"]
             ),
+            # WeBank Smart Wealth & Greater Bay Area (GBA) Cross-Border Wealth Connect Products
+            AssetMetadata(
+                symbol="WBKCASH",
+                name="WeBank Live+ Cash Management Fund (微众活期+ R1 Money Market)",
+                asset_class="fixed_income",
+                sub_category="webank_cash_plus",
+                expense_ratio=0.0005,
+                aum_billions=58.0,
+                yield_30d=0.0385,
+                risk_level=1,
+                duration=0.25,
+                credit_rating="AAA",
+                suitable_horizons=["SHORT", "MEDIUM", "LONG"]
+            ),
+            AssetMetadata(
+                symbol="WBK6M",
+                name="WeBank Steady+ 180D Short-Duration Bond Note (微众稳健+ R2)",
+                asset_class="fixed_income",
+                sub_category="webank_steady_bond",
+                expense_ratio=0.0008,
+                aum_billions=42.0,
+                yield_30d=0.0445,
+                risk_level=2,
+                duration=1.2,
+                credit_rating="AAA",
+                suitable_horizons=["SHORT", "MEDIUM", "LONG"]
+            ),
+            AssetMetadata(
+                symbol="GBAHK",
+                name="WeBank GBA Wealth Connect Multi-Asset Income ETF (跨境理财通南向通)",
+                asset_class="equity",
+                sub_category="large_cap_blend",
+                expense_ratio=0.0006,
+                aum_billions=52.0,
+                yield_30d=0.0410,
+                risk_level=2,
+                suitable_horizons=["SHORT", "MEDIUM", "LONG"]
+            ),
+            AssetMetadata(
+                symbol="WBKGLD",
+                name="WeBank Digital Gold Accumulation Trust (微众黄金 Inflation Hedge)",
+                asset_class="commodity",
+                sub_category="precious_metals",
+                expense_ratio=0.0010,
+                aum_billions=26.0,
+                yield_30d=0.015,
+                risk_level=3,
+                suitable_horizons=["MEDIUM", "LONG"]
+            ),
         ]
 
     def screen(

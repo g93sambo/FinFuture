@@ -104,6 +104,18 @@ class Settings(BaseSettings):
         default=None,
         description="Sepolia audit smart contract address"
     )
+    fisco_bcos_rpc_url: Optional[str] = Field(
+        default=None,
+        description="WeBank FISCO BCOS v3 / WeBASE JSON-RPC endpoint for consortium audit anchoring"
+    )
+    fisco_bcos_group_id: str = Field(
+        default="group0",
+        description="WeBank FISCO BCOS consortium ledger group ID (default: group0)"
+    )
+    weevent_broker_url: Optional[str] = Field(
+        default=None,
+        description="WeBank WeEvent event-broker URL for cross-institution compliance telemetry"
+    )
 
     # --- LLM & External Data Providers ---
     openai_api_key: Optional[str] = Field(default=None, description="OpenAI API key")

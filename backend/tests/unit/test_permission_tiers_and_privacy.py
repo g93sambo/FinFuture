@@ -272,3 +272,64 @@ async def test_check_input_endpoint_and_permission_tiers_endpoint():
             )
             assert auto_resp.status_code == 403
             assert "PERM-TIER-5" in str(auto_resp.json())
+
+            # 4. Verify WeBank ecosystem metadata in /api/v1/compliance/permission-tiers
+            assert "webank_ecosystem" in body
+            wb = body["webank_ecosystem"]
+            assert "FISCO BCOS" in wb["consortium_chain"]["engine"]
+            assert wb["event_mesh"]["topic"] == "com.webank.finfuture.audit.anchor"
+            assert wb["federated_privacy"]["raw_pii_transmitted"] is False
+            wb_symbols = {item["symbol"] for item in wb["wealth_shelf"]["instruments"]}
+            assert {"WBKCASH", "WBK6M", "GBAHK", "WBKGLD"}.issubset(wb_symbols)
+
+
+@pytest.mark.asyncio
+async def test_webank_fisco_bcos_fate_and_wealth_shelf():
+    """Verify WeBank FISCO BCOS v3.6 consortium anchoring, FATE v2.0 privacy envelope, and GBA Wealth Connect product comparison."""
+    from services.anchoring import AnchoringService
+    from agents.product_comparison import ProductComparisonAgent
+
+    # 1. WeBank FISCO BCOS v3.6 + WeEvent receipt generation
+    svc = AnchoringService()
+    leaves = ["a" * 64, "b" * 64, "c" * 64]
+    fisco = await svc.anchor_to_fisco_bcos(leaves)
+    assert fisco["group_id"] == "group0"
+    assert "FISCO BCOS" in fisco["engine"]
+    assert fisco["weevent_topic"] == "com.webank.finfuture.audit.anchor"
+    assert fisco["weevent_event_id"].startswith("weevent-group0-")
+    assert fisco["entries_count"] == 3
+
+    dual = await svc.anchor_hashes(leaves)
+    assert dual.fisco_bcos_receipt is not None
+    assert dual.fisco_bcos_receipt["merkle_root"] == dual.merkle_root
+
+    # 2. WeBank FATE v2.0 Privacy-Preserving Feature Envelope
+    ctx = ClientFinancialContext(
+        client_id="client-webank-001",
+        name="Chen Wei",
+        age=36,
+        annual_income=180_000.0,
+        liquid_net_worth=320_000.0,
+        risk_tolerance_score=5.8,
+        suitability_category="MODERATE",
+        kyc_verified=True,
+    )
+    fate = ctx.to_fate_privacy_envelope()
+    assert fate["raw_pii_exposed"] is False
+    assert fate["feature_vector"]["age_band"] == "30_44"
+    assert fate["feature_vector"]["net_worth_tier"] == "TIER_3_AFFLUENT"
+    assert fate["feature_vector"]["gba_wealth_connect_eligible"] is True
+    assert fate["feature_commitment_hash"].startswith("0x")
+    assert "Chen Wei" not in str(fate)
+
+    # 3. WeBank Smart Wealth & GBA Wealth Connect Product Shelf Comparison
+    comp = ProductComparisonAgent()
+    bond_res = await comp.compare_bonds(
+        symbols=["WBKCASH", "WBK6M", "BND", "SHY"],
+        profile={"risk_tolerance_score": 4.5, "investment_horizon_years": 10},
+    )
+    ranked_syms = [p.symbol for p in bond_res.ranked_products]
+    assert "WBKCASH" in ranked_syms
+    assert "WBK6M" in ranked_syms
+    assert comp.score_reputation("WeBank Live+ Cash Management Fund", "WBKCASH") == 10.0
+

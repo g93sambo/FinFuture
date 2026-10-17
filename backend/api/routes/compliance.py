@@ -67,8 +67,36 @@ async def get_permission_tiers(
             {"id": "PILLAR-2", "name": "Data Minimization & PII Redaction", "status": "ACTIVE", "detail": "Market APIs receive only tickers; LLM prompts use ANON-ID pseudonyms with direct PII stripped (RULE-10)."},
             {"id": "PILLAR-3", "name": "5-Tier Permission & Hard Limits", "status": "ACTIVE", "detail": "Read-Only -> Advise -> Propose -> Approved Execution ($100k/trade, $250k/day, symbol whitelist); Autonomous disabled."},
             {"id": "PILLAR-4", "name": "Execution Gate & Circuit Breaker", "status": "LOCKED" if cb_status["is_locked"] else "ACTIVE", "detail": "Non-discretionary approval + Step-Up MFA (> $1,000) + auto-lock on >= 3 blocked attempts in 60s."},
-            {"id": "PILLAR-5", "name": "Cryptographic Audit & Sepolia Anchor", "status": "ACTIVE", "detail": "Append-only SHA-256 hash chain + HMAC signatures + RFC 6962 Merkle root on Ethereum Sepolia."},
+            {"id": "PILLAR-5", "name": "Dual-Ledger Audit (Sepolia + WeBank FISCO BCOS)", "status": "ACTIVE", "detail": "Append-only SHA-256 hash chain + HMAC signatures + RFC 6962 Merkle roots anchored on Ethereum Sepolia & WeBank FISCO BCOS v3.6."},
         ],
+        "webank_ecosystem": {
+            "consortium_chain": {
+                "engine": "WeBank FISCO BCOS v3.6.0",
+                "consensus": "PBFT (4 Validator Nodes · Sub-second Finality)",
+                "group_id": "group0",
+                "contract": "AuditAnchorConsortium.sol",
+                "endpoint": "/api/v1/audit/{client_id}/anchor/fisco-bcos",
+            },
+            "event_mesh": {
+                "engine": "WeBank WeEvent v1.12 Event-Driven Governance Mesh",
+                "topic": "com.webank.finfuture.audit.anchor",
+                "protocol": "STOMP / JSON-RPC 2.0",
+            },
+            "federated_privacy": {
+                "engine": "WeBank FATE v2.0 (Federated AI Technology Enabler)",
+                "mode": "Discretized Suitability Feature Envelope + SHA-256 Commitment + ANON-ID Pseudonymization",
+                "raw_pii_transmitted": False,
+            },
+            "wealth_shelf": {
+                "platform": "WeBank Smart Wealth (微众银行财富+) & GBA Cross-Border Wealth Connect (跨境理财通)",
+                "instruments": [
+                    {"symbol": "WBKCASH", "name": "WeBank Live+ Cash Management Fund (微众活期+ R1)", "risk_level": "R1"},
+                    {"symbol": "WBK6M", "name": "WeBank Steady+ 180D Short-Duration Bond Note (微众稳健+ R2)", "risk_level": "R2"},
+                    {"symbol": "GBAHK", "name": "WeBank GBA Wealth Connect Multi-Asset Income ETF (跨境理财通南向通)", "risk_level": "R2"},
+                    {"symbol": "WBKGLD", "name": "WeBank Digital Gold Accumulation Trust (微众黄金 Inflation Hedge)", "risk_level": "R3"},
+                ],
+            },
+        },
     }
 
 

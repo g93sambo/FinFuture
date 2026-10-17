@@ -1471,6 +1471,8 @@ class ComplianceGuard:
         "DANGCEM", "MTNN", "GTCO", "ZENITHBANK", "ACCESSCORP", "UBA", "SEPLAT", "AIRTELAFRI", "BUACEMENT",
         "BUAFOODS", "NESTLE", "GEREGU", "TRANSPOWER", "TRANSCORP", "NGXGROUP", "FBNH", "STANBIC", "WAPCO",
         "OKOMUOIL", "PRESCO",
+        # Approved WeBank Smart Wealth & GBA Cross-Border Wealth Connect Instruments
+        "WBKCASH", "WBK6M", "GBAHK", "WBKGLD",
     })
 
     _circuit_breaker_events: Dict[str, List[Dict[str, Any]]] = {}

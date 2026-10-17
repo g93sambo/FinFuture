@@ -211,6 +211,10 @@ export const api = {
     ),
   anchorAudit: (clientId: string) =>
     request<AnchorResult>(`/api/v1/audit/${encodeURIComponent(clientId)}/anchor`, { method: "POST" }),
+  anchorFiscoBcos: (clientId: string) =>
+    request<import("./types").FiscoBcosReceipt>(`/api/v1/audit/${encodeURIComponent(clientId)}/anchor/fisco-bcos`, {
+      method: "POST",
+    }),
   merkleProof: (clientId: string, entryId: string) =>
     request<MerkleProofResponse>(
       `/api/v1/audit/${encodeURIComponent(clientId)}/merkle-proof/${encodeURIComponent(entryId)}`,

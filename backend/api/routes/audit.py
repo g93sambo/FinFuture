@@ -71,6 +71,17 @@ async def anchor_audit(
     return result.__dict__ if hasattr(result, "__dict__") else dict(result)
 
 
+@router.post("/audit/{client_id}/anchor/fisco-bcos")
+async def anchor_audit_fisco_bcos(
+    client_id: str,
+    user: DBUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Anchors the client's RFC 6962 audit Merkle root to the WeBank FISCO BCOS v3 Consortium Ledger."""
+    await verify_client_ownership(user, client_id, db)
+    return await get_anchoring_service().anchor_client_to_fisco_bcos(db, client_id)
+
+
 @router.get("/audit/{client_id}/merkle-proof/{entry_id}")
 async def get_entry_merkle_proof(
     client_id: str,
@@ -115,6 +126,7 @@ async def get_entry_merkle_proof(
         "merkle_root": merkle_root,
         "proof": proof,
         "chain_id": 11155111,
-        "network": "Ethereum Sepolia Testnet",
+        "network": "Ethereum Sepolia Testnet + WeBank FISCO BCOS v3 (group0)",
+        "consortium_ledger": "WeBank FISCO BCOS v3.6 (PBFT · WeEvent Topic: com.webank.finfuture.audit.anchor)",
     }
 

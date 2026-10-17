@@ -424,6 +424,23 @@ export interface AuditEntry {
   signature: string;
 }
 
+export interface FiscoBcosReceipt {
+  engine: string;
+  group_id: string;
+  consensus: string;
+  validator_nodes: number;
+  pbft_view: number;
+  block_number: number;
+  tx_hash: string;
+  merkle_root: string;
+  entries_count: number;
+  contract_address: string;
+  weevent_topic: string;
+  weevent_event_id: string;
+  status: string;
+  timestamp: string;
+}
+
 export interface AnchorResult {
   merkle_root: string;
   tx_hash: string;
@@ -432,6 +449,7 @@ export interface AnchorResult {
   chain_id: number;
   timestamp: string;
   entries_count: number;
+  fisco_bcos_receipt?: FiscoBcosReceipt | null;
 }
 
 export interface MerkleProofStep {
@@ -450,6 +468,7 @@ export interface MerkleProofResponse {
   proof: MerkleProofStep[];
   chain_id?: number;
   network?: string;
+  consortium_ledger?: string;
 }
 
 export interface ComplianceRule {
@@ -496,11 +515,36 @@ export interface SecurityPillarItem {
   detail: string;
 }
 
+export interface WebankEcosystem {
+  consortium_chain: {
+    engine: string;
+    consensus: string;
+    group_id: string;
+    contract: string;
+    endpoint: string;
+  };
+  event_mesh: {
+    engine: string;
+    topic: string;
+    protocol: string;
+  };
+  federated_privacy: {
+    engine: string;
+    mode: string;
+    raw_pii_transmitted: boolean;
+  };
+  wealth_shelf: {
+    platform: string;
+    instruments: { symbol: string; name: string; risk_level: string }[];
+  };
+}
+
 export interface PermissionTiersResponse {
   permission_tiers: PermissionTierItem[];
   known_risks: KnownRiskItem[];
   circuit_breaker: CircuitBreakerStatus;
   security_pillars: SecurityPillarItem[];
+  webank_ecosystem?: WebankEcosystem;
 }
 
 export interface Quote {
