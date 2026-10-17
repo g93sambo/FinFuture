@@ -1,11 +1,11 @@
 "use client";
 
-import { Fragment, useState } from "react";
-import { TickerAutocomplete } from "@/components/domain/TickerAutocomplete";
+import { Fragment, useMemo, useState } from "react";
+import { SECURITIES_DIRECTORY } from "@/components/domain/TickerAutocomplete";
 import { RequireProfile } from "@/components/shell/RequireProfile";
 import { Button } from "@/components/ui/Button";
 import { ErrorNotice, Tag } from "@/components/ui/Feedback";
-import { Field, Segmented } from "@/components/ui/Field";
+import { Segmented } from "@/components/ui/Field";
 import { PageHeader, Panel } from "@/components/ui/Layout";
 import { Table, Td, Th, Tr } from "@/components/ui/Table";
 import { api } from "@/lib/api";
@@ -15,20 +15,117 @@ import { useAction } from "@/lib/useRequest";
 
 type Kind = "etfs" | "bonds";
 
-const presets: Record<Kind, string[][]> = {
+interface PresetTheme {
+  id: string;
+  name: string;
+  desc: string;
+  symbols: string[];
+  icon: string;
+  tag: string;
+}
+
+const STRATEGY_PRESETS: Record<Kind, PresetTheme[]> = {
   etfs: [
-    ["GBAHK", "WBKGLD", "SPY", "VTI"],
-    ["SPY", "VTI", "QQQ"],
-    ["VTI", "VXUS", "SPY"],
-    ["SPY", "VTI", "GLD", "VNQ"],
+    {
+      id: "webank",
+      name: "WeBank & GBA Wealth Connect",
+      desc: "Cross-border multi-asset income, digital gold & core US equities",
+      symbols: ["GBAHK", "WBKGLD", "SPY", "VTI"],
+      icon: "🇨🇳",
+      tag: "WeBank Shelf",
+    },
+    {
+      id: "us_growth",
+      name: "US Growth & Tech Leaders",
+      desc: "S&P 500, broad total market & Nasdaq 100 technology index",
+      symbols: ["SPY", "VTI", "QQQ"],
+      icon: "🚀",
+      tag: "Core Equity",
+    },
+    {
+      id: "global",
+      name: "Global Total Market",
+      desc: "Broad US equities paired with international developed & emerging markets",
+      symbols: ["VTI", "VXUS", "SPY"],
+      icon: "🌍",
+      tag: "Global Diversified",
+    },
+    {
+      id: "all_weather",
+      name: "All-Weather Multi-Asset",
+      desc: "Equities, physical gold bullion, and commercial real estate REITs",
+      symbols: ["SPY", "VTI", "GLD", "VNQ"],
+      icon: "🛡️",
+      tag: "Multi-Asset",
+    },
   ],
   bonds: [
-    ["WBKCASH", "WBK6M", "BND", "SHY"],
-    ["BND", "AGG", "SHY"],
-    ["IEF", "TLT", "TIP"],
-    ["LQD", "VCIT", "HYG"],
+    {
+      id: "webank_yield",
+      name: "WeBank Steady Yield & Cash",
+      desc: "Live+ cash management, 180D short notes & short-term Treasuries",
+      symbols: ["WBKCASH", "WBK6M", "BND", "SHY"],
+      icon: "🏦",
+      tag: "WeBank Wealth",
+    },
+    {
+      id: "us_aggregate",
+      name: "US Aggregate Core Debt",
+      desc: "Total US investment-grade bonds & cash-equivalent short safety",
+      symbols: ["BND", "AGG", "SHY"],
+      icon: "🏛️",
+      tag: "Core Fixed Income",
+    },
+    {
+      id: "treasuries",
+      name: "Treasury Curve & Inflation",
+      desc: "Intermediate 7-10Y, 20Y+ long duration, and TIPS inflation protection",
+      symbols: ["IEF", "TLT", "TIP"],
+      icon: "📈",
+      tag: "Treasury Curve",
+    },
+    {
+      id: "credit",
+      name: "Corporate & High Yield Credit",
+      desc: "Investment-grade corporate debt and diversified high-yield credit notes",
+      symbols: ["LQD", "HYG", "BND"],
+      icon: "💼",
+      tag: "Corporate Credit",
+    },
   ],
 };
+
+const POPULAR_CATALOG: Record<Kind, { symbol: string; name: string; tag: string }[]> = {
+  etfs: [
+    { symbol: "GBAHK", name: "WeBank GBA Multi-Asset ETF", tag: "WeBank R2" },
+    { symbol: "WBKGLD", name: "WeBank Digital Gold Trust", tag: "WeBank R3" },
+    { symbol: "SPY", name: "SPDR S&P 500 ETF", tag: "Large Cap" },
+    { symbol: "QQQ", name: "Invesco QQQ (Nasdaq 100)", tag: "Tech Growth" },
+    { symbol: "VTI", name: "Vanguard Total Stock Market", tag: "Broad US" },
+    { symbol: "VOO", name: "Vanguard S&P 500 ETF", tag: "Large Cap" },
+    { symbol: "VXUS", name: "Total International Stock", tag: "Global" },
+    { symbol: "IWM", name: "iShares Russell 2000", tag: "Small Cap" },
+    { symbol: "GLD", name: "SPDR Gold Shares", tag: "Commodity" },
+    { symbol: "VNQ", name: "Vanguard Real Estate REITs", tag: "Real Estate" },
+  ],
+  bonds: [
+    { symbol: "WBKCASH", name: "WeBank Live+ Cash Mgmt", tag: "WeBank R1" },
+    { symbol: "WBK6M", name: "WeBank Steady+ 180D Note", tag: "WeBank R2" },
+    { symbol: "BND", name: "Vanguard Total Bond Market", tag: "Aggregate" },
+    { symbol: "AGG", name: "iShares Core US Aggregate", tag: "Aggregate" },
+    { symbol: "SHY", name: "1-3 Year Treasury Bond", tag: "Short Term" },
+    { symbol: "IEF", name: "7-10 Year Treasury Bond", tag: "Intermediate" },
+    { symbol: "TLT", name: "20+ Year Treasury Bond", tag: "Long Term" },
+    { symbol: "TIP", name: "iShares TIPS Inflation Bond", tag: "Inflation" },
+    { symbol: "LQD", name: "Investment Grade Corporate", tag: "Corporate" },
+    { symbol: "HYG", name: "High Yield Corporate Bond", tag: "High Yield" },
+  ],
+};
+
+function getFundName(symbol: string): string {
+  const match = SECURITIES_DIRECTORY.find((s) => s.symbol.toUpperCase() === symbol.toUpperCase());
+  return match?.name ?? symbol;
+}
 
 const factors: [keyof ComparedProduct["factor_breakdown"], string, string][] = [
   ["expense_ratio_score", "Cost", "30%"],
@@ -38,9 +135,6 @@ const factors: [keyof ComparedProduct["factor_breakdown"], string, string][] = [
   ["historical_return_score", "Return", "15%"],
   ["reputation_score", "Manager", "10%"],
 ];
-
-const parseSymbols = (s: string) =>
-  Array.from(new Set(s.toUpperCase().split(/[\s,;]+/).map((x) => x.trim()).filter((x) => /^[A-Z.]{1,10}$/.test(x))));
 
 function ProductDetail({ p }: { p: ComparedProduct }) {
   const r = p.factor_breakdown.raw_metrics ?? {};
@@ -245,67 +339,316 @@ function Results({ res }: { res: CompareResponse }) {
 
 function Compare({ clientId }: { clientId: string }) {
   const [kind, setKind] = useState<Kind>("etfs");
-  const [input, setInput] = useState("SPY VTI QQQ");
+  const [selectedSymbols, setSelectedSymbols] = useState<string[]>(STRATEGY_PRESETS.etfs[0].symbols);
+  const [activePresetId, setActivePresetId] = useState<string | null>("webank");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
   const [res, setRes] = useState<CompareResponse | null>(null);
-  const symbols = parseSymbols(input);
-  const tooFew = symbols.length < 2;
-  const tooMany = symbols.length > 15;
+
+  const tooFew = selectedSymbols.length < 2;
+  const tooMany = selectedSymbols.length > 15;
+
   const { run, pending, error } = useAction(async (k: Kind, syms: string[]) => {
     setRes(await api.compare(k, clientId, syms));
   });
 
+  // Filtered search results from SECURITIES_DIRECTORY
+  const searchResults = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    const q = searchQuery.toLowerCase().trim();
+    return SECURITIES_DIRECTORY.filter(
+      (s) =>
+        (s.symbol.toLowerCase().includes(q) || s.name.toLowerCase().includes(q) || s.category.toLowerCase().includes(q)) &&
+        !selectedSymbols.includes(s.symbol)
+    ).slice(0, 8);
+  }, [searchQuery, selectedSymbols]);
+
+  function handleSelectPreset(preset: PresetTheme) {
+    setSelectedSymbols(preset.symbols);
+    setActivePresetId(preset.id);
+    setRes(null);
+  }
+
+  function handleToggleFund(sym: string) {
+    setActivePresetId(null);
+    setRes(null);
+    setSelectedSymbols((prev) => {
+      if (prev.includes(sym)) {
+        return prev.filter((s) => s !== sym);
+      }
+      if (prev.length >= 15) return prev;
+      return [...prev, sym];
+    });
+  }
+
+  function handleAddFund(sym: string) {
+    if (selectedSymbols.includes(sym) || selectedSymbols.length >= 15) return;
+    setActivePresetId(null);
+    setRes(null);
+    setSelectedSymbols((prev) => [...prev, sym]);
+    setSearchQuery("");
+    setSearchOpen(false);
+  }
+
+  function handleRemoveFund(sym: string) {
+    setActivePresetId(null);
+    setRes(null);
+    setSelectedSymbols((prev) => prev.filter((s) => s !== sym));
+  }
+
+  function handleClearAll() {
+    setSelectedSymbols([]);
+    setActivePresetId(null);
+    setRes(null);
+  }
+
   return (
     <div className="space-y-8">
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!tooFew && !tooMany) void run(kind, symbols);
-        }}
-        className="grid gap-5 rounded-card border border-line bg-surface/70 p-5 shadow-[0_2px_12px_rgba(15,41,34,0.03)] lg:grid-cols-[auto_1fr_auto] lg:items-end"
-      >
-        <div>
-          <p className="mb-1.5 text-sm font-medium text-ink">Fund type</p>
-          <Segmented
-            label="Fund type"
-            value={kind}
-            onChange={(k) => {
-              setKind(k);
-              setInput(presets[k][0].join(" "));
-              setRes(null);
-            }}
-            options={[
-              { value: "etfs", label: "Equity ETFs" },
-              { value: "bonds", label: "Bond funds" },
-            ]}
-          />
-        </div>
-        <Field
-          label="Tickers"
-          hint={
-            <span className="flex flex-wrap gap-x-3">
-              <span>Two to fifteen, separated by spaces. Try:</span>
-              {presets[kind].map((p) => (
-                <button key={p.join()} type="button" className="text-primary underline underline-offset-4" onClick={() => setInput(p.join(" "))}>
-                  {p.join(" ")}
-                </button>
-              ))}
+      {/* Main Interactive Configuration Card */}
+      <div className="rounded-card border border-line bg-surface/70 p-5 shadow-[0_2px_12px_rgba(15,41,34,0.03)] space-y-6">
+        {/* Row 1: Fund Type Selector + Preset Themes Header */}
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-line/70 pb-4">
+          <div>
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted">Step 1: Choose Fund Category</span>
+            <div className="mt-1">
+              <Segmented
+                label="Fund Category"
+                value={kind}
+                onChange={(k) => {
+                  setKind(k);
+                  setSelectedSymbols(STRATEGY_PRESETS[k][0].symbols);
+                  setActivePresetId(STRATEGY_PRESETS[k][0].id);
+                  setRes(null);
+                }}
+                options={[
+                  { value: "etfs", label: "Equity & Multi-Asset ETFs" },
+                  { value: "bonds", label: "Bond & Fixed Income Funds" },
+                ]}
+              />
+            </div>
+          </div>
+
+          <div className="text-right">
+            <span className="figures text-xs font-semibold text-ink">
+              {selectedSymbols.length} / 15 funds selected
             </span>
-          }
-          error={input && tooFew ? "Enter at least two tickers." : tooMany ? "Fifteen tickers at most." : null}
-        >
-          {() => (
-            <TickerAutocomplete
-              value={input}
-              onChange={(val) => setInput(val)}
-              allowMultiple
-              placeholder="Type tickers separated by spaces (e.g. SPY VTI QQQ)..."
-            />
+            <p className="text-[11px] text-muted">Minimum 2 funds required to rank</p>
+          </div>
+        </div>
+
+        {/* Row 2: Strategy Baskets (1-Click Presets) */}
+        <div className="space-y-2.5">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted">
+              Step 2: Pick a Ready-Made Strategy Basket or Mix Your Own
+            </p>
+            {activePresetId ? (
+              <span className="text-[11px] font-medium text-accent">Active Preset Loaded</span>
+            ) : null}
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {STRATEGY_PRESETS[kind].map((preset) => {
+              const isActive = activePresetId === preset.id;
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => handleSelectPreset(preset)}
+                  className={`flex flex-col justify-between rounded-xl border p-3.5 text-left transition-all cursor-pointer ${
+                    isActive
+                      ? "border-accent bg-accent-soft/70 shadow-xs ring-1 ring-accent"
+                      : "border-line bg-background hover:border-accent/40 hover:bg-surface"
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-1.5">
+                      <span className="text-base">{preset.icon}</span>
+                      <span className="rounded-full bg-surface border border-line px-2 py-0.5 text-[10px] font-medium text-muted">
+                        {preset.tag}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-xs font-bold text-ink">{preset.name}</p>
+                    <p className="mt-1 text-[11px] leading-snug text-muted line-clamp-2">{preset.desc}</p>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-1 border-t border-line/60 pt-2">
+                    {preset.symbols.map((sym) => (
+                      <span key={sym} className="figures rounded-md bg-surface px-1.5 py-0.5 text-[10px] font-semibold text-ink">
+                        {sym}
+                      </span>
+                    ))}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Row 3: Currently Selected Funds Tray */}
+        <div className="rounded-xl border border-line bg-background p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wider text-ink">Selected Funds for Comparison</span>
+              <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-bold text-accent">
+                {selectedSymbols.length}
+              </span>
+            </div>
+
+            {selectedSymbols.length > 0 && (
+              <button
+                type="button"
+                onClick={handleClearAll}
+                className="text-xs font-medium text-muted hover:text-danger transition-colors cursor-pointer"
+              >
+                Clear all
+              </button>
+            )}
+          </div>
+
+          {selectedSymbols.length === 0 ? (
+            <p className="py-2 text-center text-xs text-muted">
+              No funds selected yet. Tap any fund chip below or click a Strategy Basket above to begin.
+            </p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {selectedSymbols.map((sym) => {
+                const name = getFundName(sym);
+                return (
+                  <div
+                    key={sym}
+                    className="inline-flex items-center gap-2 rounded-xl border border-accent/40 bg-accent-soft px-3 py-1.5 text-xs text-ink shadow-2xs animate-fade-in"
+                  >
+                    <span className="font-bold text-accent">{sym}</span>
+                    <span className="max-w-[140px] truncate text-[11px] text-muted sm:max-w-[200px]" title={name}>
+                      {name}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveFund(sym)}
+                      className="ml-1 grid h-4 w-4 place-items-center rounded-full text-muted hover:bg-danger/20 hover:text-danger text-[11px] font-bold transition-colors cursor-pointer"
+                      title={`Remove ${sym}`}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
           )}
-        </Field>
-        <Button type="submit" pending={pending} disabled={tooFew || tooMany} className="lg:mb-[26px]">
-          Compare
-        </Button>
-      </form>
+        </div>
+
+        {/* Row 4: 1-Click Quick-Add Catalog + Search Bar */}
+        <div className="grid gap-5 lg:grid-cols-12 items-start">
+          {/* Quick-Add Chips */}
+          <div className="space-y-2 lg:col-span-8">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted">
+              Tap to Add / Remove Popular Funds
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {POPULAR_CATALOG[kind].map((item) => {
+                const isSelected = selectedSymbols.includes(item.symbol);
+                return (
+                  <button
+                    key={item.symbol}
+                    type="button"
+                    onClick={() => handleToggleFund(item.symbol)}
+                    className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition-all cursor-pointer ${
+                      isSelected
+                        ? "border-accent bg-accent text-on-accent font-semibold shadow-2xs"
+                        : "border-line bg-background text-ink hover:border-accent hover:bg-surface"
+                    }`}
+                  >
+                    <span>{isSelected ? "✓" : "+"}</span>
+                    <span>{item.symbol}</span>
+                    <span className={`text-[10px] ${isSelected ? "text-on-accent/80" : "text-muted"}`}>
+                      ({item.tag})
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Search Dropdown to Add Any Other Security */}
+          <div className="relative space-y-2 lg:col-span-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted">
+              Or Search by Name / Ticker
+            </p>
+            <div className="relative">
+              <input
+                type="text"
+                value={searchQuery}
+                onFocus={() => setSearchOpen(true)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setSearchOpen(true);
+                }}
+                placeholder="Search e.g. Apple, Gold, Vanguard..."
+                className="w-full rounded-xl border border-line bg-background px-3 py-1.5 text-xs text-ink placeholder:text-muted focus:border-accent focus:outline-hidden"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2.5 top-2 text-xs text-muted hover:text-ink cursor-pointer"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {searchOpen && searchResults.length > 0 && (
+              <div className="absolute left-0 top-16 z-30 w-full rounded-xl border border-line bg-background p-1.5 shadow-lg animate-fade-in max-h-56 overflow-y-auto">
+                {searchResults.map((s) => (
+                  <div
+                    key={s.symbol}
+                    onClick={() => handleAddFund(s.symbol)}
+                    className="flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs hover:bg-surface cursor-pointer"
+                  >
+                    <div>
+                      <span className="font-bold text-ink pr-1.5">{s.symbol}</span>
+                      <span className="text-[11px] text-muted truncate">{s.name}</span>
+                    </div>
+                    <span className="rounded bg-surface-muted px-1.5 py-0.5 text-[9px] text-muted">
+                      + Add
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Row 5: Action Bar */}
+        <div className="flex flex-wrap items-center justify-between gap-4 border-t border-line/70 pt-4">
+          <div>
+            {tooFew ? (
+              <p className="text-xs text-amber-600 font-medium">
+                ⚠️ Select at least 2 funds to run multi-factor quantitative comparison.
+              </p>
+            ) : tooMany ? (
+              <p className="text-xs text-danger font-medium">
+                ⚠️ Maximum 15 funds can be compared simultaneously.
+              </p>
+            ) : (
+              <p className="text-xs text-muted">
+                Ready: Analyzing {selectedSymbols.length} funds across 6 risk, return, and expense factors.
+              </p>
+            )}
+          </div>
+
+          <Button
+            onClick={() => void run(kind, selectedSymbols)}
+            pending={pending}
+            disabled={tooFew || tooMany}
+            size="md"
+            className="w-full sm:w-auto"
+          >
+            {pending ? "Analyzing Factors…" : `Compare ${selectedSymbols.length} Funds →`}
+          </Button>
+        </div>
+      </div>
 
       <ErrorNotice error={error} />
 
