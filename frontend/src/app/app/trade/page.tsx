@@ -201,6 +201,12 @@ function TradeDesk({ clientId }: { clientId: string }) {
             >
               🔍 Verify Custody Ledger
             </Button>
+            <a
+              href="/app/audit"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface/80 hover:bg-surface px-3 py-1.5 text-xs font-semibold text-ink transition-colors shrink-0"
+            >
+              <span>🔗 On-Chain Audit &amp; Merkle Tree ↗</span>
+            </a>
             <Button
               variant="secondary"
               size="sm"

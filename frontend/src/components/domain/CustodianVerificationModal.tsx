@@ -210,14 +210,22 @@ export function CustodianVerificationModal({
 
           {/* Direct External Link */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
-            <a
-              href={guide.portalUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-5 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-accent/90 transition-colors"
-            >
-              <span>Open {guide.shortName} Portal ↗</span>
-            </a>
+            <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+              <a
+                href={guide.portalUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-5 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-accent/90 transition-colors"
+              >
+                <span>Open {guide.shortName} Portal ↗</span>
+              </a>
+              <a
+                href="/app/audit"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 rounded-xl border border-line bg-surface hover:bg-surface/80 px-4 py-2.5 text-xs font-semibold text-ink transition-colors"
+              >
+                <span>🔗 View On-Chain Merkle Tree ↗</span>
+              </a>
+            </div>
 
             <button
               type="button"

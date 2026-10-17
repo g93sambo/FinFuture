@@ -14,6 +14,7 @@ const navItems: { href: string; label: string; group: string }[] = [
   { href: "/app/trade", label: "Finance & Trade", group: "Portfolio" },
   { href: "/app/markets", label: "Markets", group: "Portfolio" },
   { href: "/app/health", label: "Reports & Health", group: "Reports" },
+  { href: "/app/audit", label: "On-Chain Audit", group: "Security" },
   { href: "/app/profile", label: "Profile", group: "Account" },
 ];
 
@@ -220,9 +221,9 @@ export function TopNav() {
                 <Link
                   href="/app/audit"
                   onClick={() => setMenuOpen(false)}
-                  className="block rounded-md px-2.5 py-1.5 text-ink hover:bg-surface"
+                  className="block rounded-md px-2.5 py-1.5 text-ink hover:bg-surface font-medium"
                 >
-                  Account Activity Log
+                  🔗 On-Chain Audit &amp; Anchoring
                 </Link>
               </div>
               <div className="mt-3 border-t border-line pt-2.5">
