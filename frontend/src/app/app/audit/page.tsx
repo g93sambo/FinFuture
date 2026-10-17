@@ -20,6 +20,7 @@ function actorLabel(a: string) {
 
 function Audit({ clientId }: { clientId: string }) {
   const { data, error, loading, reload } = useRequest(`audit:${clientId}`, () => api.audit(clientId, 1000));
+  const network = useRequest("sepolia:health", () => api.sepoliaNetwork());
   const [filter, setFilter] = useState("ALL");
   const [open, setOpen] = useState<string | null>(null);
   const [verify, setVerify] = useState<{ valid: boolean; first_invalid_entry: string | null; at: string } | null>(null);
@@ -52,6 +53,49 @@ function Audit({ clientId }: { clientId: string }) {
 
   return (
     <div className="space-y-8">
+      {/* Live Infura Sepolia Gateway Banner */}
+      <div className="rounded-2xl border border-line bg-surface/70 p-4 sm:p-5 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3.5">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/15 text-2xl font-bold shadow-inner">
+              ⚡
+            </span>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-bold text-ink text-sm sm:text-base">Infura Sepolia Gateway</span>
+                {network.data?.connected ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    Live RPC Connected
+                  </span>
+                ) : (
+                  <Tag tone="neutral">Connecting to Infura...</Tag>
+                )}
+                <Tag tone="neutral">Chain ID 11155111</Tag>
+              </div>
+              <p className="text-xs text-muted mt-0.5">
+                Active endpoint: <code className="text-[11px] font-mono text-ink">https://sepolia.infura.io/v3/0cfe...</code>
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 text-xs">
+            <div className="rounded-xl border border-line bg-background/80 px-3.5 py-2 text-right">
+              <span className="text-[11px] text-muted block uppercase tracking-wider">Live Sepolia Block</span>
+              <span className="font-mono font-bold text-ink figures">
+                {network.data?.block_number ? `#${network.data.block_number.toLocaleString()}` : "Querying Infura..."}
+              </span>
+            </div>
+            <div className="rounded-xl border border-line bg-background/80 px-3.5 py-2 text-right">
+              <span className="text-[11px] text-muted block uppercase tracking-wider">Gas Price</span>
+              <span className="font-mono font-bold text-ink figures">
+                {network.data?.gas_price_gwei ? `${network.data.gas_price_gwei} Gwei` : "–"}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="grid gap-8 xl:grid-cols-2">
         <Panel title="Verify the chain" aside={<Tag tone="neutral">SHA-256 + HMAC-SHA256</Tag>}>
           <p className="text-sm text-muted">

@@ -130,3 +130,10 @@ async def get_entry_merkle_proof(
         "consortium_ledger": "WeBank FISCO BCOS v3.6 (PBFT · WeEvent Topic: com.webank.finfuture.audit.anchor)",
     }
 
+
+@router.get("/audit/network/sepolia")
+async def get_sepolia_network_status():
+    """Polls live Sepolia RPC (Infura) to return real block height, chain ID, and connection status."""
+    return get_anchoring_service().get_sepolia_health()
+
+

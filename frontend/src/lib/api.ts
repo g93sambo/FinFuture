@@ -248,6 +248,17 @@ export const api = {
     request<MerkleProofResponse>(
       `/api/v1/audit/${encodeURIComponent(clientId)}/merkle-proof/${encodeURIComponent(entryId)}`,
     ),
+  sepoliaNetwork: () =>
+    request<{
+      configured: boolean;
+      connected: boolean;
+      provider: string;
+      block_number?: number;
+      chain_id?: number;
+      gas_price_gwei?: number;
+      has_private_key?: boolean;
+      error?: string;
+    }>("/api/v1/audit/network/sepolia"),
   rules: () => request<{ rules: ComplianceRule[] }>("/api/v1/compliance/rules"),
   permissionTiers: () => request<PermissionTiersResponse>("/api/v1/compliance/permission-tiers"),
   simulateCircuitBreaker: () =>

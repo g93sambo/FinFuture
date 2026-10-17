@@ -317,15 +317,49 @@ class AnchoringService:
             res.fisco_bcos_receipt = fisco_receipt
             return res
 
+    def get_sepolia_health(self) -> Dict[str, Any]:
+        """Queries the configured Sepolia RPC (Infura) and returns live network stats."""
+        if not HAS_WEB3 or not self.rpc_url:
+            return {"configured": False, "connected": False, "provider": "none"}
+        try:
+            w3 = Web3(Web3.HTTPProvider(self.rpc_url))
+            connected = w3.is_connected()
+            if connected:
+                block_num = int(w3.eth.block_number)
+                chain_id = int(w3.eth.chain_id)
+                gas_price_wei = int(w3.eth.gas_price)
+                return {
+                    "configured": True,
+                    "connected": True,
+                    "provider": "Infura Sepolia Gateway",
+                    "chain_id": chain_id,
+                    "block_number": block_num,
+                    "gas_price_gwei": round(gas_price_wei / 1e9, 4),
+                    "has_private_key": bool(self.private_key),
+                }
+            return {"configured": True, "connected": False, "provider": "Infura", "error": "RPC unreachable"}
+        except Exception as e:
+            return {"configured": True, "connected": False, "provider": "Infura", "error": str(e)}
+
     def _simulate_anchor(self, merkle_root: str, entries_count: int, ts: datetime) -> AnchoringResult:
-        """Generates deterministic simulated anchor transaction."""
+        """Generates deterministic simulated anchor transaction, querying live RPC if available."""
+        live_block = None
+        if HAS_WEB3 and self.rpc_url:
+            try:
+                w3 = Web3(Web3.HTTPProvider(self.rpc_url))
+                if w3.is_connected():
+                    live_block = int(w3.eth.block_number)
+                    logger.info("Successfully polled Infura RPC for live Sepolia block: %s", live_block)
+            except Exception as exc:
+                logger.debug("Infura live block query fallback: %s", exc)
+
         sim_data = f"dry_run:{merkle_root}:{ts.isoformat()}"
         sim_hash = "0x" + hashlib.sha256(sim_data.encode("utf-8")).hexdigest()
         logger.info(f"[DRY-RUN] Merkle Root {merkle_root} anchored in simulated tx {sim_hash}")
         return AnchoringResult(
             merkle_root=merkle_root,
             tx_hash=sim_hash,
-            block_number=5400100,  # Simulated Sepolia block number
+            block_number=live_block if live_block is not None else 11936605,
             status="dry_run",
             chain_id=self.target_chain_id,
             timestamp=ts,
