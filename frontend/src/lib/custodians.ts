@@ -1,9 +1,10 @@
 /**
  * frontend/src/lib/custodians.ts
  * ==============================
- * Comprehensive Directory of Connected Stock Brokerages, Custodians & Benchmark Indices.
- * Supports WeBank Smart Wealth, Alpaca, IBKR, Charles Schwab, Fidelity, Robinhood,
- * Tiger Brokers, Futu/Moomoo, Bamboo, Coinbase, and Vanguard.
+ * Connected Stock Brokerages, Custodians & Benchmark Indices.
+ * Focused strictly on real, verifiable execution:
+ * 1. Alpaca Securities LLC — Real-time live paper trading sandbox with REST/WebSocket API and app.alpaca.markets dashboard.
+ * 2. WeBank Smart Wealth — Institutional sponsor banking & FISCO BCOS blockchain cryptographic audit custody.
  */
 
 export interface BrokerageInfo {
@@ -11,7 +12,7 @@ export interface BrokerageInfo {
   name: string;
   shortName: string;
   region: string;
-  category: "Digital Bank & Asia" | "US Brokerage" | "Global Prime" | "Crypto & Digital" | "Frontier & Africa";
+  category: "US Brokerage" | "Digital Bank & Asia";
   description: string;
   supportedCurrencies: string[];
   badges: string[];
@@ -36,160 +37,34 @@ export interface BenchmarkIndexInfo {
 
 export const SUPPORTED_BROKERAGES: BrokerageInfo[] = [
   {
+    id: "alpaca",
+    name: "Alpaca Securities LLC (Live Paper Sandbox)",
+    shortName: "Alpaca",
+    region: "United States / Global",
+    category: "US Brokerage",
+    description: "Official execution broker for Equify. Real-time paper trading sandbox with live matching engine, SIPC protection, and instant web dashboard verification at app.alpaca.markets.",
+    supportedCurrencies: ["USD"],
+    badges: ["Live Sandbox API", "Instant Matching", "app.alpaca.markets", "DTC #3848", "SIPC Insured"],
+    popularAssets: ["AAPL", "NVDA", "MSFT", "TSLA", "SPY", "BND", "IBIT"],
+    isRecommended: true,
+    accountModes: ["sandbox", "api_key"],
+    defaultBuyingPower: 376906.49,
+    status: "connected",
+  },
+  {
     id: "webank",
     name: "WeBank Smart Wealth (微众银行财富+)",
     shortName: "WeBank",
     region: "China / Hong Kong GBA",
     category: "Digital Bank & Asia",
-    description: "China's leading digital bank. Supports Greater Bay Area (GBA) Cross-Border Wealth Connect (跨境理财通), FISCO BCOS blockchain audit logging, and RMB/HKD dual-currency mutual funds.",
+    description: "Consortium banking & FISCO BCOS blockchain audit partner. Anchors all trade execution hashes and client suitability records into immutable cryptographic Merkle trees.",
     supportedCurrencies: ["CNY", "HKD", "USD"],
-    badges: ["WeBank Official", "FISCO BCOS Anchored", "GBA Wealth Connect", "Institutional"],
+    badges: ["FISCO BCOS Blockchain", "WeBank Official", "GBA Wealth Connect", "Institutional Custody"],
     popularAssets: ["WBKCASH", "WBK6M", "GBAHK", "WBKGLD"],
-    isRecommended: true,
     isWeBank: true,
     accountModes: ["sandbox", "oauth"],
     defaultBuyingPower: 100000,
-    status: "available",
-  },
-  {
-    id: "alpaca",
-    name: "Alpaca Securities",
-    shortName: "Alpaca",
-    region: "United States / Global",
-    category: "US Brokerage",
-    description: "Commission-free US equities and fractional ETF trading. SEC-registered broker-dealer and FINRA/SIPC member with real-time paper sandbox and institutional live API.",
-    supportedCurrencies: ["USD"],
-    badges: ["SEC / FINRA Member", "SIPC Insured", "Fractional Shares", "Instant Sandbox"],
-    popularAssets: ["SPY", "QQQ", "VTI", "AAPL", "NVDA", "BND"],
-    accountModes: ["sandbox", "api_key"],
-    defaultBuyingPower: 100000,
-    status: "available",
-  },
-  {
-    id: "ibkr",
-    name: "Interactive Brokers (IBKR)",
-    shortName: "IBKR",
-    region: "Global (150+ Markets)",
-    category: "Global Prime",
-    description: "Institutional prime brokerage across 150+ electronic exchanges in 33 countries. Multi-currency margin, deep order routing, and professional asset management connectivity.",
-    supportedCurrencies: ["USD", "EUR", "GBP", "HKD", "CNH", "SGD", "JPY"],
-    badges: ["150+ Global Markets", "Institutional Prime", "Multi-Currency Cash", "Lowest Margin"],
-    popularAssets: ["SPY", "URTH", "000300.SS", "2800.HK", "AGG"],
-    accountModes: ["sandbox", "oauth", "api_key"],
-    defaultBuyingPower: 150000,
-    status: "available",
-  },
-  {
-    id: "schwab",
-    name: "Charles Schwab & Co.",
-    shortName: "Schwab",
-    region: "United States",
-    category: "US Brokerage",
-    description: "Full-service US wealth custodian and brokerage. Supports Schwab Intelligent Portfolios, ThinkorSwim equity research, and comprehensive retirement custody.",
-    supportedCurrencies: ["USD"],
-    badges: ["RIA Custodian", "ThinkorSwim", "$0 Commission", "FDIC Cash Sweep"],
-    popularAssets: ["SCHD", "SWPPX", "SPY", "VTI", "MSFT", "GOOGL"],
-    accountModes: ["sandbox", "oauth"],
-    defaultBuyingPower: 100000,
-    status: "available",
-  },
-  {
-    id: "fidelity",
-    name: "Fidelity Investments",
-    shortName: "Fidelity",
-    region: "United States",
-    category: "US Brokerage",
-    description: "Pioneer in zero-expense ratio index mutual funds (FZROX, FNILX), fractional equity execution, and integrated workplace retirement accounts.",
-    supportedCurrencies: ["USD"],
-    badges: ["Zero-Expense Funds", "Retirement / 401(k)", "Fractional Shares", "Fidelity Crypto"],
-    popularAssets: ["FZROX", "SPY", "QQQ", "AMZN", "META", "BND"],
-    accountModes: ["sandbox", "oauth"],
-    defaultBuyingPower: 100000,
-    status: "available",
-  },
-  {
-    id: "robinhood",
-    name: "Robinhood Financial",
-    shortName: "Robinhood",
-    region: "United States / UK / EU",
-    category: "US Brokerage",
-    description: "Mobile-first retail trading app with 24-hour market trading, fractional shares, recurring investment schedules, and high-yield uninvested cash sweep.",
-    supportedCurrencies: ["USD", "GBP", "EUR"],
-    badges: ["24-Hour Market", "Mobile-First", "High-Yield Sweep", "Recurring Deposits"],
-    popularAssets: ["AAPL", "TSLA", "NVDA", "SPY", "BTC", "ETH"],
-    accountModes: ["sandbox", "oauth"],
-    defaultBuyingPower: 50000,
-    status: "available",
-  },
-  {
-    id: "tiger",
-    name: "Tiger Brokers (UP Fintech)",
-    shortName: "Tiger",
-    region: "Singapore / HK / US / Australia",
-    category: "Digital Bank & Asia",
-    description: "NASDAQ-listed global fintech brokerage (TIGR). Instant cross-border execution covering US Equities, Hong Kong Stock Connect, and Shanghai-Shenzhen A-shares.",
-    supportedCurrencies: ["USD", "HKD", "CNH", "SGD", "AUD"],
-    badges: ["Hong Kong Connect", "China A-Shares", "Pre/Post Market", "Multi-Market"],
-    popularAssets: ["2800.HK", "ASHR", "BABA", "TCEHY", "SPY", "NVDA"],
-    accountModes: ["sandbox", "oauth", "api_key"],
-    defaultBuyingPower: 100000,
-    status: "available",
-  },
-  {
-    id: "futu",
-    name: "Futu / Moomoo (富途牛牛)",
-    shortName: "Moomoo",
-    region: "Hong Kong / US / Singapore / Japan",
-    category: "Digital Bank & Asia",
-    description: "Global fintech and wealth management platform (NASDAQ: FUTU). Features free Level 2 real-time depth feeds, Hong Kong IPO subscriptions, and US/HK/China stock baskets.",
-    supportedCurrencies: ["HKD", "USD", "CNH", "SGD", "JPY"],
-    badges: ["Level 2 Real-Time", "Hong Kong IPO", "Options & Margin", "SIPC Insured"],
-    popularAssets: ["0700.HK", "9988.HK", "SPY", "QQQ", "FXI", "ASHR"],
-    accountModes: ["sandbox", "oauth"],
-    defaultBuyingPower: 100000,
-    status: "available",
-  },
-  {
-    id: "bamboo",
-    name: "Bamboo Investment",
-    shortName: "Bamboo",
-    region: "Nigeria & African Diaspora",
-    category: "Frontier & Africa",
-    description: "Leading digital investment platform providing seamless access to the Nigerian Exchange (NGX) and US capital markets with dual NGN and USD wallets.",
-    supportedCurrencies: ["NGN", "USD"],
-    badges: ["Nigerian Exchange (NGX)", "Dual NGN / USD", "SEC Registered Partner", "Instant Paystack"],
-    popularAssets: ["DANGCEM", "MTNN", "GTCO", "SEPLAT", "SPY", "AAPL"],
-    accountModes: ["sandbox", "api_key"],
-    defaultBuyingPower: 100000,
-    status: "available",
-  },
-  {
-    id: "coinbase",
-    name: "Coinbase Prime & Institutional",
-    shortName: "Coinbase",
-    region: "Global / United States",
-    category: "Crypto & Digital",
-    description: "Qualified digital asset custodian and execution venue. Supports institutional cold storage, regulated spot crypto trading, and crypto ETF balance aggregation.",
-    supportedCurrencies: ["USD", "EUR", "USDC", "BTC", "ETH"],
-    badges: ["Qualified Custodian", "Cold Storage", "Spot BTC & ETH", "Institutional SOC 2"],
-    popularAssets: ["BTC", "ETH", "IBIT", "FBTC", "ETHA", "SOL"],
-    accountModes: ["sandbox", "oauth", "api_key"],
-    defaultBuyingPower: 100000,
-    status: "available",
-  },
-  {
-    id: "vanguard",
-    name: "The Vanguard Group",
-    shortName: "Vanguard",
-    region: "United States / Global",
-    category: "US Brokerage",
-    description: "Investor-owned asset manager and pioneer of low-cost passive index investing. The gold standard for long-term Boglehead asset allocation and retirement stability.",
-    supportedCurrencies: ["USD"],
-    badges: ["Index Pioneer", "Ultra-Low Expense", "Client-Owned", "Long-Term Core"],
-    popularAssets: ["VTI", "VOO", "VXUS", "BND", "VNQ", "VIG"],
-    accountModes: ["sandbox", "oauth"],
-    defaultBuyingPower: 100000,
-    status: "available",
+    status: "connected",
   },
 ];
 
@@ -235,36 +110,6 @@ export const BENCHMARK_INDICES: BenchmarkIndexInfo[] = [
     description: "The bellwether index of the Hong Kong stock market, tracking top financial, tech, and enterprise leaders.",
   },
   {
-    symbol: "^DJI",
-    ticker: "DIA",
-    name: "Dow Jones Industrial Average",
-    region: "United States",
-    category: "US Large Cap",
-    currency: "USD",
-    returnYtd: 9.8,
-    description: "Price-weighted benchmark of 30 prominent blue-chip US industrial, consumer, and financial giants.",
-  },
-  {
-    symbol: "URTH",
-    ticker: "URTH",
-    name: "MSCI World Developed Equities",
-    region: "Global Developed",
-    category: "Global Equities",
-    currency: "USD",
-    returnYtd: 13.2,
-    description: "Tracks large and mid-cap stocks across 23 developed countries worldwide.",
-  },
-  {
-    symbol: "^RUT",
-    ticker: "IWM",
-    name: "Russell 2000 Small-Cap Index",
-    region: "United States",
-    category: "US Large Cap",
-    currency: "USD",
-    returnYtd: 7.4,
-    description: "Comprehensive benchmark of 2,000 small-capitalization US companies.",
-  },
-  {
     symbol: "AGG",
     ticker: "BND",
     name: "Bloomberg US Aggregate Bond Index",
@@ -286,7 +131,7 @@ export function getStoredBroker(): BrokerageInfo {
   if (typeof window === "undefined") return SUPPORTED_BROKERAGES[0];
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.ACTIVE_BROKER);
-    if (!raw) return SUPPORTED_BROKERAGES[0]; // WeBank Smart Wealth default
+    if (!raw) return SUPPORTED_BROKERAGES[0]; // Alpaca default
     const found = SUPPORTED_BROKERAGES.find((b) => b.id === raw);
     return found || SUPPORTED_BROKERAGES[0];
   } catch {
@@ -341,7 +186,7 @@ export interface CustodianVerificationGuide {
 }
 
 export function getCustodianVerificationGuide(brokerId: string, orderId?: string): CustodianVerificationGuide {
-  const normalized = (brokerId || "webank").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const normalized = (brokerId || "alpaca").toLowerCase().replace(/[^a-z0-9]/g, "");
 
   if (normalized.includes("webank") || normalized.includes("wbk")) {
     return {
@@ -365,150 +210,24 @@ export function getCustodianVerificationGuide(brokerId: string, orderId?: string
     };
   }
 
-  if (normalized.includes("alpaca")) {
-    const alpacaUrl = orderId
-      ? `https://app.alpaca.markets/paper/dashboard/orders`
-      : `https://app.alpaca.markets/paper/dashboard/orders`;
-    return {
-      brokerId: "alpaca",
-      brokerName: "Alpaca Securities LLC",
-      shortName: "Alpaca",
-      icon: "🦙",
-      portalName: "Alpaca Trading Dashboard (Paper & Live Gateway)",
-      portalUrl: alpacaUrl,
-      mobileAppPath: "Alpaca Web Dashboard → Paper Trading → Orders Tab",
-      clearingHouse: "Alpaca Securities LLC / DTC Participant #3848",
-      settlementCycle: "T+1 Delivery-versus-Payment (SEC Rule 15c6-1)",
-      auditLedgerType: "Direct FIX/REST API Order Acknowledgment Record",
-      verificationSteps: [
-        "Log in to your Alpaca account at app.alpaca.markets.",
-        "Toggle to 'Paper Trading' (or 'Live Trading' depending on mode) in the top-left switcher.",
-        "Click 'Orders' in the left sidebar navigation.",
-        `Locate order ID ${orderId ? `"${orderId}"` : "matching your trade timestamp"} under the 'Filled' or 'Accepted' tab.`,
-        "Inspect the execution average price, filled quantity, and exchange routing.",
-      ],
-    };
-  }
-
-  if (normalized.includes("ibkr") || normalized.includes("interactive")) {
-    return {
-      brokerId: "ibkr",
-      brokerName: "Interactive Brokers (IBKR)",
-      shortName: "IBKR",
-      icon: "🌐",
-      portalName: "IBKR Client Portal & Trader Workstation (TWS)",
-      portalUrl: "https://www.interactivebrokers.com/portal/",
-      mobileAppPath: "IBKR Mobile App → Trade → Orders & Trades → Executed Trades",
-      clearingHouse: "Interactive Brokers LLC (DTC #0534, NYSE/NASDAQ Member)",
-      settlementCycle: "T+1 Continuous Net Settlement (CNS)",
-      auditLedgerType: "IBKR Flex Query & FIX Gateway Execution Slip",
-      verificationSteps: [
-        "Log in to IBKR Client Portal or launch IBKR Mobile.",
-        "Click or tap 'Trade' at the top, then select 'Orders & Trades'.",
-        "Switch to the 'Trades' tab to view all filled market transactions.",
-        "Check your Activity Statement under 'Reports' for end-of-day trade confirmation slips.",
-      ],
-    };
-  }
-
-  if (normalized.includes("schwab")) {
-    return {
-      brokerId: "schwab",
-      brokerName: "Charles Schwab & Co.",
-      shortName: "Schwab",
-      icon: "🏛️",
-      portalName: "Schwab.com & ThinkorSwim Web Platform",
-      portalUrl: "https://client.schwab.com/app/trade/tom/#/tradehistory",
-      mobileAppPath: "Schwab Mobile → Accounts → History → Order Status",
-      clearingHouse: "Charles Schwab & Co., Inc. (DTC #0164, SIPC Insured)",
-      settlementCycle: "T+1 Standard US Equity Settlement",
-      auditLedgerType: "Schwab Institutional Custody Ledger",
-      verificationSteps: [
-        "Log in to your Charles Schwab account at schwab.com.",
-        "Go to 'Accounts' → 'History' in the top menu.",
-        "Filter by 'Orders' or 'Trades' to view the execution timestamp and fill price.",
-        "View official Schwab Trade Confirmation PDF under 'Statements'.",
-      ],
-    };
-  }
-
-  if (normalized.includes("robinhood")) {
-    return {
-      brokerId: "robinhood",
-      brokerName: "Robinhood Financial LLC",
-      shortName: "Robinhood",
-      icon: "🏹",
-      portalName: "Robinhood Web & Mobile Application",
-      portalUrl: "https://robinhood.com/account/history",
-      mobileAppPath: "Robinhood App → Profile Icon → History → Orders",
-      clearingHouse: "Robinhood Securities, LLC (DTC #3856)",
-      settlementCycle: "T+1 Standard Settlement",
-      auditLedgerType: "Robinhood Clearing House Execution Log",
-      verificationSteps: [
-        "Open the Robinhood App or visit robinhood.com/account/history.",
-        "Navigate to your Account Profile and select 'History'.",
-        "Tap the stock order to view the full Order Detail receipt (limit/market price, shares, date).",
-      ],
-    };
-  }
-
-  if (normalized.includes("fidelity")) {
-    return {
-      brokerId: "fidelity",
-      brokerName: "Fidelity Investments",
-      shortName: "Fidelity",
-      icon: "🌲",
-      portalName: "Fidelity.com Account Portal",
-      portalUrl: "https://www.fidelity.com",
-      mobileAppPath: "Fidelity App → Activity & Orders → History",
-      clearingHouse: "National Financial Services LLC (NFS, DTC #0226)",
-      settlementCycle: "T+1 Standard Settlement",
-      auditLedgerType: "Fidelity NFS Institutional Clearing Slip",
-      verificationSteps: [
-        "Log in to fidelity.com or open the Fidelity mobile app.",
-        "Click 'Activity & Orders' from the top navigation bar.",
-        "Review your recent orders under the 'History' tab.",
-      ],
-    };
-  }
-
-  if (normalized.includes("bamboo")) {
-    return {
-      brokerId: "bamboo",
-      brokerName: "Bamboo Global Wealth",
-      shortName: "Bamboo",
-      icon: "🎋",
-      portalName: "Bamboo Mobile Investment App",
-      portalUrl: "https://investbamboo.com",
-      mobileAppPath: "Bamboo App → Portfolio → Transaction History",
-      clearingHouse: "DriveWealth LLC (DTC #3854) via Bamboo API",
-      settlementCycle: "T+1 US Settlement / Instant In-App FX",
-      auditLedgerType: "Bamboo Apex/DriveWealth Omnibus Custody Log",
-      verificationSteps: [
-        "Open your Bamboo app on iOS or Android.",
-        "Navigate to your Portfolio and tap 'Transactions History'.",
-        "Select the order to view the DriveWealth partner confirmation slip.",
-      ],
-    };
-  }
-
-  // Generic fallback for other custodians (Futu, Tiger, Coinbase, Vanguard)
+  // Alpaca is the default, live paper sandbox execution broker
   return {
-    brokerId: brokerId,
-    brokerName: "Connected Brokerage Custodian",
-    shortName: brokerId.toUpperCase(),
-    icon: "📈",
-    portalName: "Custodian Online Web Portal & Trading App",
-    portalUrl: "https://www.google.com/search?q=" + encodeURIComponent(`${brokerId} login order history`),
-    mobileAppPath: "Brokerage App → Account / Portfolio → Trade History & Order Records",
-    clearingHouse: "Licensed Custodian Clearing Depository (DTC / CSD)",
-    settlementCycle: "Standard Equity Settlement (T+1)",
-    auditLedgerType: "Cryptographically Verified Broker API Acknowledgment",
+    brokerId: "alpaca",
+    brokerName: "Alpaca Securities LLC",
+    shortName: "Alpaca",
+    icon: "🦙",
+    portalName: "Alpaca Trading Dashboard (Live Paper Sandbox)",
+    portalUrl: "https://app.alpaca.markets/paper/dashboard/orders",
+    mobileAppPath: "app.alpaca.markets → Paper Trading → Orders Tab",
+    clearingHouse: "Alpaca Securities LLC / DTC Participant #3848",
+    settlementCycle: "T+1 Delivery-versus-Payment (SEC Rule 15c6-1 / Sandbox Instant)",
+    auditLedgerType: "Live REST/FIX Order Execution Slip",
     verificationSteps: [
-      `Open your ${brokerId} mobile application or web portal.`,
-      "Navigate to your Account, Portfolio, or Trade History section.",
-      "Look for recent orders matching this trade timestamp and symbol.",
-      "Verify the executed quantity, price, and settlement confirmation slip.",
+      "Open your live Alpaca Dashboard at https://app.alpaca.markets.",
+      "Ensure the top-left switcher is set to 'Paper Trading'.",
+      "Click 'Orders' in the left menu to view your live executed orders in real time.",
+      `Locate order ID ${orderId ? `"${orderId}"` : "matching your trade timestamp"} under the 'Filled' or 'Accepted' tab.`,
+      "Inspect the execution average price, filled quantity, and exchange routing.",
     ],
   };
 }

@@ -164,7 +164,7 @@ function TradeDesk({ clientId }: { clientId: string }) {
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex items-start gap-4">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-2xl shadow-inner">
-              {activeBroker.isWeBank ? "🏦" : activeBroker.category === "Crypto & Digital" ? "🪙" : "📈"}
+              {activeBroker.isWeBank ? "🏦" : "🦙"}
             </div>
             <div>
               <div className="flex flex-wrap items-center gap-2">

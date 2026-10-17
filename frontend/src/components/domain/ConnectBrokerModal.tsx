@@ -40,11 +40,8 @@ export function ConnectBrokerModal({ isOpen, onClose, onConnect }: ConnectBroker
 
   const categories = [
     "All",
-    "Digital Banks & Asia",
     "US Brokerage",
-    "Global Prime",
-    "Crypto & Digital",
-    "Frontier & Africa",
+    "Digital Bank & Asia",
   ];
 
   const filteredBrokers = SUPPORTED_BROKERAGES.filter((b) => {
