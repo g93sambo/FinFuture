@@ -3,7 +3,7 @@
 import { Fragment, useMemo, useState } from "react";
 import { SECURITIES_DIRECTORY } from "@/components/domain/TickerAutocomplete";
 import { RequireProfile } from "@/components/shell/RequireProfile";
-import { Button } from "@/components/ui/Button";
+import { Button, ButtonLink } from "@/components/ui/Button";
 import { ErrorNotice, Tag } from "@/components/ui/Feedback";
 import { Segmented } from "@/components/ui/Field";
 import { PageHeader, Panel } from "@/components/ui/Layout";
@@ -182,12 +182,37 @@ function ProductDetail({ p }: { p: ComparedProduct }) {
   );
 }
 
-function Results({ res }: { res: CompareResponse }) {
+function formatSuitabilityReason(reason: string | null | undefined, clientTier?: number): string {
+  if (!reason) return "Outside of your personal risk suitability threshold.";
+  const match = reason.match(/Product risk level \((\d+)\) exceeds client maximum allowed risk tier \((\d+)\)/i);
+  if (match) {
+    return `Fund risk level (${match[1]}/5) exceeds your personal suitability limit (Tier ${match[2] ?? clientTier ?? 1}/5).`;
+  }
+  return reason.replace(/\s*per\s+SUIT-\d+/gi, "").replace(/SUIT-\d+/gi, "").trim();
+}
+
+function Results({
+  res,
+  kind,
+  onSwitchToBonds,
+}: {
+  res: CompareResponse;
+  kind: Kind;
+  onSwitchToBonds?: () => void;
+}) {
   const [open, setOpen] = useState<string | null>(res.ranked_products[0]?.symbol ?? null);
   const [explainMode, setExplainMode] = useState<"novice" | "quant">("novice");
   const winner = res.ranked_products[0];
+  const clientTier = res.report?.client_risk_tier ?? 1;
+
+  const sanitizedRationale = (res.rationale || "")
+    .replace(/\s*per\s+SUIT-\d+/gi, "")
+    .replace(/SUIT-\d+/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 animate-fade-in">
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-line pb-4">
         {winner ? (
           <div className="rounded-r-xl border-l-3 border-accent bg-accent-soft/40 py-2 pl-5 pr-4">
@@ -199,20 +224,52 @@ function Results({ res }: { res: CompareResponse }) {
             </p>
             <p className="figures mt-1 text-sm text-ink">Composite score {fixed(winner.composite_score)} out of 10</p>
           </div>
-        ) : <div />}
+        ) : (
+          <div className="flex items-center gap-2">
+            <Tag tone="warning">Investor Suitability Filter Active</Tag>
+            <span className="text-xs text-muted">Your Profile Risk Tier: {clientTier} of 5</span>
+          </div>
+        )}
         <Segmented
           label="Comparison explanation mode"
           value={explainMode}
           onChange={setExplainMode}
           options={[
-            { value: "novice", label: "Novice Plain-English" },
-            { value: "quant", label: "6-Factor Quant Breakdown" },
+            { value: "novice", label: "Plain English" },
+            { value: "quant", label: "6-Factor Breakdown" },
           ]}
         />
       </div>
 
+      {res.ranked_products.length === 0 ? (
+        <div className="rounded-2xl border border-line bg-surface/80 p-6 space-y-4 shadow-xs">
+          <div className="flex items-start gap-3.5">
+            <span className="text-3xl">🛡️</span>
+            <div>
+              <h3 className="text-base font-bold text-ink">
+                Fiduciary Safeguard: All candidate funds exceed your risk tier ({clientTier}/5)
+              </h3>
+              <p className="mt-1 text-sm text-muted max-w-[70ch] leading-relaxed">
+                Your portfolio is currently configured for <strong>Conservative Capital Preservation (Tier {clientTier} of 5)</strong>. To protect you from unexpected market volatility and drawdowns, the suitability engine has withheld high-volatility equity and multi-asset ETFs from ranking.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 border-t border-line/60 pt-4">
+            {kind === "etfs" && onSwitchToBonds ? (
+              <Button variant="primary" size="md" onClick={onSwitchToBonds}>
+                Switch to Bond & Cash Funds (Recommended for Tier {clientTier}) →
+              </Button>
+            ) : null}
+            <ButtonLink href="/app/profile" variant="secondary" size="md">
+              Update Investment Horizon & Risk Tolerance
+            </ButtonLink>
+          </div>
+        </div>
+      ) : null}
+
       {explainMode === "novice" && winner ? (
-        <Panel title="Plain-English Fund Translation" aside={<Tag tone="success">Novice Analogy Mode</Tag>}>
+        <Panel title="Plain-English Fund Translation" aside={<Tag tone="success">Plain English Mode</Tag>}>
           <div className="grid gap-4 md:grid-cols-3">
             <div className="rounded-xl border border-line bg-surface/70 p-4">
               <p className="text-xs font-semibold tracking-wider text-muted uppercase">1. Fee Drag (Cost 30%)</p>
@@ -236,7 +293,7 @@ function Results({ res }: { res: CompareResponse }) {
             <div className="rounded-xl border border-line bg-surface/70 p-4">
               <p className="text-xs font-semibold tracking-wider text-muted uppercase">3. Suitability Guardrail</p>
               <p className="mt-1 text-sm font-medium text-ink">
-                Risk Level {winner.risk_level}/5 vs. Your Tier {res.report?.client_risk_tier ?? "—"}/5
+                Risk Level {winner.risk_level}/5 vs. Your Tier {clientTier}/5
               </p>
               <p className="mt-1.5 text-xs text-muted">
                 {res.unsuitable_products.length > 0
@@ -248,10 +305,8 @@ function Results({ res }: { res: CompareResponse }) {
         </Panel>
       ) : null}
 
-      <Panel title="Ranking" aside={<span>Factor scores out of 10, weights in brackets</span>} flush>
-        {res.ranked_products.length === 0 ? (
-          <p className="p-5 text-sm text-muted">None of these funds is within your risk tier.</p>
-        ) : (
+      {res.ranked_products.length > 0 && (
+        <Panel title="Ranking" aside={<span>Factor scores out of 10, weights in brackets</span>} flush>
           <Table caption="Ranked products">
             <thead>
               <tr>
@@ -310,27 +365,27 @@ function Results({ res }: { res: CompareResponse }) {
               ))}
             </tbody>
           </Table>
-        )}
-      </Panel>
+        </Panel>
+      )}
 
       {res.unsuitable_products.length ? (
-        <Panel title="Set aside for your profile">
+        <Panel title="Set aside by Suitability Safeguards">
           <ul className="divide-y divide-line">
             {res.unsuitable_products.map((p) => (
-              <li key={p.symbol} className="grid gap-1 py-2.5 text-sm sm:grid-cols-[7rem_1fr_auto] sm:gap-4">
-                <span className="font-semibold text-ink">{p.symbol}</span>
-                <span className="text-ink">{p.suitability_reason}</span>
-                <Tag tone="warning">Outside tier</Tag>
+              <li key={p.symbol} className="grid gap-1 py-3 text-sm sm:grid-cols-[8rem_1fr_auto] sm:gap-4 items-center">
+                <span className="font-bold text-ink">{p.symbol}</span>
+                <span className="text-ink">{formatSuitabilityReason(p.suitability_reason, clientTier)}</span>
+                <Tag tone="warning">Outside Tier</Tag>
               </li>
             ))}
           </ul>
         </Panel>
       ) : null}
 
-      <Panel title="Summary">
-        <p className="max-w-[72ch] whitespace-pre-line text-[15px] text-ink">{res.rationale}</p>
+      <Panel title="Fiduciary Summary">
+        <p className="max-w-[72ch] whitespace-pre-line text-[15px] text-ink leading-relaxed">{sanitizedRationale}</p>
         <p className="mt-4 text-[13px] text-muted">
-          Method: {res.report?.methodology}. Your risk tier for products is {res.report?.client_risk_tier} of 5.
+          Method: {res.report?.methodology}. Your risk tier for products is {clientTier} of 5.
         </p>
       </Panel>
     </div>
@@ -666,7 +721,16 @@ function Compare({ clientId }: { clientId: string }) {
 
       {res ? (
         <div className={pending ? "opacity-40 pointer-events-none transition-opacity" : "opacity-100 transition-opacity"}>
-          <Results res={res} />
+          <Results
+            res={res}
+            kind={kind}
+            onSwitchToBonds={() => {
+              setKind("bonds");
+              setSelectedSymbols(STRATEGY_PRESETS.bonds[0].symbols);
+              setActivePresetId(STRATEGY_PRESETS.bonds[0].id);
+              void run("bonds", STRATEGY_PRESETS.bonds[0].symbols);
+            }}
+          />
         </div>
       ) : null}
       {!res && !pending ? (
