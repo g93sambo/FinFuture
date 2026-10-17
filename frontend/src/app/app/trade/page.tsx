@@ -65,11 +65,11 @@ function TradeDesk({ clientId }: { clientId: string }) {
     }
   }
 
-  async function approve() {
+  async function approve(opts?: { mfaCode?: string; fiduciaryAttested?: boolean }) {
     if (!proposal) return;
     setTicketState("approving");
     try {
-      const res = await api.executeProposal(clientId, proposal.proposal_id, true);
+      const res = await api.executeProposal(clientId, proposal.proposal_id, true, opts);
       if (res.execution) {
         setOutcome({ kind: "filled", execution: res.execution, events: res.events });
         setTicketState("done");

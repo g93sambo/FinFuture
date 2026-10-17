@@ -36,6 +36,9 @@ class TradeRequest(BaseModel):
     currency: Optional[str] = Field(default=None, description="USD or NGN")
     user_approved: bool = False
     proposal_id: Optional[str] = None
+    mfa_code: Optional[str] = Field(default=None, description="Step-Up 6-digit MFA OTP for Red-Tier trades")
+    fiduciary_attested: Optional[bool] = Field(default=None, description="Non-discretionary client suitability attestation")
+    autonomous: bool = Field(default=False, description="Tier 5 autonomous execution flag (hard-blocked if True)")
 
 
 def _status_for(error_type: str) -> int:
@@ -67,9 +70,23 @@ async def execute_trade(
 ):
     """Execute a previously proposed trade (or propose+execute in one call).
 
-    ``user_approved`` MUST be true (non-discretionary, REG-003); otherwise the
-    trade is blocked, audited and a 403 is returned.
+    ``user_approved`` MUST be true (non-discretionary, REG-003) and ``autonomous`` MUST be false
+    (PERM-TIER-5); otherwise the trade is blocked, audited and a 403 is returned.
     """
+    if req.autonomous:
+        c.compliance.record_security_incident(
+            str(user.id),
+            reason="PERM-TIER-5: Attempted autonomous trade execution without human approval.",
+            incident_type="AUTONOMOUS_EXECUTION_BLOCKED",
+        )
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "AutonomousExecutionDisabledError",
+                "reason": "PERM-TIER-5: Autonomous trade execution is hard-disabled in code. Every trade requires explicit non-discretionary user approval.",
+                "violations": [{"rule_id": "PERM-TIER-5", "severity": "BLOCK", "description": "Autonomous execution disabled."}],
+            },
+        )
     await verify_client_ownership(user, req.client_id, db)
     proposal_id = req.proposal_id
     if not proposal_id:
@@ -79,7 +96,14 @@ async def execute_trade(
         proposal_id = proposal["proposal_id"]
 
     try:
-        events = await c.orchestrator.handle_trade_approval(db, user.id, proposal_id, approved=req.user_approved)
+        events = await c.orchestrator.handle_trade_approval(
+            db,
+            user.id,
+            proposal_id,
+            approved=req.user_approved,
+            mfa_code=req.mfa_code,
+            fiduciary_attested=req.fiduciary_attested,
+        )
     except TradeBlocked as blocked:
         raise HTTPException(
             status_code=_status_for(blocked.error_type),

@@ -29,7 +29,7 @@ export function ProposalTicket({
 }: {
   proposal: Proposal;
   state?: TicketState;
-  onApprove?: () => void;
+  onApprove?: (opts?: { mfaCode?: string; fiduciaryAttested?: boolean }) => void;
   onReject?: () => void;
 }) {
   const { expired, label } = useCountdown(proposal.created_at, proposal.expires_in_seconds);
@@ -63,7 +63,10 @@ export function ProposalTicket({
       setStepUpOpen(true);
       return;
     }
-    onApprove?.();
+    onApprove?.({
+      mfaCode: isRedTier ? mfaCode.trim() : undefined,
+      fiduciaryAttested: isRedTier ? attested : true,
+    });
   }
 
   const mfaValid = !isRedTier || (mfaCode.trim() === expectedCode && attested);

@@ -462,9 +462,11 @@ export interface ComplianceRule {
 }
 
 export interface PermissionTierItem {
-  tier: "GREEN" | "YELLOW" | "RED" | string;
+  tier_id?: string;
+  tier: "GREEN" | "YELLOW" | "RED" | "DISABLED" | string;
   label: string;
   execution_policy: string;
+  code_limits?: Record<string, unknown>;
   operations: string[];
   safeguards: string[];
 }

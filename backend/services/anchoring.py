@@ -145,6 +145,8 @@ class AnchoringService:
         """
         Computes Merkle root and anchors it to Sepolia testnet (or dry-run).
         """
+        import asyncio
+
         now = datetime.now(timezone.utc)
         merkle_root = compute_merkle_root(leaf_hashes)
 
@@ -152,7 +154,7 @@ class AnchoringService:
         if settings.dry_run or not self._is_configured():
             return self._simulate_anchor(merkle_root, len(leaf_hashes), now)
 
-        try:
+        def _submit_sepolia_tx() -> AnchoringResult:
             w3 = Web3(Web3.HTTPProvider(self.rpc_url))
             if not w3.is_connected():
                 logger.warning("Sepolia RPC offline. Dropping to dry-run mode.")
@@ -213,6 +215,8 @@ class AnchoringService:
                 entries_count=len(leaf_hashes)
             )
 
+        try:
+            return await asyncio.to_thread(_submit_sepolia_tx)
         except MainnetForbiddenError:
             raise
         except Exception as e:
@@ -251,10 +255,12 @@ class AnchoringService:
         """
         Verifies that an anchored transaction on Sepolia contains the expected Merkle root.
         """
+        import asyncio
+
         if not self._is_configured():
             return tx_hash.startswith("0x") and len(tx_hash) == 66
 
-        try:
+        def _verify_sepolia_tx() -> bool:
             w3 = Web3(Web3.HTTPProvider(self.rpc_url))
             if not w3.is_connected():
                 return False
@@ -263,6 +269,9 @@ class AnchoringService:
             input_data = tx.input.hex().lower().replace("0x", "")
             expected_data = merkle_root.lower().replace("0x", "")
             return expected_data in input_data
+
+        try:
+            return await asyncio.to_thread(_verify_sepolia_tx)
         except Exception:
             return False
 

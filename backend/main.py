@@ -63,19 +63,29 @@ async def seed_compliance_rules() -> int:
 
 async def warm_market_fixtures(cache: CacheService) -> None:
     """Pre-warm market data fixtures from test fixture directory for offline/zero-dependency startup."""
+    import os
+
     fixtures_dir = Path(__file__).resolve().parent / "tests" / "fixtures"
     if not fixtures_dir.exists():
         return
 
-    # Warm market quotes
+    offline_or_dev = (
+        settings.environment.lower() != "production"
+        or os.getenv("FINFUTURE_OFFLINE_MODE") == "1"
+    )
+
+    # Warm market quotes (in production, store under fallback key so live market APIs are not shadowed)
     quotes_file = fixtures_dir / "market_quotes.json"
     if quotes_file.exists():
         try:
             with open(quotes_file, "r", encoding="utf-8") as f:
                 quotes = json.load(f)
             for symbol, data in quotes.items():
-                await cache.set_json(f"data:quotes:{symbol.upper()}", data, expire=3600)
-                await cache.set_json(f"data:quote:{symbol.upper()}", data, expire=3600)
+                sym = symbol.upper()
+                await cache.set_json(f"data:fixture_quotes:{sym}", data, expire=86400)
+                if offline_or_dev:
+                    await cache.set_json(f"data:quotes:{sym}", data, expire=3600)
+                    await cache.set_json(f"data:quote:{sym}", data, expire=3600)
         except Exception as e:
             logger.debug("Failed to warm market quotes: %s", e)
 
@@ -86,7 +96,9 @@ async def warm_market_fixtures(cache: CacheService) -> None:
             with open(yc_file, "r", encoding="utf-8") as f:
                 yc = json.load(f)
             rates = yc.get("rates", yc)
-            await cache.set_json("data:treasury:yield_curve", rates, expire=86400)
+            await cache.set_json("data:fixture_treasury:yield_curve", rates, expire=86400)
+            if offline_or_dev:
+                await cache.set_json("data:treasury:yield_curve", rates, expire=86400)
         except Exception as e:
             logger.debug("Failed to warm yield curve: %s", e)
 
@@ -97,7 +109,9 @@ async def warm_market_fixtures(cache: CacheService) -> None:
             with open(macro_file, "r", encoding="utf-8") as f:
                 macro = json.load(f)
             indicators = macro.get("indicators", macro)
-            await cache.set_json("data:macro:indicators", indicators, expire=86400)
+            await cache.set_json("data:fixture_macro:indicators", indicators, expire=86400)
+            if offline_or_dev:
+                await cache.set_json("data:macro:indicators", indicators, expire=86400)
         except Exception as e:
             logger.debug("Failed to warm macro indicators: %s", e)
 
@@ -132,7 +146,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title=settings.app_name,
-    description="Multi-agent wealth advisory system: profiling, comparison, allocation, compliance, paper execution.",
+    description="Non-discretionary multi-agent wealth advisory system: profiling, comparison, allocation, compliance, human-approved paper execution.",
     version=settings.app_version,
     lifespan=lifespan,
 )
@@ -168,6 +182,9 @@ async def root():
 
 @app.get("/chat", include_in_schema=False)
 async def chat_ui():
+    if settings.environment.lower() == "production":
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Debug chat UI is disabled in production.")
     html_file = Path(__file__).resolve().parent / "chat_client.html"
     return HTMLResponse(content=html_file.read_text(encoding="utf-8"))
 

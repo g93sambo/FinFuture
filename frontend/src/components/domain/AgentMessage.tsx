@@ -210,7 +210,7 @@ function EventBody({
 }: {
   ev: AgentEvent;
   proposals: Record<string, ProposalState>;
-  onApprove: (id: string) => void;
+  onApprove: (id: string, opts?: { mfaCode?: string; fiduciaryAttested?: boolean }) => void;
   onReject: (id: string) => void;
 }) {
   switch (ev.event) {
@@ -228,7 +228,7 @@ function EventBody({
             <ProposalTicket
               proposal={ev.proposal}
               state={proposals[ev.proposal.proposal_id] ?? "open"}
-              onApprove={() => onApprove(ev.proposal!.proposal_id)}
+              onApprove={(opts) => onApprove(ev.proposal!.proposal_id, opts)}
               onReject={() => onReject(ev.proposal!.proposal_id)}
             />
           ) : null}
@@ -378,7 +378,7 @@ export function TranscriptRow({
 }: {
   item: TranscriptItem;
   proposals: Record<string, ProposalState>;
-  onApprove: (id: string) => void;
+  onApprove: (id: string, opts?: { mfaCode?: string; fiduciaryAttested?: boolean }) => void;
   onReject: (id: string) => void;
   onSelectOption?: (option: string) => void;
 }) {

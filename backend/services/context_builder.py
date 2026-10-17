@@ -39,7 +39,14 @@ class ClientFinancialContext:
         return asdict(self)
 
     def to_system_prompt_snippet(self) -> str:
-        """Compact, authoritative context block injected into the LLM system prompt."""
+        """
+        Compact, privacy-preserving suitability context block injected into the LLM system prompt.
+        Direct PII (full_name, email, raw client_id, user_id, national IDs, account numbers)
+        is stripped and replaced with a one-way SHA-256 pseudonym (ANON-XXXXXXXX).
+        """
+        import hashlib
+
+        anon_ref = "ANON-" + hashlib.sha256(str(self.client_id).encode("utf-8")).hexdigest()[:8].upper()
         pv = self.portfolio.get("total_value", 0.0)
         cash = self.portfolio.get("cash", 0.0)
         positions = self.portfolio.get("positions", [])
@@ -49,14 +56,17 @@ class ClientFinancialContext:
         biases_str = ", ".join(self.behavioral_biases) if self.behavioral_biases else "None detected"
 
         return (
-            "\n[CLIENT FINANCIAL PROFILE & PORTFOLIO CONTEXT]\n"
-            f"- Client ID: {self.client_id} ({self.name})\n"
+            "\n[ANONYMIZED CLIENT SUITABILITY CONTEXT — DIRECT PII REDACTED]\n"
+            f"- Pseudonym Reference: {anon_ref}\n"
             f"- Age: {self.age or 'Unspecified'} | Primary Goal: {self.primary_goal or 'Wealth Accumulation'}\n"
             f"- Base Currency: {self.currency} | KYC Status: {'Verified' if self.kyc_verified else 'Pending'}\n"
             f"- Suitability Category: {self.suitability_category} (Risk Tolerance Score: {self.risk_tolerance_score or 5.0}/10)\n"
-            f"- Annual Income: ${self.annual_income:,.2f} | Liquid Net Worth: ${self.liquid_net_worth:,.2f}\n" if self.annual_income and self.liquid_net_worth else
-            f"- Suitability: {self.suitability_category} (Score: {self.risk_tolerance_score or 5.0}/10)\n"
-            f"- Time Horizon: {self.time_horizon_years or 10} years\n"
+            + (
+                f"- Annual Income: ${self.annual_income:,.2f} | Liquid Net Worth: ${self.liquid_net_worth:,.2f}\n"
+                if self.annual_income and self.liquid_net_worth
+                else f"- Suitability: {self.suitability_category} (Score: {self.risk_tolerance_score or 5.0}/10)\n"
+            )
+            + f"- Time Horizon: {self.time_horizon_years or 10} years\n"
             f"- Portfolio Total Value: ${pv:,.2f} (Cash: ${cash:,.2f})\n"
             f"- Active Holdings: {holdings_str}\n"
             f"- Governing Constraints: {constraints_str}\n"

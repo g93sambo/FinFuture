@@ -183,10 +183,21 @@ export const api = {
       method: "POST",
       body: json({ client_id: clientId, symbol, side, qty }),
     }),
-  executeProposal: (clientId: string, proposalId: string, approved: boolean) =>
+  executeProposal: (
+    clientId: string,
+    proposalId: string,
+    approved: boolean,
+    opts?: { mfaCode?: string; fiduciaryAttested?: boolean },
+  ) =>
     request<{ status: string; execution: Execution | null; events: AgentEvent[] }>("/api/v1/trade/execute", {
       method: "POST",
-      body: json({ client_id: clientId, proposal_id: proposalId, user_approved: approved }),
+      body: json({
+        client_id: clientId,
+        proposal_id: proposalId,
+        user_approved: approved,
+        ...(opts?.mfaCode !== undefined ? { mfa_code: opts.mfaCode } : {}),
+        ...(opts?.fiduciaryAttested !== undefined ? { fiduciary_attested: opts.fiduciaryAttested } : {}),
+      }),
     }),
   trades: (clientId: string, limit = 100) =>
     request<{ client_id: string; trades: Trade[] }>(`/api/v1/trades/${encodeURIComponent(clientId)}?limit=${limit}`),

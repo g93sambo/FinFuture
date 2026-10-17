@@ -22,6 +22,7 @@ const tierTone: Record<string, Tone> = {
   GREEN: "success",
   YELLOW: "warning",
   RED: "danger",
+  DISABLED: "neutral",
 };
 
 function formatParam(v: unknown): string {
@@ -87,7 +88,7 @@ export default function CompliancePage() {
     <>
       <PageHeader
         title="Compliance & security self-assessment"
-        lede="Runtime 3-tier permission grading (Green / Yellow / Red), anomaly circuit breaker, 5-pillar defense architecture, known-risk mitigations, and the active 12-rule regulatory catalogue."
+        lede="Runtime 5-tier permission architecture (Read-Only · Advise · Propose · Execute with Approval under Limits · Autonomous Hard-Disabled), anomaly circuit breaker, 5-pillar defense architecture, known-risk mitigations, and the active 12-rule regulatory catalogue."
       />
       {loading && !data ? <Loading label="Loading compliance architecture" /> : null}
       <ErrorNotice error={error} onRetry={reload} />
@@ -95,15 +96,15 @@ export default function CompliancePage() {
       <div className="space-y-8">
         {tiers.length > 0 ? (
           <Panel
-            title="Three-tier permission grading matrix (Green / Yellow / Red)"
-            aside={<span>Low-risk auto-execute · Medium-risk confirm · High-risk strong MFA</span>}
+            title="Five-tier permission model (code-enforced execution boundaries)"
+            aside={<span>Non-discretionary · $100k single cap · $250k daily cap · 86-symbol whitelist · Autonomous disabled</span>}
           >
             <div className="grid gap-6 lg:grid-cols-3">
               {tiers.map((t) => (
-                <div key={t.tier} className="rounded-xl border border-line bg-surface/70 p-4 flex flex-col justify-between space-y-4">
+                <div key={t.tier_id ?? t.label} className="rounded-xl border border-line bg-surface/70 p-4 flex flex-col justify-between space-y-4">
                   <div className="space-y-2.5">
                     <div className="flex items-center justify-between gap-2">
-                      <Tag tone={tierTone[t.tier] ?? "neutral"}>{t.tier} TIER</Tag>
+                      <Tag tone={tierTone[t.tier] ?? "neutral"}>{t.tier}</Tag>
                       <span className="text-xs font-medium text-muted">{t.label}</span>
                     </div>
                     <p className="text-xs text-ink font-medium">{t.execution_policy}</p>
@@ -117,7 +118,7 @@ export default function CompliancePage() {
                     </div>
                   </div>
                   <div className="border-t border-line pt-2.5">
-                    <p className="text-[11.5px] uppercase tracking-wider text-muted mb-1">Active safeguards</p>
+                    <p className="text-[11.5px] uppercase tracking-wider text-muted mb-1">Code-enforced safeguards</p>
                     <ul className="list-disc list-inside space-y-0.5 text-[12px] text-muted">
                       {t.safeguards.map((sg) => (
                         <li key={sg}>{sg}</li>

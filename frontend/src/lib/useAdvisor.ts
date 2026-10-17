@@ -297,17 +297,17 @@ export function useAdvisor() {
   );
 
   const approve = useCallback(
-    async (proposalId: string) => {
+    async (proposalId: string, opts?: { mfaCode?: string; fiduciaryAttested?: boolean }) => {
       setProposals((p) => ({ ...p, [proposalId]: "approving" }));
       lastApproved.current = proposalId;
       setWaiting(true);
-      if (socketOpen()) {
+      if (socketOpen() && !opts?.mfaCode) {
         wsRef.current!.send(JSON.stringify({ type: "approve", proposal_id: proposalId }));
         return;
       }
       if (!clientId) return;
       try {
-        const res = await api.executeProposal(clientId, proposalId, true);
+        const res = await api.executeProposal(clientId, proposalId, true, opts);
         ingest(res.events);
       } catch (e) {
         setProposals((p) => ({ ...p, [proposalId]: "blocked" }));

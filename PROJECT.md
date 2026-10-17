@@ -1,7 +1,7 @@
 # Project: Wealth Advisory Agent System Evolution (R1–R6)
 
 ## Architecture
-The system evolves the existing multi-agent FastAPI wealth advisory platform into an autonomous, tool-using financial research and institutional decision-support system.
+The system evolves the existing multi-agent FastAPI wealth advisory platform into a non-discretionary, human-in-the-loop, tool-using financial research and institutional decision-support system.
 
 ### Key Architectural Layers:
 1. **Research Orchestration Engine (`backend/research/task_graph.py`)**:
@@ -90,11 +90,11 @@ Every feature from the Survey phase is mapped to an assigned milestone:
 |---|------|-------|-------------|--------|
 | M0 | Baseline Stabilization | Restore 644/644 clean test baseline by fixing 6 known regressions | none | DONE |
 | M1 | Centralized Tool Registry | Pydantic tool schemas, authorization, circuit breakers, tool migration | M0 | DONE |
-| M2 | Web Intel, Filings & Evidence Ledger | SEC EDGAR, search, prompt injection defense, evidence ledger & citations | M1 | PLANNED |
-| M3 | Deterministic Quantitative Engine | Student-t Monte Carlo, DCF, hurdle rate, cash flows, VaR/CVaR, Sharpe | M0 | PLANNED |
-| M4 | Research DAG & Specialist Personas | TaskGraph, 8 analyst roles, user memory, self-verification, paper guards | M1, M2, M3 | PLANNED |
-| M5 | Streaming Telemetry & Observability | WebSocket/SSE milestones, institutional report builder, UI rendering | M4 | PLANNED |
-| M6 | E2E Test Verification & Hardening | 100% pass of E2E suite (Tiers 1-4) and Tier 5 adversarial hardening | M5, TEST_READY.md | PLANNED |
+| M2 | Web Intel, Filings & Evidence Ledger | SEC EDGAR, search, prompt injection defense, evidence ledger & citations | M1 | DONE |
+| M3 | Deterministic Quantitative Engine | Student-t Monte Carlo, DCF, hurdle rate, cash flows, VaR/CVaR, Sharpe | M0 | DONE |
+| M4 | Research DAG & Specialist Personas | TaskGraph, 8 analyst roles, user memory, self-verification, paper guards | M1, M2, M3 | DONE |
+| M5 | Streaming Telemetry & Observability | WebSocket/SSE milestones, institutional report builder, UI rendering | M4 | DONE |
+| M6 | E2E Test Verification & Hardening | 100% pass of E2E suite (Tiers 1-4) and Tier 5 adversarial hardening | M5, TEST_READY.md | DONE |
 
 ---
 

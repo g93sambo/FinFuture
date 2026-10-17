@@ -113,10 +113,29 @@ class Settings(BaseSettings):
     polygon_api_key: Optional[str] = Field(default=None, description="Polygon.io Market Data API Key")
     coingecko_api_key: Optional[str] = Field(default=None, description="CoinGecko API Key (optional pro key)")
 
-    # --- Execution Controls ---
+    # --- Execution Controls & Permission Tier Limits ---
     dry_run: bool = Field(
         default=False,
         description="Simulate external side-effects (Alpaca, Sepolia) without network calls"
+    )
+    allow_autonomous_execution: bool = Field(
+        default=False,
+        description="Tier 5 Autonomous Execution flag. MUST ALWAYS BE FALSE (non-discretionary only)."
+    )
+    max_single_trade_notional_usd: float = Field(
+        default=100000.0,
+        gt=0,
+        description="Tier 4 hard per-trade notional cap in USD (AML-001)"
+    )
+    max_daily_trade_notional_usd: float = Field(
+        default=250000.0,
+        gt=0,
+        description="Tier 4 hard rolling 24-hour cumulative trade notional cap in USD per client"
+    )
+    step_up_mfa_notional_threshold_usd: float = Field(
+        default=1000.0,
+        gt=0,
+        description="Notional threshold in USD above which step-up 6-digit MFA is required"
     )
 
     # --- Pydantic Settings Configuration ---
@@ -130,6 +149,19 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     # Safety Guards & Field Validators
     # -------------------------------------------------------------------------
+
+    @field_validator("allow_autonomous_execution")
+    @classmethod
+    def guard_autonomous_execution_disabled(cls, v: bool) -> bool:
+        """
+        Hard-disable Tier 5 autonomous execution. Refuse to start if set to True.
+        """
+        if v:
+            raise ValueError(
+                "CRITICAL SECURITY GUARD: Autonomous execution (Tier 5) is strictly forbidden! "
+                "'ALLOW_AUTONOMOUS_EXECUTION' must be False. The advisor is strictly non-discretionary."
+            )
+        return v
 
     @field_validator("alpaca_paper")
     @classmethod

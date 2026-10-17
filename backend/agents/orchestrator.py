@@ -1025,6 +1025,7 @@ class OrchestratorAgent:
             from openai import AsyncOpenAI
 
             messages = [{"role": "system", "content": system_prompt}]
+            redacted_text = self.c.compliance.redact_sensitive_data(text or "")
             if history:
                 prior_turns = [
                     turn for turn in history
@@ -1033,11 +1034,14 @@ class OrchestratorAgent:
                 if prior_turns and prior_turns[-1].get("role") == "user" and prior_turns[-1].get("content") == text:
                     prior_turns = prior_turns[:-1]
                 for turn in prior_turns[-8:]:
-                    messages.append({"role": turn["role"], "content": turn["content"]})
+                    turn_content = turn["content"]
+                    if isinstance(turn_content, str):
+                        turn_content = self.c.compliance.redact_sensitive_data(turn_content)
+                    messages.append({"role": turn["role"], "content": turn_content})
 
             if attachments:
                 user_content: List[Dict[str, Any]] = [
-                    {"type": "text", "text": text or "Please analyze the attached financial image/document."}
+                    {"type": "text", "text": redacted_text or "Please analyze the attached financial image/document."}
                 ]
                 for att in attachments:
                     att_type = att.get("type", "")
@@ -1050,7 +1054,7 @@ class OrchestratorAgent:
                         })
                 messages.append({"role": "user", "content": user_content})
             else:
-                messages.append({"role": "user", "content": text})
+                messages.append({"role": "user", "content": redacted_text})
 
             async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0)) as http_client:
                 client = AsyncOpenAI(api_key=key, http_client=http_client)
@@ -1530,6 +1534,7 @@ class OrchestratorAgent:
                             ),
                         },
                     ]
+                    redacted_text = self.c.compliance.redact_sensitive_data(text or "")
                     if history:
                         prior_turns = [
                             turn for turn in history
@@ -1538,8 +1543,11 @@ class OrchestratorAgent:
                         if prior_turns and prior_turns[-1].get("role") == "user" and prior_turns[-1].get("content") == text:
                             prior_turns = prior_turns[:-1]
                         for turn in prior_turns[-8:]:
-                            messages.append({"role": turn["role"], "content": turn["content"]})
-                    messages.append({"role": "user", "content": text})
+                            turn_content = turn["content"]
+                            if isinstance(turn_content, str):
+                                turn_content = self.c.compliance.redact_sensitive_data(turn_content)
+                            messages.append({"role": turn["role"], "content": turn_content})
+                    messages.append({"role": "user", "content": redacted_text})
 
                     resp = await client.chat.completions.create(
                         model=settings.openai_model or os.getenv("OPENAI_MODEL", "gpt-4o"),
@@ -1573,6 +1581,26 @@ class OrchestratorAgent:
         symbol, side = symbol.strip().upper(), side.strip().upper()
         if side not in ("BUY", "SELL") or qty <= 0 or not symbol:
             raise HTTPException(status_code=422, detail="Invalid trade: need BUY/SELL, positive qty and a symbol")
+
+        cb_status = self.c.compliance.get_circuit_breaker_status(client_id)
+        if cb_status["is_locked"]:
+            raise HTTPException(
+                status_code=423,
+                detail=(
+                    f"PERM-CIRCUIT-BREAKER: Account '{client_id}' is temporarily locked due to "
+                    f"{cb_status['incident_count_15m']} security incidents in the last 15 minutes."
+                ),
+            )
+
+        if symbol not in self.c.compliance.ALLOWED_TRADING_SYMBOLS:
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    f"PERM-WHITELIST: Symbol '{symbol}' is not on the approved symbol whitelist "
+                    f"({len(self.c.compliance.ALLOWED_TRADING_SYMBOLS)} vetted ETFs & equities)."
+                ),
+            )
+
         proj = await self.c.portfolio.projected_weight(db, client_id, symbol, side, qty)
 
         is_ngx = symbol in ("DANGCEM", "MTNN", "GTCO", "ZENITHBANK", "ACCESSCORP", "UBA", "SEPLAT", "AIRTELAFRI", "BUACEMENT", "BUAFOODS", "NESTLE", "GEREGU", "TRANSPOWER", "TRANSCORP", "NGXGROUP")
@@ -1665,6 +1693,8 @@ class OrchestratorAgent:
         proposal_id: str,
         approved: bool,
         session_id: Optional[str] = None,
+        mfa_code: Optional[str] = None,
+        fiduciary_attested: Optional[bool] = None,
     ) -> List[Dict[str, Any]]:
         proposal = await self.c.cache.get_json(f"proposal:{proposal_id}")
         if not proposal:
@@ -1690,6 +1720,8 @@ class OrchestratorAgent:
             events.append(_event("trade_approved", "User", f"Approved {proposal['side']} {proposal['qty']:g} {proposal['symbol']}", proposal=proposal))
 
         trade = {
+            "user_id": str(user_id),
+            "proposal_id": proposal_id,
             "user_approved": approved,
             "user_approved_at": approval_ts.isoformat(),
             "symbol": proposal["symbol"],
@@ -1700,6 +1732,9 @@ class OrchestratorAgent:
             "projected_weight": proposal["projected_weight"],
             "broker": proposal.get("broker"),
             "currency": proposal.get("currency"),
+            "mfa_code": mfa_code,
+            "fiduciary_attested": fiduciary_attested,
+            "enforce_step_up_mfa": (mfa_code is not None or fiduciary_attested is not None),
         }
         try:
             check = await self.c.compliance.check_trade(db, client_id, trade, profile)

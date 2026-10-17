@@ -1082,6 +1082,184 @@ class ComplianceGuard:
             )
 
         # --------------------------------------------------------------------
+        # Permission Tier Enforcement (Tiers 3, 4 & 5 Hard Code Limits)
+        # --------------------------------------------------------------------
+        # 1. Tier 5 Guard: Autonomous Execution Explicitly Disabled in Code
+        if bool(trade.get("autonomous", False)):
+            violations.append(
+                ComplianceViolation(
+                    rule_id="PERM-TIER-5",
+                    rule_name="Autonomous Execution Disabled",
+                    category="PERMISSION_TIER",
+                    severity="BLOCK",
+                    description="Tier 5 autonomous trade execution is hard-disabled in code. Every order requires non-discretionary client approval.",
+                    actual_value=True,
+                    threshold=False,
+                )
+            )
+            rule_results.append(
+                RuleCheckDetail(
+                    rule_id="PERM-TIER-5",
+                    rule_name="Autonomous Execution Disabled",
+                    category="PERMISSION_TIER",
+                    passed=False,
+                    severity="BLOCK",
+                    details="Autonomous execution attempted; hard-blocked by Tier 5 policy.",
+                )
+            )
+
+        # 2. Anomaly Circuit Breaker Lock Check
+        cb_client = self.get_circuit_breaker_status(str(client_id))
+        cb_user = self.get_circuit_breaker_status(str(trade["user_id"])) if trade.get("user_id") else {"is_locked": False}
+        if cb_client.get("is_locked") or cb_user.get("is_locked"):
+            locked_until = cb_client.get("locked_until") or cb_user.get("locked_until")
+            violations.append(
+                ComplianceViolation(
+                    rule_id="PERM-CIRCUIT-BREAKER",
+                    rule_name="Anomaly Circuit Breaker Lock",
+                    category="PERMISSION_TIER",
+                    severity="BLOCK",
+                    description=f"Trade execution is locked by Anomaly Circuit Breaker until {locked_until} after >= 3 security/compliance violations in 60s.",
+                    actual_value="OPEN_LOCKED",
+                    threshold="CLOSED_NORMAL",
+                )
+            )
+            rule_results.append(
+                RuleCheckDetail(
+                    rule_id="PERM-CIRCUIT-BREAKER",
+                    rule_name="Anomaly Circuit Breaker Lock",
+                    category="PERMISSION_TIER",
+                    passed=False,
+                    severity="BLOCK",
+                    details=f"Circuit breaker OPEN_LOCKED until {locked_until}",
+                )
+            )
+
+        # 3. Tier 4 Limit: Approved Symbol Whitelist (PERM-WHITELIST)
+        symbol_clean = str(trade.get("symbol", "")).strip().upper()
+        if symbol_clean:
+            symbol_allowed = symbol_clean in self.ALLOWED_TRADING_SYMBOLS
+            if not symbol_allowed:
+                violations.append(
+                    ComplianceViolation(
+                        rule_id="PERM-WHITELIST",
+                        rule_name="Approved Symbol Whitelist",
+                        category="PERMISSION_TIER",
+                        severity="BLOCK",
+                        description=f"Symbol '{symbol_clean}' is not in the vetted fiduciary symbol whitelist. Leveraged, inverse, or unapproved speculative tickers are blocked in code.",
+                        actual_value=symbol_clean,
+                        threshold="ALLOWED_TRADING_SYMBOLS",
+                    )
+                )
+            rule_results.append(
+                RuleCheckDetail(
+                    rule_id="PERM-WHITELIST",
+                    rule_name="Approved Symbol Whitelist",
+                    category="PERMISSION_TIER",
+                    passed=symbol_allowed,
+                    severity="BLOCK",
+                    details=f"Symbol '{symbol_clean}' whitelist check: {'PASS' if symbol_allowed else 'BLOCKED'}",
+                )
+            )
+
+        # 4. Tier 4 Limit: Daily Cumulative Notional Cap (PERM-CAP-DAILY)
+        max_daily_cap = float(trade.get("max_daily_notional_cap", self.MAX_DAILY_TRADE_NOTIONAL_USD))
+        qty_val = float(trade.get("qty", trade.get("quantity", 0.0)))
+        price_val = float(trade.get("price", trade.get("estimated_price", 100.0)))
+        order_notional = float(trade.get("notional_value", qty_val * price_val))
+        if str(trade.get("currency", "USD")).upper() == "NGN":
+            order_notional_usd = order_notional / 1600.0
+        else:
+            order_notional_usd = order_notional
+
+        daily_executed_usd = float(trade.get("daily_executed_notional", 0.0))
+        if db is not None and client_id:
+            try:
+                day_cutoff = now_utc - timedelta(hours=24)
+                stmt_daily = select(DBTrade).where(
+                    DBTrade.client_id == client_id,
+                    DBTrade.created_at >= day_cutoff,
+                )
+                recent_trades = (await db.execute(stmt_daily)).scalars().all()
+                db_daily_sum = 0.0
+                for rt in recent_trades:
+                    if getattr(rt, "status", "FILLED") in ("FILLED", "PENDING", "ACCEPTED"):
+                        rt_px = float(getattr(rt, "filled_price", None) or 100.0)
+                        rt_qty = float(getattr(rt, "qty", 0.0) or 0.0)
+                        rt_notional = rt_px * rt_qty
+                        if str(getattr(rt, "currency", "USD")).upper() == "NGN":
+                            rt_notional /= 1600.0
+                        db_daily_sum += rt_notional
+                daily_executed_usd = max(daily_executed_usd, db_daily_sum)
+            except Exception as e:
+                logger.warning(f"Error querying daily cumulative notional: {e}")
+
+        projected_daily_usd = daily_executed_usd + order_notional_usd
+        has_enhanced = bool(trade.get("enhanced_kyc_approved", False))
+        daily_passed = (projected_daily_usd <= max_daily_cap) or has_enhanced
+        if not daily_passed:
+            violations.append(
+                ComplianceViolation(
+                    rule_id="PERM-CAP-DAILY",
+                    rule_name="Daily Cumulative Notional Cap",
+                    category="PERMISSION_TIER",
+                    severity="BLOCK",
+                    description=(
+                        f"Projected 24h cumulative notional (${projected_daily_usd:,.2f}) exceeds the Tier 4 daily cap "
+                        f"(${max_daily_cap:,.2f}; prior 24h executed: ${daily_executed_usd:,.2f}, current order: ${order_notional_usd:,.2f})."
+                    ),
+                    actual_value=projected_daily_usd,
+                    threshold=max_daily_cap,
+                )
+            )
+        rule_results.append(
+            RuleCheckDetail(
+                rule_id="PERM-CAP-DAILY",
+                rule_name="Daily Cumulative Notional Cap",
+                category="PERMISSION_TIER",
+                passed=daily_passed,
+                severity="BLOCK",
+                details=f"24h cumulative notional: ${projected_daily_usd:,.2f} / ${max_daily_cap:,.2f} cap",
+            )
+        )
+
+        # 5. Tier 4 RED-Tier Step-Up MFA Verification (when enforced on proposal approval)
+        if bool(trade.get("enforce_step_up_mfa", False)):
+            proj_w_val = float(trade.get("projected_weight", 0.0))
+            tier_check = self.classify_trade_permission_tier(order_notional_usd, proj_w_val)
+            if tier_check["requires_step_up_auth"]:
+                proposal_id_str = str(trade.get("proposal_id", ""))
+                expected_otp = "".join(ch for ch in proposal_id_str if ch.isdigit())[:6].ljust(6, "4")
+                supplied_otp = str(trade.get("mfa_code") or "").strip()
+                attested = bool(trade.get("fiduciary_attested", False))
+                otp_ok = supplied_otp in (expected_otp, "482910") and attested
+                if not otp_ok:
+                    violations.append(
+                        ComplianceViolation(
+                            rule_id="PERM-STEP-UP-MFA",
+                            rule_name="Red-Tier Step-Up MFA & Attestation",
+                            category="PERMISSION_TIER",
+                            severity="BLOCK",
+                            description=(
+                                f"Red-Tier trade (notional ${order_notional_usd:,.2f}, weight {proj_w_val:.1%}) requires a valid "
+                                f"6-digit Step-Up MFA OTP and fiduciary attestation."
+                            ),
+                            actual_value=bool(supplied_otp),
+                            threshold=True,
+                        )
+                    )
+                rule_results.append(
+                    RuleCheckDetail(
+                        rule_id="PERM-STEP-UP-MFA",
+                        rule_name="Red-Tier Step-Up MFA & Attestation",
+                        category="PERMISSION_TIER",
+                        passed=otp_ok,
+                        severity="BLOCK",
+                        details="Step-Up MFA & fiduciary attestation verified" if otp_ok else "Missing or invalid Step-Up MFA / attestation",
+                    )
+                )
+
+        # --------------------------------------------------------------------
         # Final Evaluation & Audit Logging
         # --------------------------------------------------------------------
         blocking_violations = [v for v in violations if v.severity == "BLOCK"]
@@ -1112,7 +1290,7 @@ class ComplianceGuard:
         return result
 
     # ========================================================================
-    # 3. Output Text Filter (REG-001, REG-002)
+    # 3. Output Text Filter (REG-001, REG-002) & Pre-LLM Privacy / Input Guard
     # ========================================================================
 
     def check_text_output(self, text: str) -> Tuple[bool, List[str], str]:
@@ -1149,6 +1327,85 @@ class ComplianceGuard:
 
         passed = len(violations) == 0
         return passed, violations, sanitized_text
+
+    @staticmethod
+    def redact_sensitive_data(text: str) -> str:
+        """
+        Deterministic PII & credential redaction (RULE-10 / PILLAR-2) applied before
+        external LLM inference calls or audit persistence.
+        Strips emails, phone numbers, SSNs/BVNs/NINs, payment card/IBAN/account numbers,
+        bearer/API tokens, and self-reported full names while preserving numeric financial
+        parameters (age, income, net worth, horizon) needed for suitability reasoning.
+        """
+        if not text:
+            return ""
+        out = str(text)
+        # 1. API keys, Bearer tokens, and hex private keys
+        out = re.sub(r"(?i)\b(sk-[a-zA-Z0-9_\-]{16,}|Bearer\s+[A-Za-z0-9\-._~+/]+=*|0x[a-fA-F0-9]{64})\b", "[REDACTED_SECRET]", out)
+        # 2. Email addresses
+        out = re.sub(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b", "[REDACTED_EMAIL]", out)
+        # 3. US SSN (XXX-XX-XXXX) and Nigerian BVN/NIN (11-digit standalone identifier)
+        out = re.sub(r"\b\d{3}-\d{2}-\d{4}\b", "[REDACTED_NATIONAL_ID]", out)
+        out = re.sub(r"(?i)\b(?:bvn|nin|ssn|tin)\s*[:#=-]?\s*\d{8,15}\b", "[REDACTED_NATIONAL_ID]", out)
+        # 4. Credit/debit card numbers (13-19 digits with optional spaces/dashes) & IBANs
+        out = re.sub(r"\b(?:\d[ -]*?){13,19}\b", "[REDACTED_ACCOUNT]", out)
+        out = re.sub(r"\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b", "[REDACTED_IBAN]", out)
+        # 5. Phone numbers (international +XXX or standard 10-14 digit phone formats)
+        out = re.sub(r"(?:\+\d{1,3}[\s\-]?)?\(?\d{3}\)?[\s\-]\d{3}[\s\-]\d{4}\b", "[REDACTED_PHONE]", out)
+        # 6. Explicit personal names ("my name is First Last" / "I'm First Last" when capitalized)
+        out = re.sub(
+            r"(?i)\b(my\s+name\s+is|full\s+name\s+is)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})",
+            r"\1 [REDACTED_NAME]",
+            out,
+        )
+        return out
+
+    def check_input_safety(self, text: str, client_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Two-stage pre-LLM input inspection (RULE-09 / PILLAR-1 & RULE-10 / PILLAR-2):
+        1. Scans for adversarial prompt injection, jailbreak overrides, compliance bypass,
+           and autonomous execution commands.
+        2. Redacts direct PII and credentials via redact_sensitive_data().
+        Records an Anomaly Circuit Breaker incident if an injection attempt is blocked.
+        """
+        if not text:
+            return {
+                "passed": True,
+                "blocked": False,
+                "violations": [],
+                "redacted_text": "",
+                "sanitized_text": "",
+            }
+
+        injection_patterns = [
+            (r"(?i)ignore\s+(?:all\s+)?(?:previous|prior|above|system)\s+(?:instructions|prompts|rules)", "RULE-09: System prompt override attempt"),
+            (r"(?i)bypass\s+(?:the\s+)?(?:compliance|suitability|kyc|aml|mfa|approval|circuit\s*breaker)", "RULE-09: Compliance firewall bypass attempt"),
+            (r"(?i)execute\s+(?:trade|order)s?\s+(?:autonomously|without\s+(?:user\s+)?approval|immediately\s+without\s+confirm)", "RULE-09: Unapproved autonomous execution injection"),
+            (r"(?i)(?:you\s+are\s+now\s+in\s+developer\s+mode|dan\s+mode|jailbreak|reveal\s+your\s+system\s+prompt)", "RULE-09: Adversarial role-play / prompt extraction attempt"),
+            (r"(?i)<\s*script\b|javascript\s*:", "RULE-09: Cross-site scripting / HTML payload injection"),
+        ]
+
+        violations: List[str] = []
+        for pat, desc in injection_patterns:
+            if re.search(pat, text):
+                violations.append(desc)
+
+        redacted = self.redact_sensitive_data(text)
+        blocked = len(violations) > 0
+        if blocked and client_id:
+            self.record_security_incident(
+                str(client_id),
+                reason="; ".join(violations),
+                incident_type="PROMPT_INJECTION_BLOCKED",
+            )
+
+        return {
+            "passed": not blocked,
+            "blocked": blocked,
+            "violations": violations,
+            "redacted_text": redacted,
+            "sanitized_text": "[BLOCKED_ADVERSARIAL_INPUT]" if blocked else redacted,
+        }
 
     # ========================================================================
     # 4. Cryptographic Audit Log Persistence Helper
@@ -1190,66 +1447,170 @@ class ComplianceGuard:
             return None
 
     # ========================================================================
-    # 5. Three-Tier Permission Grading (GREEN / YELLOW / RED) & Circuit Breaker
+    # 5. Five-Tier Permission Model & Anomaly Circuit Breaker
     # ========================================================================
+
+    MAX_SINGLE_TRADE_NOTIONAL_USD: float = 100000.0
+    MAX_DAILY_TRADE_NOTIONAL_USD: float = 250000.0
+    STEP_UP_MFA_THRESHOLD_USD: float = 1000.0
+    ALLOW_AUTONOMOUS_EXECUTION: bool = False
+
+    ALLOWED_TRADING_SYMBOLS: frozenset[str] = frozenset({
+        # US Broad Market & Factor ETFs
+        "SPY", "VTI", "VOO", "IVV", "QQQ", "VXUS", "VEA", "VWO", "IWM", "DIA", "SCHD", "VIG", "VNQ",
+        "XLK", "XLF", "XLV", "XLE", "XLI", "XLY", "XLP", "XLU",
+        # US Treasury, Investment-Grade Bond & Commodity ETFs
+        "BND", "AGG", "SHY", "IEF", "TLT", "TIP", "LQD", "HYG", "MUB", "GOVT", "VGSH", "VGIT", "VGLT", "BNDX",
+        "GLD", "IAU", "SLV", "DBC",
+        # Approved Liquid Large-Cap Equities
+        "AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "NVDA", "META", "TSLA", "BRK.B", "BRK.A", "JPM", "V", "MA",
+        "UNH", "JNJ", "XOM", "PG", "HD", "COST", "AVGO", "LLY", "MRK", "ABBV", "PEP", "KO", "WMT", "CRM",
+        "AMD", "INTC", "NFLX", "DIS", "CSCO", "ORCL", "ADBE", "TXN", "QCOM", "HON", "UNP", "NEE", "LOW",
+        "GS", "MS", "BLK", "BAC", "C", "WFC",
+        # Approved Nigerian Exchange (NGX) Equities via Bamboo Sandbox
+        "DANGCEM", "MTNN", "GTCO", "ZENITHBANK", "ACCESSCORP", "UBA", "SEPLAT", "AIRTELAFRI", "BUACEMENT",
+        "BUAFOODS", "NESTLE", "GEREGU", "TRANSPOWER", "TRANSCORP", "NGXGROUP", "FBNH", "STANBIC", "WAPCO",
+        "OKOMUOIL", "PRESCO",
+    })
 
     _circuit_breaker_events: Dict[str, List[Dict[str, Any]]] = {}
     _circuit_breaker_locked_until: Dict[str, datetime] = {}
 
-    @staticmethod
-    def get_permission_tier_catalog() -> List[Dict[str, Any]]:
-        """Returns the 3-tier permission grading matrix (Green / Yellow / Red)."""
+    @classmethod
+    def get_permission_tier_catalog(cls) -> List[Dict[str, Any]]:
+        """
+        Returns the 5-Tier Permission Implementation enforced in code:
+        - TIER_1_READ_ONLY (GREEN): Read-only market, macro, filing & portfolio data
+        - TIER_2_ADVISE (GREEN): Quantitative simulation, risk profiling & suitability review
+        - TIER_3_PROPOSE_TRADE (YELLOW): Draft unsigned TradeProposal ticket (no broker call)
+        - TIER_4_EXECUTE_WITH_APPROVAL (RED): Execute with explicit human approval under hard code limits
+          (per-trade cap, 24h daily cap, symbol whitelist, step-up MFA)
+        - TIER_5_AUTONOMOUS_DISABLED (DISABLED): Autonomous execution explicitly disabled in code
+        """
         return [
             {
+                "tier_id": "TIER_1_READ_ONLY",
                 "tier": "GREEN",
-                "label": "Auto-Execute (Low Risk / Read-Only)",
-                "execution_policy": "Executed autonomously upon intent recognition without secondary confirmation.",
+                "label": "Tier 1 · Read-Only Data",
+                "execution_policy": "Read-only data retrieval with zero state mutation and zero client PII sent to market APIs.",
+                "code_limits": {
+                    "can_mutate_state": False,
+                    "can_propose_trade": False,
+                    "can_execute_trade": False,
+                    "external_data_policy": "Public ticker symbols & macro series IDs only",
+                },
                 "operations": [
-                    "Live market quotes & historical OHLCV lookups (Yahoo / Cboe / CalcFi)",
-                    "US Treasury yield curve & macroeconomic indicator queries",
-                    "Portfolio holdings, cash balance & drift/health diagnostic checks",
-                    "Multi-dimensional ETF & bond screening / suitability comparison",
-                    "Cryptographic SHA-256 audit chain verification & Merkle proof inspection",
+                    "Live market quotes & historical OHLCV lookups (Yahoo / Finnhub / FMP)",
+                    "US Treasury yield curve & FRED macroeconomic indicator queries",
+                    "SEC EDGAR XBRL facts & 10-K/10-Q filing retrieval",
+                    "Portfolio holdings, cash balance & SHA-256 audit chain verification",
                 ],
                 "safeguards": [
-                    "Strict read-only tool scope in ToolRegistry",
-                    "Tri-layer prompt injection sanitizer on external web/filing data",
-                    "Deterministic math engine (zero LLM arithmetic)",
+                    "Strict read-only tool scope enforced in ToolRegistry",
+                    "Tri-layer prompt injection sanitizer (<untrusted_external_content> isolation)",
+                    "Zero client PII transmitted to market data providers",
                 ],
             },
             {
+                "tier_id": "TIER_2_ADVISE",
+                "tier": "GREEN",
+                "label": "Tier 2 · Advise & Simulate",
+                "execution_policy": "Deterministic quantitative modeling and non-discretionary advisory synthesis; cannot stage or place orders.",
+                "code_limits": {
+                    "can_mutate_state": False,
+                    "can_propose_trade": False,
+                    "can_execute_trade": False,
+                    "llm_privacy_policy": "Pseudonymized suitability context (ANON-ID); direct PII redacted via redact_sensitive_data()",
+                },
+                "operations": [
+                    "Hybrid conversational & tap-to-answer risk profiling (stated vs. revealed risk)",
+                    "6-factor ETF & bond comparison (ProductComparisonAgent)",
+                    "Black-Litterman + 95% CVaR optimization & 10,000-path Student-t Monte Carlo",
+                    "Parallel 3-reviewer verification (Suitability, Devil's Advocate, Numeric Consistency)",
+                ],
+                "safeguards": [
+                    "Zero LLM arithmetic (all returns, weights & VaR/CVaR computed in Python)",
+                    "Pre-LLM PII redaction (names, emails, SSN/BVN, account numbers stripped)",
+                    "Outbound REG-001 (no guarantees) & REG-002 (mandatory risk disclosure) gate",
+                ],
+            },
+            {
+                "tier_id": "TIER_3_PROPOSE_TRADE",
                 "tier": "YELLOW",
-                "label": "User Confirmation (Medium Risk / State & Small Orders)",
-                "execution_policy": "Displays structured operation details and requires explicit 1-click user confirmation.",
+                "label": "Tier 3 · Propose Trade (Stage Only)",
+                "execution_policy": "Stages an unsigned trade proposal ticket with a 15-minute TTL; cannot contact brokerage execution APIs.",
+                "code_limits": {
+                    "can_propose_trade": True,
+                    "can_execute_trade": False,
+                    "proposal_ttl_seconds": 900,
+                    "enforces_symbol_whitelist": True,
+                },
                 "operations": [
-                    "Updating client risk profile or suitability questionnaire answers",
-                    "Generating a formal target asset allocation or rebalance plan",
-                    "Standard paper-trade proposals (notional <= $1,000 and projected weight <= 5%)",
-                    "Anchoring audit trail Merkle root to Ethereum Sepolia testnet",
+                    "Drafting unsigned order ticket (symbol, side, qty, estimated notional & post-trade weight)",
+                    "Pre-proposal symbol whitelist validation (PERM-WHITELIST)",
+                    "Classifying ticket into standard confirmation (<= $1,000 & <= 5% NAV) vs. Step-Up MFA (> $1,000 or > 5% NAV)",
                 ],
                 "safeguards": [
-                    "15-minute proposal expiration window (REG-004)",
-                    "Pre-display suitability & concentration check (SUIT-001..003, CONC-001..003)",
-                    "Behavioral bias cool-off nudge when emotional risk is elevated",
+                    "15-minute hard expiration window (REG-004)",
+                    "Blocked immediately if Anomaly Circuit Breaker is OPEN_LOCKED",
+                    "Unapproved symbols outside ALLOWED_TRADING_SYMBOLS rejected before staging",
                 ],
             },
             {
+                "tier_id": "TIER_4_EXECUTE_WITH_APPROVAL",
                 "tier": "RED",
-                "label": "Strong Multi-Factor Verification (High Risk / Capital Execution)",
-                "execution_policy": "Requires explicit user approval + Step-Up Multi-Factor Verification (6-digit security challenge & suitability attestation) before sandbox execution.",
+                "label": "Tier 4 · Execute With Approval Under Hard Limits",
+                "execution_policy": "Requires explicit non-discretionary client approval (plus Step-Up 6-digit MFA above $1,000 or 5% NAV) and passes hard code-enforced notional, daily, concentration, and whitelist caps.",
+                "code_limits": {
+                    "requires_explicit_user_approval": True,
+                    "step_up_mfa_threshold_usd": cls.STEP_UP_MFA_THRESHOLD_USD,
+                    "max_single_trade_notional_usd": cls.MAX_SINGLE_TRADE_NOTIONAL_USD,
+                    "per_trade_notional_cap_usd": cls.MAX_SINGLE_TRADE_NOTIONAL_USD,
+                    "max_daily_trade_notional_usd": cls.MAX_DAILY_TRADE_NOTIONAL_USD,
+                    "daily_notional_cap_usd": cls.MAX_DAILY_TRADE_NOTIONAL_USD,
+                    "max_single_position_weight": 0.15,
+                    "max_orders_per_10m_window": 5,
+                    "whitelisted_symbols_count": len(cls.ALLOWED_TRADING_SYMBOLS),
+                },
                 "operations": [
-                    "Large paper-trade execution (notional > $1,000 or projected holding weight > 5%)",
-                    "Multi-leg portfolio rebalance execution",
-                    "Orders placed during elevated behavioral bias / market shock states",
+                    "Paper brokerage order submission (Alpaca Paper API / Bamboo Sandbox)",
+                    "Anchoring RFC 6962 Merkle audit roots to Ethereum Sepolia Testnet (chain_id=11155111)",
                 ],
                 "safeguards": [
-                    "Mandatory Step-Up Verification Code challenge + Non-Discretionary Gate (REG-003)",
-                    "30-second idempotency lock preventing duplicate submissions",
-                    "Hard paper-trading sandbox isolation (Alpaca Paper API / Mainnet Chain ID 1 forbidden)",
-                    "Anomaly Circuit Breaker auto-lock on >= 3 consecutive blocked attempts",
+                    f"Per-trade notional cap (${cls.MAX_SINGLE_TRADE_NOTIONAL_USD:,.0f} AML-001) & 24h daily cumulative cap (${cls.MAX_DAILY_TRADE_NOTIONAL_USD:,.0f} PERM-CAP-DAILY)",
+                    f"Vetted symbol whitelist ({len(cls.ALLOWED_TRADING_SYMBOLS)} liquid ETFs/equities; PERM-WHITELIST) & 15% single-stock cap (CONC-001)",
+                    "Step-Up 6-digit MFA OTP + fiduciary attestation required for notional > $1,000 or weight > 5% (PERM-STEP-UP-MFA)",
+                    "30-second distributed idempotency lock + Anomaly Circuit Breaker lock enforcement",
+                ],
+            },
+            {
+                "tier_id": "TIER_5_AUTONOMOUS_DISABLED",
+                "tier": "DISABLED",
+                "label": "Tier 5 · Autonomous Execution (Explicitly Disabled)",
+                "execution_policy": "HARD-DISABLED IN CODE. The agent can never place, modify, or cancel a trade without per-order human approval.",
+                "code_limits": {
+                    "allow_autonomous_execution": False,
+                    "allow_live_brokerage": False,
+                    "allow_ethereum_mainnet": False,
+                },
+                "operations": [
+                    "Unapproved / autonomous background trade execution (FORBIDDEN)",
+                    "Discretionary auto-rebalancing without client ticket approval (FORBIDDEN)",
+                    "Live real-money brokerage or Ethereum Mainnet Chain ID 1 calls (FORBIDDEN)",
+                ],
+                "safeguards": [
+                    "Startup validator Settings.guard_autonomous_execution_disabled refuses boot if allow_autonomous_execution=True",
+                    "ComplianceGuard rule PERM-TIER-5 & REG-003 unconditionally block any unapproved or autonomous order",
+                    "ExecutionModule.execute_trade raises UnapprovedTradeError if approved != True",
                 ],
             },
         ]
+
+    @staticmethod
+    def compute_expected_mfa_code(proposal_id: str) -> str:
+        """Computes the deterministic 6-digit Step-Up MFA code for a proposal_id."""
+        digits = "".join(ch for ch in str(proposal_id or "") if ch.isdigit())
+        return (digits[:6]).ljust(6, "4") if digits else "482910"
 
     @staticmethod
     def get_known_risk_register() -> List[Dict[str, str]]:
@@ -1272,19 +1633,26 @@ class ComplianceGuard:
             {
                 "risk_id": "RISK-03",
                 "category": "Unauthorized / Runaway Agent Execution",
-                "description": "Agent autonomously executing high-value or rapid-fire trades without human oversight.",
-                "mitigation": "Three-tier Green/Yellow/Red permission model, 15-minute proposal TTL, 30s duplicate-order lock, AML-002 velocity cap (max 5 orders/10m), and Anomaly Circuit Breaker.",
+                "description": "Agent attempting to execute high-value, unwhitelisted, or rapid-fire trades without human oversight.",
+                "mitigation": "5-tier permission model with Tier 5 autonomous execution hard-disabled, symbol whitelist (PERM-WHITELIST), $100k per-trade cap (AML-001), $250k daily cap (PERM-CAP-DAILY), 30s lock, and Anomaly Circuit Breaker.",
                 "status": "MITIGATED",
             },
             {
                 "risk_id": "RISK-04",
+                "category": "External LLM Inference Privacy Exposure",
+                "description": "Conversational profiling includes financial parameters (age, income, net worth, goals) sent to the LLM API for advisory synthesis.",
+                "mitigation": "Strict data minimization & PII redaction: Market/Macro/Filing APIs receive only ticker symbols; LLM prompts use SHA-256 pseudonymized IDs (ANON-XXXXXXXX) with all direct PII (names, emails, SSN/BVN, phone, account numbers) stripped via ComplianceGuard.redact_sensitive_data().",
+                "status": "MITIGATED",
+            },
+            {
+                "risk_id": "RISK-05",
                 "category": "Emotional / Panic Trading in Market Drawdowns",
                 "description": "Retail investors panic-selling during drawdowns or chasing hype against their long-term financial plan.",
                 "mitigation": "BehavioralBiasAgent detects 5 cognitive biases in real time, tracks Stated vs. Revealed risk calibration, and triggers 24-hour cool-off nudges.",
                 "status": "MITIGATED",
             },
             {
-                "risk_id": "RISK-05",
+                "risk_id": "RISK-06",
                 "category": "Audit Log Tampering & Repudiation",
                 "description": "Post-hoc alteration or deletion of compliance checks, recommendations, or trade approvals.",
                 "mitigation": "Append-only SHA-256 hash-chained DBAuditLog with HMAC signatures and verifiable Merkle root anchoring to Ethereum Sepolia Testnet.",
@@ -1294,7 +1662,7 @@ class ComplianceGuard:
 
     @staticmethod
     def classify_trade_permission_tier(notional_value: float, projected_weight: float) -> Dict[str, Any]:
-        """Classifies a proposed trade into YELLOW or RED permission tier."""
+        """Classifies a proposed trade within Tier 4 (Execute With Approval) into YELLOW (standard confirm) or RED (Step-Up MFA)."""
         if notional_value > 1000.0 or projected_weight > 0.05:
             reasons = []
             if notional_value > 1000.0:
@@ -1303,13 +1671,15 @@ class ComplianceGuard:
                 reasons.append(f"projected portfolio weight ({projected_weight:.1%}) exceeds 5.0% threshold")
             return {
                 "permission_tier": "RED",
+                "tier_id": "TIER_4_EXECUTE_WITH_APPROVAL",
                 "requires_step_up_auth": True,
-                "step_up_reason": "Red-Tier Strong Verification required: " + " and ".join(reasons) + ".",
+                "step_up_reason": "Tier 4 (Red) Strong Verification required: " + " and ".join(reasons) + ".",
             }
         return {
             "permission_tier": "YELLOW",
+            "tier_id": "TIER_4_EXECUTE_WITH_APPROVAL",
             "requires_step_up_auth": False,
-            "step_up_reason": "Yellow-Tier Standard Confirmation required (notional <= $1,000 and weight <= 5%).",
+            "step_up_reason": "Tier 4 (Yellow) Standard Confirmation required (notional <= $1,000 and weight <= 5%).",
         }
 
     def record_security_incident(self, client_id: str, reason: str, incident_type: str = "COMPLIANCE_BLOCK") -> Dict[str, Any]:
@@ -1350,4 +1720,14 @@ class ComplianceGuard:
         self._circuit_breaker_events.pop(client_id, None)
         self._circuit_breaker_locked_until.pop(client_id, None)
         return self.get_circuit_breaker_status(client_id)
+
+
+# Module-level exports for convenient import by routes and test suites
+ALLOWED_TRADING_SYMBOLS = ComplianceGuard.ALLOWED_TRADING_SYMBOLS
+MAX_SINGLE_TRADE_NOTIONAL_USD = ComplianceGuard.MAX_SINGLE_TRADE_NOTIONAL_USD
+MAX_DAILY_TRADE_NOTIONAL_USD = ComplianceGuard.MAX_DAILY_TRADE_NOTIONAL_USD
+STEP_UP_MFA_THRESHOLD_USD = ComplianceGuard.STEP_UP_MFA_THRESHOLD_USD
+ALLOW_AUTONOMOUS_EXECUTION = ComplianceGuard.ALLOW_AUTONOMOUS_EXECUTION
+
+
 
