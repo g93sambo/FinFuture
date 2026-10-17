@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { RequireProfile } from "@/components/shell/RequireProfile";
 import { ButtonLink } from "@/components/ui/Button";
 import { ErrorNotice, Skeleton, Tag } from "@/components/ui/Feedback";
@@ -11,6 +11,14 @@ import { api } from "@/lib/api";
 import { dateTime, fixed, money, pct, qty, humanize } from "@/lib/format";
 import type { ClientProfile, Portfolio, Position } from "@/lib/types";
 import { useRequest } from "@/lib/useRequest";
+import { ConnectBrokerModal } from "@/components/domain/ConnectBrokerModal";
+import {
+  SUPPORTED_BROKERAGES,
+  getStoredBroker,
+  getStoredBenchmark,
+  type BrokerageInfo,
+  type BenchmarkIndexInfo,
+} from "@/lib/custodians";
 
 /**
  * Clean, standard portfolio valuation performance area chart with real dollar coordinates.
@@ -431,6 +439,28 @@ function Overview({ clientId }: { clientId: string }) {
   );
 
   const [activeTab, setActiveTab] = useState<"holdings" | "watchlist">("holdings");
+  const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
+  const [activeBroker, setActiveBroker] = useState<BrokerageInfo>(() => getStoredBroker());
+  const [activeBenchmark, setActiveBenchmark] = useState<BenchmarkIndexInfo>(() => getStoredBenchmark());
+
+  useEffect(() => {
+    function handleBrokerSync(e: Event) {
+      const customEvent = e as CustomEvent<{ brokerId: string }>;
+      if (customEvent.detail?.brokerId) {
+        const found = SUPPORTED_BROKERAGES.find((b) => b.id === customEvent.detail.brokerId);
+        if (found) setActiveBroker(found);
+      }
+    }
+    function handleBenchmarkSync() {
+      setActiveBenchmark(getStoredBenchmark());
+    }
+    window.addEventListener("equify:broker_changed", handleBrokerSync);
+    window.addEventListener("equify:benchmark_changed", handleBenchmarkSync);
+    return () => {
+      window.removeEventListener("equify:broker_changed", handleBrokerSync);
+      window.removeEventListener("equify:benchmark_changed", handleBenchmarkSync);
+    };
+  }, []);
 
   const defaultPf: Portfolio = {
     client_id: clientId,
@@ -493,6 +523,8 @@ function Overview({ clientId }: { clientId: string }) {
     const reportPayload = {
       exported_at: new Date().toISOString(),
       platform: "Equify Intelligent Wealth Dashboard",
+      connected_broker: activeBroker.name,
+      benchmark_index: activeBenchmark.name,
       suitability_tier: profile.suitability_category,
       risk_tolerance_score: profile.risk_tolerance_score,
       portfolio: pf,
@@ -518,30 +550,64 @@ function Overview({ clientId }: { clientId: string }) {
   if (loading && !data) return <OverviewSkeleton />;
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-8">
       {error ? (
         <div className="mb-2">
           <ErrorNotice error={error} onRetry={reload} />
         </div>
       ) : null}
 
+      <ConnectBrokerModal
+        isOpen={isConnectModalOpen}
+        onClose={() => setIsConnectModalOpen(false)}
+        onConnect={(b, idx) => {
+          setActiveBroker(b);
+          setActiveBenchmark(idx);
+        }}
+      />
+
       {/* HEADER ROW */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-[26px] font-bold tracking-tight text-ink">Investment Dashboard</h1>
-          <p className="mt-1 flex items-center gap-2 text-xs text-muted">
-            <span>Alpaca Paper Trading Account</span>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
+            <button
+              type="button"
+              onClick={() => setIsConnectModalOpen(true)}
+              className="inline-flex items-center gap-1.5 font-semibold text-ink hover:text-accent transition-colors"
+              title="Click to switch or connect brokerage"
+            >
+              <span>{activeBroker.name}</span>
+              <span className="text-[10px] text-accent underline underline-offset-2">Switch</span>
+            </button>
             <span>·</span>
             <span className="inline-flex items-center gap-1.5 font-medium text-accent">
               <span className="h-2 w-2 rounded-full bg-accent animate-pulse" />
               Live Feed Active
             </span>
             <span>·</span>
+            <button
+              type="button"
+              onClick={() => setIsConnectModalOpen(true)}
+              className="figures hover:text-accent transition-colors"
+              title="Click to change performance benchmark"
+            >
+              Benchmark: <strong className="text-ink">{activeBenchmark.ticker}</strong>
+            </button>
+            <span>·</span>
             <span>Client: {profile.suitability_category ?? "Moderate Conservative"}</span>
-          </p>
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => setIsConnectModalOpen(true)}
+            className="rounded-lg border border-line bg-surface px-3 py-2 text-xs font-semibold text-ink hover:border-accent hover:bg-surface/80 transition-colors inline-flex items-center gap-1.5"
+          >
+            <span>🏦</span>
+            <span>Connect Application ({SUPPORTED_BROKERAGES.length})</span>
+          </button>
           <Link
             href="/app/advisor"
             className="rounded-lg border border-line bg-surface px-3 py-2 text-xs font-semibold text-ink hover:border-accent transition-colors"
@@ -563,6 +629,33 @@ function Overview({ clientId }: { clientId: string }) {
             Export Report
           </button>
         </div>
+      </div>
+
+      {/* CONNECTED BROKER & BENCHMARK QUICK-STATUS BANNER */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface/60 px-4 py-3 text-xs">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <span className="font-semibold text-ink">Active Custody Gateway:</span>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-2.5 py-0.5 font-bold text-accent">
+            <span className="h-2 w-2 rounded-full bg-accent" />
+            {activeBroker.shortName} ({activeBroker.region})
+          </span>
+          <span className="text-muted">·</span>
+          <span className="text-muted">
+            Currencies: <strong className="text-ink">{activeBroker.supportedCurrencies.join("/")}</strong>
+          </span>
+          <span className="text-muted">·</span>
+          <span className="text-muted">
+            Benchmark: <strong className="text-ink">{activeBenchmark.name} (+{activeBenchmark.returnYtd}% YTD)</strong>
+          </span>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setIsConnectModalOpen(true)}
+          className="text-xs font-semibold text-accent hover:underline underline-offset-4"
+        >
+          Change Broker or Index →
+        </button>
       </div>
 
       {/* 4 CLEAR HERO FINANCIAL CARDS */}

@@ -11,15 +11,32 @@ export interface SecurityRecord {
 }
 
 export const SECURITIES_DIRECTORY: SecurityRecord[] = [
-  // Core ETFs
+  // Core Benchmark Indices & Market ETFs
   { symbol: "SPY", name: "SPDR S&P 500 ETF Trust", category: "US Large Cap Core", assetClass: "Equity" },
   { symbol: "QQQ", name: "Invesco QQQ Trust", category: "US Tech Large Cap", assetClass: "Equity" },
+  { symbol: "DIA", name: "SPDR Dow Jones Industrial Average ETF", category: "US Blue-Chip Core", assetClass: "Equity" },
+  { symbol: "IWM", name: "iShares Russell 2000 ETF", category: "US Small Cap Core", assetClass: "Equity" },
   { symbol: "VTI", name: "Vanguard Total Stock Market ETF", category: "US Total Market", assetClass: "Equity" },
   { symbol: "VOO", name: "Vanguard S&P 500 ETF", category: "US Large Cap Blend", assetClass: "Equity" },
+  { symbol: "URTH", name: "iShares MSCI World ETF", category: "Global Developed Markets", assetClass: "Equity" },
+  { symbol: "ACWI", name: "iShares MSCI ACWI ETF", category: "All-Country World Index", assetClass: "Equity" },
   { symbol: "VXUS", name: "Vanguard Total International Stock ETF", category: "Global Ex-US Equity", assetClass: "Equity" },
-  { symbol: "IWM", name: "iShares Russell 2000 ETF", category: "US Small Cap Core", assetClass: "Equity" },
   { symbol: "EEM", name: "iShares MSCI Emerging Markets ETF", category: "Emerging Markets", assetClass: "Equity" },
   { symbol: "VNQ", name: "Vanguard Real Estate ETF", category: "US Real Estate REITs", assetClass: "Real Estate" },
+
+  // Chinese & Hong Kong Stock Market Indices
+  { symbol: "000300.SS", name: "CSI 300 Index (沪深300指数)", category: "China A-Shares Top 300", assetClass: "Equity", currency: "CNY" },
+  { symbol: "ASHR", name: "Xtrackers Harvest CSI 300 China A-Shares ETF", category: "China A-Shares Core", assetClass: "Equity" },
+  { symbol: "2800.HK", name: "Tracker Fund of Hong Kong (盈富基金 / 恒生指数)", category: "Hong Kong Hang Seng Index", assetClass: "Equity", currency: "HKD" },
+  { symbol: "^HSI", name: "Hang Seng Index Benchmark (恒生指数)", category: "Hong Kong Blue-Chip Equities", assetClass: "Equity", currency: "HKD" },
+  { symbol: "FXI", name: "iShares China Large-Cap ETF", category: "China Top 50 Equities", assetClass: "Equity" },
+  { symbol: "MCHI", name: "iShares MSCI China ETF", category: "Broad China Equities", assetClass: "Equity" },
+
+  // Global Index Benchmarks
+  { symbol: "^GSPC", name: "S&P 500 Benchmark Index", category: "US Large-Cap Benchmark", assetClass: "Equity" },
+  { symbol: "^NDX", name: "Nasdaq-100 Benchmark Index", category: "US Technology Benchmark", assetClass: "Equity" },
+  { symbol: "^DJI", name: "Dow Jones Industrial Average Benchmark", category: "US Industrial Blue-Chip", assetClass: "Equity" },
+  { symbol: "^RUT", name: "Russell 2000 Benchmark Index", category: "US Small-Cap Benchmark", assetClass: "Equity" },
 
   // Fixed Income & Bonds
   { symbol: "BND", name: "Vanguard Total Bond Market ETF", category: "US Aggregate Bond", assetClass: "Fixed Income" },
@@ -47,9 +64,12 @@ export const SECURITIES_DIRECTORY: SecurityRecord[] = [
   { symbol: "BRK.B", name: "Berkshire Hathaway Inc.", category: "Multi-Sector Conglomerate", assetClass: "Equity" },
   { symbol: "JPM", name: "JPMorgan Chase & Co.", category: "Diversified Global Banking", assetClass: "Equity" },
 
-  // Crypto / Digital Assets
+  // Crypto & Regulated Spot Digital Asset ETFs
   { symbol: "BTC", name: "Bitcoin Reserve", category: "Decentralized Digital Asset", assetClass: "Crypto" },
   { symbol: "ETH", name: "Ethereum", category: "Smart Contract Platform", assetClass: "Crypto" },
+  { symbol: "IBIT", name: "iShares Bitcoin Trust ETF", category: "Regulated Spot Bitcoin ETF", assetClass: "Crypto" },
+  { symbol: "FBTC", name: "Fidelity Wise Origin Bitcoin Fund", category: "Regulated Spot Bitcoin ETF", assetClass: "Crypto" },
+  { symbol: "ETHA", name: "iShares Ethereum Trust ETF", category: "Regulated Spot Ethereum ETF", assetClass: "Crypto" },
 
   // WeBank Smart Wealth (微众银行财富+) & GBA Cross-Border Wealth Connect (跨境理财通)
   { symbol: "WBKCASH", name: "WeBank Live+ Cash Management Fund (微众活期+ R1)", category: "WeBank Money Market · R1", assetClass: "Fixed Income" },

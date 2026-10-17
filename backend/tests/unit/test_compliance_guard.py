@@ -627,3 +627,24 @@ async def test_trade_conc_001_projected_weight(compliance_guard, mock_profile):
         await compliance_guard.check_trade(None, "c1", trade, mock_profile)
     assert any(getattr(v, "rule_id", "") == "CONC-001" for v in exc_info.value.violations)
 
+
+@pytest.mark.asyncio
+async def test_trade_conc_001_override_with_fiduciary_attestation(compliance_guard, mock_profile):
+    trade = {
+        "symbol": "AAPL",
+        "qty": 10.0,
+        "user_approved": True,
+        "user_approved_at": datetime.now(timezone.utc),
+        "projected_weight": 0.28,  # > 0.15
+        "fiduciary_attested": True,  # Affirmative client waiver
+        "mfa_code": "482910",
+        "enforce_step_up_mfa": True,
+    }
+    res = await compliance_guard.check_trade(None, "c1", trade, mock_profile)
+    assert res.passed is True
+    assert any("CONC-001" in w for w in res.warnings)
+    conc_rule = next(r for r in res.rule_results if r.rule_id == "CONC-001")
+    assert conc_rule.passed is True
+    assert conc_rule.severity == "WARN"
+
+

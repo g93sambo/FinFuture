@@ -99,17 +99,65 @@ class TradeExecutionResult(BaseModel):
 
 # Realistic fallback prices for simulated dry-run fills
 SIMULATED_PRICES: Dict[str, float] = {
+    # Broad Core & Factor ETFs
     "SPY": 510.50,
     "QQQ": 440.25,
-    "BND": 72.40,
+    "DIA": 395.20,
+    "IWM": 208.40,
     "VTI": 260.10,
+    "VOO": 468.80,
+    "VXUS": 61.20,
+    "URTH": 142.60,
+    "ACWI": 115.30,
+    "EEM": 42.50,
+    "EFA": 79.20,
+    "VNQ": 88.40,
+    # Chinese & Hong Kong Securities
+    "ASHR": 28.50,
+    "FXI": 29.40,
+    "MCHI": 44.80,
+    "KWEB": 31.60,
+    "000300.SS": 3920.00,
+    "2800.HK": 20.80,
+    "^GSPC": 5120.00,
+    "^NDX": 18240.00,
+    "^DJI": 39800.00,
+    "^RUT": 2080.00,
+    "^HSI": 18450.00,
+    # Fixed Income & Treasuries
+    "BND": 72.40,
+    "AGG": 98.50,
+    "SHY": 82.20,
+    "IEF": 94.10,
+    "TLT": 92.80,
+    "TIP": 107.50,
+    "LQD": 108.20,
+    "HYG": 77.40,
+    # Commodities & Precious Metals
+    "GLD": 218.50,
+    "SLV": 27.80,
+    "USO": 76.50,
+    # Digital Asset / Spot Crypto ETFs
+    "BTC": 67800.00,
+    "ETH": 3520.00,
+    "IBIT": 38.50,
+    "FBTC": 62.40,
+    "ETHA": 24.10,
+    # Mega-Cap Equities
     "AAPL": 185.00,
     "MSFT": 420.00,
     "GOOGL": 175.00,
     "AMZN": 185.00,
     "NVDA": 125.00,
-    "AGG": 98.50,
-    "SHY": 82.20,
+    "META": 495.00,
+    "TSLA": 220.00,
+    "BRK.B": 412.00,
+    "JPM": 198.00,
+    # WeBank Smart Wealth Products
+    "WBKCASH": 1.00,
+    "WBK6M": 102.40,
+    "GBAHK": 15.60,
+    "WBKGLD": 585.00,
     # Nigerian Equities (NGX)
     "DANGCEM": 650.00,
     "MTNN": 240.00,
@@ -373,18 +421,19 @@ class ExecutionModule:
                 )
                 raise
         else:
-            # Engine Alpaca / Dry-run Paper Trading
-            is_dry_run = dry_run if dry_run is not None else (is_global_dry_run or self.client is None)
+            # Engine Alpaca / Multi-Broker Routing (WeBank, IBKR, Schwab, Fidelity, Robinhood, etc.)
+            is_dry_run = dry_run if dry_run is not None else (is_global_dry_run or self.client is None or chosen_broker != "alpaca")
             if is_dry_run:
-                # Engine B: Simulated Dry-Run Execution
-                order_id = f"dry-run-{uuid.uuid4()}"
+                # Engine B: Simulated Sandbox / Custodian Execution
+                broker_prefix = chosen_broker if chosen_broker in ("webank", "ibkr", "schwab", "fidelity", "robinhood", "tiger", "futu", "coinbase", "vanguard") else "alpaca"
+                order_id = f"dry-run-{broker_prefix}-{uuid.uuid4().hex[:10]}"
                 alpaca_order_id = order_id
                 status = "FILLED"
                 filled_price = SIMULATED_PRICES.get(symbol_clean, SIMULATED_PRICES["DEFAULT"])
                 filled_qty = float(qty)
                 total_price = filled_price * filled_qty
                 executed_at = now_utc
-                logger.info(f"[DRY-RUN] Executed simulated {side_clean} {qty} {symbol_clean} @ ${filled_price:.2f}")
+                logger.info(f"[{broker_prefix.upper()}] Executed simulated {side_clean} {qty} {symbol_clean} @ ${filled_price:.2f}")
             else:
                 # Engine A: Alpaca Paper Trading Execution
                 order_side = OrderSide.BUY if side_clean == "BUY" else OrderSide.SELL

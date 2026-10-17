@@ -1059,27 +1059,57 @@ class ComplianceGuard:
             proj_w = float(trade["projected_weight"])
             passed = proj_w <= max_stock_weight
             if not passed:
-                violations.append(
-                    ComplianceViolation(
+                # Fiduciary waiver: Client-directed unsolicited orders with affirmative attestation can override soft concentration ceiling
+                if bool(trade.get("fiduciary_attested")):
+                    override_msg = (
+                        f"CONC-001 Single-Stock Concentration Limit Overridden: Projected holding weight ({proj_w:.1%}) "
+                        f"exceeds {max_stock_weight:.1%} single-stock ceiling. Executed as an unsolicited, "
+                        "client-directed transaction pursuant to signed client fiduciary waiver & step-up authentication."
+                    )
+                    warnings.append(override_msg)
+                    rule_results.append(
+                        RuleCheckDetail(
+                            rule_id="CONC-001",
+                            rule_name=r["name"],
+                            category="CONCENTRATION",
+                            passed=True,
+                            severity="WARN",
+                            details=f"Overridden by signed client fiduciary attestation (Projected: {proj_w:.1%}, Max: {max_stock_weight:.1%})",
+                        )
+                    )
+                else:
+                    violations.append(
+                        ComplianceViolation(
+                            rule_id="CONC-001",
+                            rule_name=r["name"],
+                            category="CONCENTRATION",
+                            severity=r["severity"],
+                            description=f"Projected holding weight ({proj_w:.1%}) exceeds 15.0% single-stock ceiling.",
+                            actual_value=proj_w,
+                            threshold=max_stock_weight,
+                        )
+                    )
+                    rule_results.append(
+                        RuleCheckDetail(
+                            rule_id="CONC-001",
+                            rule_name=r["name"],
+                            category="CONCENTRATION",
+                            passed=False,
+                            severity=r["severity"],
+                            details=f"Projected weight: {proj_w:.1%}, Max allowed: {max_stock_weight:.1%}",
+                        )
+                    )
+            else:
+                rule_results.append(
+                    RuleCheckDetail(
                         rule_id="CONC-001",
                         rule_name=r["name"],
                         category="CONCENTRATION",
+                        passed=True,
                         severity=r["severity"],
-                        description=f"Projected holding weight ({proj_w:.1%}) exceeds 15.0% single-stock ceiling.",
-                        actual_value=proj_w,
-                        threshold=max_stock_weight,
+                        details=f"Projected weight: {proj_w:.1%}, Max allowed: {max_stock_weight:.1%}",
                     )
                 )
-            rule_results.append(
-                RuleCheckDetail(
-                    rule_id="CONC-001",
-                    rule_name=r["name"],
-                    category="CONCENTRATION",
-                    passed=passed,
-                    severity=r["severity"],
-                    details=f"Projected weight: {proj_w:.1%}, Max allowed: {max_stock_weight:.1%}",
-                )
-            )
 
         # --------------------------------------------------------------------
         # Permission Tier Enforcement (Tiers 3, 4 & 5 Hard Code Limits)
@@ -1456,12 +1486,18 @@ class ComplianceGuard:
     ALLOW_AUTONOMOUS_EXECUTION: bool = False
 
     ALLOWED_TRADING_SYMBOLS: frozenset[str] = frozenset({
-        # US Broad Market & Factor ETFs
+        # US Broad Market, Indices & Factor ETFs
         "SPY", "VTI", "VOO", "IVV", "QQQ", "VXUS", "VEA", "VWO", "IWM", "DIA", "SCHD", "VIG", "VNQ",
         "XLK", "XLF", "XLV", "XLE", "XLI", "XLY", "XLP", "XLU",
+        # Global, Developed & Emerging Markets Indices
+        "URTH", "ACWI", "EEM", "EFA", "ASHR", "FXI", "MCHI", "KWEB", "EWJ", "EWG", "EWU",
+        # Chinese & Hong Kong Index Benchmarks
+        "000300.SS", "2800.HK", "^GSPC", "^NDX", "^DJI", "^RUT", "^HSI",
         # US Treasury, Investment-Grade Bond & Commodity ETFs
         "BND", "AGG", "SHY", "IEF", "TLT", "TIP", "LQD", "HYG", "MUB", "GOVT", "VGSH", "VGIT", "VGLT", "BNDX",
-        "GLD", "IAU", "SLV", "DBC",
+        "GLD", "IAU", "SLV", "DBC", "USO",
+        # Regulated Digital Asset & Crypto Spot ETFs
+        "BTC", "ETH", "IBIT", "FBTC", "ETHA", "GBTC",
         # Approved Liquid Large-Cap Equities
         "AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "NVDA", "META", "TSLA", "BRK.B", "BRK.A", "JPM", "V", "MA",
         "UNH", "JNJ", "XOM", "PG", "HD", "COST", "AVGO", "LLY", "MRK", "ABBV", "PEP", "KO", "WMT", "CRM",

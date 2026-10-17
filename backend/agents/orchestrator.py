@@ -1625,6 +1625,8 @@ class OrchestratorAgent:
             "permission_tier": tier_info["permission_tier"],
             "requires_step_up_auth": tier_info["requires_step_up_auth"],
             "step_up_reason": tier_info["step_up_reason"],
+            "exceeds_concentration_ceiling": float(proj["projected_weight"]) > 0.15,
+            "max_recommended_weight": 0.15,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "expires_in_seconds": PROPOSAL_TTL_SECONDS,
         }

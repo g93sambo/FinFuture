@@ -151,6 +151,8 @@ export interface Proposal {
   permission_tier?: "GREEN" | "YELLOW" | "RED" | string;
   requires_step_up_auth?: boolean;
   step_up_reason?: string;
+  exceeds_concentration_ceiling?: boolean;
+  max_recommended_weight?: number;
   created_at: string;
   expires_in_seconds: number;
 }
