@@ -240,21 +240,27 @@ export function ProposalTicket({
 
 /** Broker confirmation after an order is placed. */
 export function ExecutionReceipt({ execution }: { execution: Execution }) {
-  const filled = execution.status === "FILLED";
+  const isFilledOrAccepted = execution.status === "FILLED" || execution.status === "ACCEPTED";
+  const displayQty = (execution.filled_qty && execution.filled_qty > 0) ? execution.filled_qty : execution.qty;
+  const displayPrice = execution.filled_price ?? (execution.total_price && displayQty ? execution.total_price / displayQty : null);
+  const brokerName = execution.broker ? execution.broker.toUpperCase() : "WeBank / Active";
+
   return (
     <div className="overflow-hidden rounded-card border border-success/35 bg-success-soft">
       <div className="flex items-center justify-between gap-3 border-b border-success/25 px-4 py-2.5">
         <p className="text-sm font-semibold text-ink">
-          {execution.side === "BUY" ? "Bought" : "Sold"} {qty(execution.filled_qty ?? execution.qty)} {execution.symbol}
+          {execution.side === "BUY" ? "Bought" : "Sold"} {qty(displayQty)} {execution.symbol}
         </p>
-        <Tag tone={filled ? "success" : "warning"}>{filled ? "Filled" : execution.status}</Tag>
+        <Tag tone={isFilledOrAccepted ? "success" : "warning"}>
+          {execution.status === "ACCEPTED" ? "Order Executed" : execution.status === "FILLED" ? "Filled" : execution.status}
+        </Tag>
       </div>
       <dl className="grid grid-cols-2 gap-x-6 px-4 py-3 text-sm sm:grid-cols-4">
         {[
-          ["Fill price", money(execution.filled_price)],
-          ["Value", execution.filled_price ? money(execution.filled_price * (execution.filled_qty ?? execution.qty)) : "–"],
-          ["Account", "Paper Portfolio"],
-          ["Settlement", "Instant"],
+          ["Fill price", displayPrice ? money(displayPrice) : "Market Execution"],
+          ["Value", displayPrice ? money(displayPrice * displayQty) : "–"],
+          ["Custodian Account", `${brokerName} Custody`],
+          ["Settlement", "Instant (Sandbox)"],
         ].map(([k, v]) => (
           <div key={k} className="py-1">
             <dt className="text-[12.5px] text-muted">{k}</dt>

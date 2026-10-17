@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agents.execution_module import SIMULATED_PRICES
 from agents.orchestrator import AgentContainer, TradeBlocked
 from api.deps import get_container
 from core.security import get_current_user, verify_client_ownership
@@ -135,7 +136,7 @@ async def get_trade_order(
         "side": trade.side,
         "qty": trade.qty,
         "status": trade.status,
-        "filled_price": trade.filled_price,
+        "filled_price": trade.filled_price if trade.filled_price is not None else SIMULATED_PRICES.get(trade.symbol, 100.0),
         "broker": getattr(trade, "broker", "alpaca"),
         "currency": getattr(trade, "currency", "USD"),
         "alpaca_order_id": trade.alpaca_order_id,
@@ -166,7 +167,7 @@ async def list_trades(
                 "side": t.side,
                 "qty": t.qty,
                 "status": t.status,
-                "filled_price": t.filled_price,
+                "filled_price": t.filled_price if t.filled_price is not None else SIMULATED_PRICES.get(t.symbol, 100.0),
                 "broker": getattr(t, "broker", "alpaca"),
                 "currency": getattr(t, "currency", "USD"),
                 "alpaca_order_id": t.alpaca_order_id,

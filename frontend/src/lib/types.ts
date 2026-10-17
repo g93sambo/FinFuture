@@ -172,6 +172,9 @@ export interface Execution {
   executed_at: string;
   dry_run: boolean;
   error: string | null;
+  broker?: string;
+  currency?: string;
+  total_price?: number;
 }
 
 export interface Violation {
