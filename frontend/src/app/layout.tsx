@@ -26,7 +26,7 @@ const figures = localFont({
 });
 
 export const metadata: Metadata = {
-  title: { default: "FinFuture Advisory", template: "%s · FinFuture Advisory" },
+  title: { default: "Equify · Intelligent Wealth & Investment Dashboard", template: "%s · Equify" },
   description: "Risk profiling, product comparison, allocation and paper-trade execution with a compliance check on every step.",
 };
 

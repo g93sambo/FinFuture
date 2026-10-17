@@ -6,7 +6,8 @@ import { LineChart } from "@/components/charts/LineChart";
 import { ComplianceSummary } from "@/components/domain/Compliance";
 import { RequireProfile } from "@/components/shell/RequireProfile";
 import { Button, ButtonLink } from "@/components/ui/Button";
-import { Empty, ErrorNotice, Notice } from "@/components/ui/Feedback";
+import { Empty, ErrorNotice, Notice, Tag } from "@/components/ui/Feedback";
+import { Segmented } from "@/components/ui/Field";
 import { Ledger, PageHeader, Panel } from "@/components/ui/Layout";
 import { Table, Td, Th, Tr } from "@/components/ui/Table";
 import { api } from "@/lib/api";
@@ -22,6 +23,41 @@ const solverNames: Record<string, string> = {
   profile_heuristic: "Profile benchmark (fallback)",
 };
 
+const fundAnalogies: Record<string, { role: string; analogy: string }> = {
+  SPY: {
+    role: "Core US Large-Cap Engine",
+    analogy: "Like owning a slice of the 500 largest US companies—your steady highway cruiser for long-term wealth.",
+  },
+  VTI: {
+    role: "Total US Market Anchor",
+    analogy: "Captures every public US company from giants to small innovators, spreading your growth across the entire economy.",
+  },
+  QQQ: {
+    role: "Tech & Innovation Booster",
+    analogy: "Acts like a turbocharger focused on Nasdaq technology leaders—higher speed in bull markets, bumpier in downturns.",
+  },
+  BND: {
+    role: "Investment-Grade Bond Shock Absorber",
+    analogy: "Your portfolio's suspension system—pays steady interest and cushions the ride when stock markets hit potholes.",
+  },
+  AGG: {
+    role: "Core Aggregate Bond Ballast",
+    analogy: "Broad US government and corporate bonds that anchor portfolio stability during equity sell-offs.",
+  },
+  SHY: {
+    role: "Short-Term Treasury Cash Shield",
+    analogy: "1–3 year US Treasury notes—acts like a high-grade vault with minimal interest-rate sensitivity.",
+  },
+  GLD: {
+    role: "Inflation & Crisis Hedge",
+    analogy: "Physical gold exposure that tends to hold purchasing power when paper currencies or stocks face stress.",
+  },
+  VNQ: {
+    role: "Real Estate Income Stream",
+    analogy: "Income-producing commercial properties (REITs) that collect rent across economic cycles.",
+  },
+};
+
 function splitText(text = "") {
   const [head, ...rest] = text.split("\n\n");
   const m = head.match(/\(([^)]+)\)/);
@@ -30,6 +66,7 @@ function splitText(text = "") {
 
 function Allocation({ clientId }: { clientId: string }) {
   const [events, setEvents] = useState<AgentEvent[] | null>(null);
+  const [explainMode, setExplainMode] = useState<"novice" | "quant">("novice");
   const { run, pending, error } = useAction(async () => {
     const res = await api.recommendAllocation(clientId);
     setEvents(res.events);
@@ -91,12 +128,26 @@ function Allocation({ clientId }: { clientId: string }) {
   return (
     <div className="space-y-8">
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-line pb-4">
-        <p className="text-sm text-muted">
-          Method: <span className="text-ink">{solverNames[solver] ?? solver}</span>
-        </p>
-        <Button variant="secondary" size="sm" onClick={() => run()} pending={pending}>
-          Recalculate
-        </Button>
+        <div className="flex flex-wrap items-center gap-4">
+          <p className="text-sm text-muted">
+            Method: <span className="text-ink">{solverNames[solver] ?? solver}</span>
+          </p>
+          <Tag tone="neutral">GREEN TIER · Read-Only Computation</Tag>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <Segmented
+            label="Explanation mode"
+            value={explainMode}
+            onChange={setExplainMode}
+            options={[
+              { value: "novice", label: "Novice Plain-English" },
+              { value: "quant", label: "Institutional Quant / SHAP" },
+            ]}
+          />
+          <Button variant="secondary" size="sm" onClick={() => run()} pending={pending}>
+            Recalculate
+          </Button>
+        </div>
       </div>
       <ErrorNotice error={error} />
 
@@ -106,8 +157,45 @@ function Allocation({ clientId }: { clientId: string }) {
             <BulletBars title="Recommended weight per fund" max={1} rows={weights.map(([s, w]) => ({ label: s, value: w }))} />
           </Panel>
 
-          <Panel title="Why this mix">
-            <div className="max-w-[70ch] space-y-3 text-[15px] whitespace-pre-line text-ink">{explanation}</div>
+          <Panel
+            title="Why this mix"
+            aside={
+              <Tag tone={explainMode === "novice" ? "success" : "neutral"}>
+                {explainMode === "novice" ? "Everyday Analogy View" : "Mathematical & SHAP Decomposition"}
+              </Tag>
+            }
+          >
+            {explainMode === "novice" ? (
+              <div className="space-y-4">
+                <p className="text-sm text-muted">
+                  Plain-English translation of how each ETF works together in your portfolio—designed so first-time investors can understand what they own without Wall Street jargon:
+                </p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {weights.map(([sym, w]) => {
+                    const info = fundAnalogies[sym] ?? {
+                      role: "Diversified Portfolio Building Block",
+                      analogy: "Balances risk and return alongside your core stock and bond holdings.",
+                    };
+                    return (
+                      <div key={sym} className="rounded-xl border border-line bg-surface/70 p-4">
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-ink">{sym}</span>
+                          <span className="figures text-sm font-semibold text-accent">{pct(w)}</span>
+                        </div>
+                        <p className="mt-0.5 text-xs font-medium text-muted">{info.role}</p>
+                        <p className="mt-2 text-xs leading-relaxed text-ink">{info.analogy}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="rounded-r-xl border-l-3 border-accent bg-accent-soft/60 px-4 py-3 text-xs text-ink">
+                  <span className="font-semibold">Bottom Line in Plain English:</span> If the market has a rough month (worst 5% of days), this mix is engineered to keep average daily swings around{" "}
+                  <span className="figures font-semibold">{pct(m.cvar_95, 2)}</span> while targeting steady long-term compounding.
+                </div>
+              </div>
+            ) : (
+              <div className="max-w-[70ch] space-y-3 text-[15px] whitespace-pre-line text-ink">{explanation}</div>
+            )}
           </Panel>
 
           {frontier.length > 1 ? (

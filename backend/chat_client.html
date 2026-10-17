@@ -246,13 +246,18 @@
         const notional = p.notional_value || (Number(price) * Number(quantity || 0));
         const priceStr = Number(price).toFixed(2);
         const notionalStr = Number(notional).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        const currency = (p.currency || data.currency || "USD").toUpperCase();
+        const currSym = currency === "NGN" ? "₦" : "$";
+        const broker = p.broker || data.broker || (symbol.match(/^(DANGCEM|MTNN|GTCO|ZENITHBANK|ACCESSCORP|UBA|SEPLAT|AIRTELAFRI|BUACEMENT|BUAFOODS)$/) ? "bamboo" : "alpaca");
+        const brokerBadge = broker === "bamboo" ? '<span style="background: #059669; color: white; padding: 2px 7px; border-radius: 4px; font-size: 0.75rem; margin-left: 6px;">🎋 Bamboo Live (NGX / Global)</span>' : '<span style="background: #475569; color: white; padding: 2px 7px; border-radius: 4px; font-size: 0.75rem; margin-left: 6px;">🦙 Alpaca Paper</span>';
 
         const details = `
-          <div style="font-size: 1.05em; font-weight: 600; margin-bottom: 6px;">
-            ${action} ${quantity} ${symbol} @ ~$${priceStr}
+          <div style="font-size: 1.05em; font-weight: 600; margin-bottom: 6px; display: flex; align-items: center; flex-wrap: wrap;">
+            <span>${action} ${quantity} ${symbol} @ ~${currSym}${priceStr}</span>
+            ${brokerBadge}
           </div>
           <div style="font-size: 0.9em; opacity: 0.9; margin-bottom: 8px;">
-            Estimated Notional Value: ~$${notionalStr}
+            Estimated Notional Value: ~${currSym}${notionalStr} (${currency})
           </div>
           <div style="font-size: 0.85em; opacity: 0.8; margin-bottom: 12px;">
             ${data.text || "Human confirmation required within 15 minutes."}

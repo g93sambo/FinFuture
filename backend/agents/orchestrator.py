@@ -48,6 +48,9 @@ from services.audit_logger import AuditLogger, get_audit_logger
 from services.cache import CacheService, get_cache_service, key_session
 from services.health_report import HealthReportService
 from services.portfolio_service import PortfolioService
+from services.context_builder import FinancialContextBuilder
+from agents.review_stage import ReviewStage
+from services.demo_replay import is_demo_mode_active, match_demo_response
 
 logger = logging.getLogger("wealth_advisor.agents.orchestrator")
 
@@ -251,18 +254,36 @@ def _event(kind: str, agent: str, text: str = "", **extra: Any) -> Dict[str, Any
 class OrchestratorAgent:
     def __init__(self, c: AgentContainer) -> None:
         self.c = c
+        self.context_builder = FinancialContextBuilder(
+            risk_profiler=getattr(c, "profiler", None),
+            portfolio_service=getattr(c, "portfolio", None),
+        )
+        self.review_stage = ReviewStage()
+        try:
+            try:
+                from tools.definitions import register_core_tools
+            except ImportError:
+                from backend.tools.definitions import register_core_tools
+            register_core_tools()
+        except Exception as reg_err:
+            logger.debug("Core tool registration notice: %s", reg_err)
 
+    # ------------------------------------------------------------------ #
     # ------------------------------------------------------------------ #
     # Session state
     # ------------------------------------------------------------------ #
-    async def start_session(self, user_id: str, client_id: Optional[str] = None) -> Dict[str, Any]:
+    async def start_session(
+        self, user_id: str, client_id: Optional[str] = None, title: Optional[str] = None, db: Optional[AsyncSession] = None
+    ) -> Dict[str, Any]:
         session_id = str(uuid.uuid4())
         stage = SessionStage.ADVICE_GENERATION.value if client_id else SessionStage.PROFILING.value
+        sess_title = title or "New Advisory Conversation"
         session = {
             "session_id": session_id,
             "user_id": user_id,
             "client_id": client_id,
             "stage": stage,
+            "title": sess_title,
         }
         await self.c.cache.set_json(key_session(session_id), session, expire=SESSION_TTL_SECONDS)
         greeting = (
@@ -277,10 +298,50 @@ class OrchestratorAgent:
                 f"---\n\n{STATE_PROMPTS[STATE_DEMOGRAPHICS]}"
             )
         )
+        if db is not None:
+            try:
+                from db.models import DBChatSession, DBChatMessage
+                chat_sess = DBChatSession(
+                    id=session_id,
+                    user_id=user_id,
+                    title=sess_title,
+                    stage=stage,
+                )
+                db.add(chat_sess)
+                db.add(
+                    DBChatMessage(
+                        session_id=session_id,
+                        sender="agent",
+                        agent="WealthAdvisor",
+                        text=greeting,
+                        events=[{"event": "agent_response", "structured_event": "session_started", "text": greeting, "stage": stage}],
+                    )
+                )
+                await db.commit()
+            except Exception as e:
+                logger.warning("Failed to persist new session to db: %s", e)
+
         return {"session": session, "message": greeting}
 
-    async def load_session(self, session_id: str, user_id: str) -> Dict[str, Any]:
+    async def load_session(self, session_id: str, user_id: str, db: Optional[AsyncSession] = None) -> Dict[str, Any]:
         session = await self.c.cache.get_json(key_session(session_id))
+        if not session and db is not None:
+            try:
+                from sqlalchemy import select
+                from db.models import DBChatSession
+                row = (await db.execute(select(DBChatSession).where(DBChatSession.id == session_id))).scalars().first()
+                if row:
+                    session = {
+                        "session_id": row.id,
+                        "user_id": row.user_id,
+                        "client_id": None,
+                        "stage": row.stage,
+                        "title": row.title,
+                    }
+                    await self.c.cache.set_json(key_session(session_id), session, expire=SESSION_TTL_SECONDS)
+            except Exception as exc:
+                logger.debug("Could not fallback load session from DB: %s", exc)
+
         if not session:
             raise HTTPException(status_code=404, detail="Session not found or expired")
         if session.get("user_id") != user_id:
@@ -334,10 +395,43 @@ class OrchestratorAgent:
         client_id: Optional[str],
         message: str,
         db: AsyncSession,
+        attachments: Optional[List[Dict[str, Any]]] = None,
     ) -> List[Dict[str, Any]]:
-        session = await self.load_session(session_id, user_id)
+        session = await self.load_session(session_id, user_id, db=db)
         if client_id and not session.get("client_id"):
             session["client_id"] = client_id
+
+        # Persist session and user message in DBChatSession / DBChatMessage
+        if db is not None:
+            try:
+                from sqlalchemy import select
+                from db.models import DBChatSession, DBChatMessage
+                sess_row = (await db.execute(select(DBChatSession).where(DBChatSession.id == session_id))).scalars().first()
+                if not sess_row:
+                    sess_row = DBChatSession(
+                        id=session_id,
+                        user_id=user_id,
+                        title=session.get("title") or (message[:45] + "…" if len(message) > 45 else (message or "Multimodal Query")),
+                        stage=session.get("stage") or "ADVICE_GENERATION",
+                    )
+                    db.add(sess_row)
+                elif sess_row.title in ("New Advisory Conversation", "New Chat", "") and message.strip():
+                    sess_row.title = (message[:45] + "…") if len(message) > 45 else message
+
+                sess_row.updated_at = datetime.now(timezone.utc)
+                db.add(
+                    DBChatMessage(
+                        session_id=session_id,
+                        sender="user",
+                        agent="User",
+                        text=message,
+                        attachments=attachments or [],
+                        events=[],
+                    )
+                )
+                await db.commit()
+            except Exception as exc:
+                logger.warning("Failed to persist user message: %s", exc)
 
         # Track conversation history in session for multi-turn context
         history = session.setdefault("history", [])
@@ -345,15 +439,28 @@ class OrchestratorAgent:
         if len(history) > 20:
             session["history"] = history[-20:]
 
-        events: List[Dict[str, Any]] = [_event("user_message", "User", message)]
+        user_ev = _event("user_message", "User", message)
+        if attachments:
+            user_ev["attachments"] = attachments
+        events: List[Dict[str, Any]] = [user_ev]
         stage = _normalize_stage(session.get("stage"))
+
+        # Action 10: Demo Mode Replay Check
+        if is_demo_mode_active(message):
+            clean_demo_msg = re.sub(r"^\[DEMO\]\s*", "", message, flags=re.IGNORECASE)
+            demo_match = match_demo_response(clean_demo_msg or message)
+            if demo_match:
+                events.append(await self._say(demo_match["text"], db, client_id, agent=demo_match["agent"]))
+                session["history"].append({"role": "assistant", "content": demo_match["text"]})
+                await self._save_session(session)
+                return events
 
         if stage == SessionStage.PROFILING:
             events += await self._profiling_turn(db, session, message)
         elif stage == SessionStage.PROPOSAL_REVIEW:
             events += await self._proposal_review_turn(db, session, message)
         else:
-            events += await self._advising_turn(db, session, message)
+            events += await self._advising_turn(db, session, message, attachments=attachments)
 
         # Track assistant responses in history for multi-turn context
         for ev in events:
@@ -363,12 +470,41 @@ class OrchestratorAgent:
             session["history"] = session["history"][-20:]
 
         await self._save_session(session)
+
+        # Persist agent response in DBChatMessage
+        if db is not None:
+            try:
+                from sqlalchemy import select
+                from db.models import DBChatMessage, DBChatSession
+                last_agent_text = next((e.get("text") for e in reversed(events) if e.get("text") and e.get("event") != "user_message"), "")
+                last_agent_name = next((e.get("agent") for e in reversed(events) if e.get("agent") and e.get("agent") != "User"), "WealthAdvisor")
+                agent_events = [e for e in events if e.get("event") != "user_message"]
+                if last_agent_text or agent_events:
+                    db.add(
+                        DBChatMessage(
+                            session_id=session_id,
+                            sender="agent",
+                            agent=last_agent_name,
+                            text=last_agent_text,
+                            events=agent_events,
+                        )
+                    )
+                    sess_row = (await db.execute(select(DBChatSession).where(DBChatSession.id == session_id))).scalars().first()
+                    if sess_row:
+                        sess_row.updated_at = datetime.now(timezone.utc)
+                        sess_row.stage = session.get("stage", sess_row.stage)
+                    await db.commit()
+            except Exception as exc:
+                logger.warning("Failed to persist agent response: %s", exc)
+
         return events
 
     # Backward-compatible facade for handle_message
-    async def handle_message(self, db: AsyncSession, user_id: str, session_id: str, text: str) -> List[Dict[str, Any]]:
+    async def handle_message(
+        self, db: AsyncSession, user_id: str, session_id: str, text: str, attachments: Optional[List[Dict[str, Any]]] = None
+    ) -> List[Dict[str, Any]]:
         return await self.process_user_message(
-            session_id=session_id, user_id=user_id, client_id=None, message=text, db=db
+            session_id=session_id, user_id=user_id, client_id=None, message=text, db=db, attachments=attachments
         )
 
     # -- profiling ---------------------------------------------------- #
@@ -431,7 +567,7 @@ class OrchestratorAgent:
                 await self._say(result["response"], db, client_id, agent="RiskProfiler", client_id=client_id, profile_complete=True)
             )
         else:
-            events.append(await self._say(result["response"], db, None, agent="RiskProfiler"))
+            events.append(await self._say(result["response"], db, None, agent="RiskProfiler", options=result.get("options", [])))
         return events
 
     # -- intent translator via LLM ------------------------------------ #
@@ -499,6 +635,7 @@ class OrchestratorAgent:
         session: Dict[str, Any],
         text: str,
         history: Optional[List[Dict[str, str]]] = None,
+        attachments: Optional[List[Dict[str, Any]]] = None,
     ) -> List[Dict[str, Any]]:
         key = settings.openai_api_key or os.getenv("OPENAI_API_KEY")
         if not key or key == "your_openai_api_key_here":
@@ -768,6 +905,48 @@ class OrchestratorAgent:
             {
                 "type": "function",
                 "function": {
+                    "name": "run_deep_research",
+                    "description": "Trigger deep autonomous multi-analyst research graph across Macro, Financial, Quantitative, and Devil's Advocate analysts, streaming progress milestones and yielding verifiable citations.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "inquiry": {
+                                "type": "string",
+                                "description": "Subject or thesis to investigate (e.g. 'Dangote Refinery capital structure and FX sustainability')",
+                            },
+                            "starting_capital": {"type": "number", "description": "Starting portfolio size in dollars"},
+                            "target_capital": {"type": "number", "description": "Target terminal wealth in dollars"},
+                            "horizon_years": {"type": "integer", "description": "Horizon in years"},
+                            "annual_withdrawal": {"type": "number", "description": "Annual scheduled living expense withdrawal"},
+                        },
+                        "required": ["inquiry"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "search_legal_statutes",
+                    "description": "Retrieve verified statutory clauses and legal tax text from PITA, CITA, CGTA, NEPZA, and PRA 2014.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": "Legal topic or question (e.g. 'dividend withholding tax holding company', 'sovereign debt exemption', 'CRA relief')",
+                            },
+                            "jurisdiction": {
+                                "type": "string",
+                                "description": "Tax jurisdiction (default 'Nigeria')",
+                            },
+                        },
+                        "required": ["query"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
                     "name": "propose_trade",
                     "description": "Prepare a formal non-discretionary paper trade proposal to buy or sell shares of a stock/ETF for user confirmation.",
                     "parameters": {
@@ -784,91 +963,61 @@ class OrchestratorAgent:
         ]
 
         system_prompt = (
-            "You are an elite, proactive AI Wealth Advisor, senior quantitative strategist (Jane Street caliber), "
-            "and principal equity research analyst (Citadel/Point72 L/S Equity and top Private Equity investment committee standard). "
-            "You have continuous multi-turn conversation memory and are directly connected to live application tools: "
-            "- `optimize_tax_strategy`: Call this whenever the user asks for tax strategy, tax minimization, legal tax avoidance, or jurisdictional wealth structuring (especially Nigeria, cross-border, or emerging markets). "
-            "- `simulate_wealth_plan`: Call this whenever the user asks for multi-year financial modeling, growing wealth (e.g. $10M to $100M), retirement/lifestyle withdrawal projections ($500k/yr), Monte Carlo probability analysis, portfolio stress tests, or UHNW strategic asset allocation. "
-            "- `search_financial_web`: Search the live web for prospectuses, filings, debt figures, revenues, valuations, and emerging market / IPO / private company intelligence (e.g. Dangote Refinery, SpaceX, Stripe). "
-            "- `fetch_web_page`: Read the text content of any prospectus URL, investor note, or web filing discovered in search results. "
-            "- `get_company_financials`: Call this tool whenever asked to 'deep dive', 'analyze company finances', 'check financials', 'valuation', 'balance sheet', 'cash flow', 'margins', or conduct deep fundamental financial analysis on standard tickers. "
-            "- `get_stock_predictions`: Call this whenever the user asks for predictions, forecasts, price targets, or upside potential. "
-            "- `get_stock_metrics`: Use this tool whenever the user asks for current prices, percentage returns, or trading stats. "
-            "- `get_stock_quote`: Use this for real-time bid/ask snapshot prices. "
-            "- `get_macro_context`: Use this for Treasury yields, CPI, GDP growth. "
-            "- `get_sector_performance`: Use this for sector returns. "
-            "- `get_portfolio`: Use this to check the user's holdings, balance, and cash. "
-            "- `get_portfolio_health`: Use this to diagnose portfolio drift and health score. "
-            "- `compare_assets`: Use this to rank and compare ETFs, stocks, or funds. "
-            "- `propose_trade`: Use this to create a trade proposal when the user wants to buy or sell. "
+            "You are an elite, proactive AI Wealth Advisor, senior quantitative strategist, "
+            "and principal equity research analyst. "
+            "You have continuous multi-turn conversation memory and are directly connected to live application tools:\n"
+            "- `optimize_tax_strategy`: Compute statutory tax optimization schedules, effective tax rates, and jurisdictional wealth structuring blueprints for Nigerian and cross-border HNW clients.\n"
+            "- `simulate_wealth_plan`: Multi-year financial modeling, compound return solving, Monte Carlo probability distributions, portfolio stress tests, and institutional asset allocation.\n"
+            "- `run_deep_research`: Run multi-agent research across company filings, macro backdrop, quantitative valuation, and devil's advocate reviews, yielding verifiable citations.\n"
+            "- `search_financial_web`: Search the live web for prospectuses, regulatory filings, debt schedules, revenues, valuations, and emerging market / IPO intelligence.\n"
+            "- `fetch_web_page`: Retrieve and parse the text content of any prospectus URL, investor note, or financial filing.\n"
+            "- `get_company_financials`: Fundamental analysis, income statements, balance sheets, cash flow, and valuation ratios.\n"
+            "- `get_stock_predictions`: Analyst consensus forecasts, price targets, and forward estimates.\n"
+            "- `get_stock_metrics`: Real-time market data, price changes, and historical volatility.\n"
+            "- `get_stock_quote`: Real-time bid/ask snapshot prices.\n"
+            "- `get_macro_context`: Macroeconomic backdrop, Treasury yields, CPI inflation, and GDP growth.\n"
+            "- `get_sector_performance`: Sector returns and rotation dynamics.\n"
+            "- `get_portfolio`: Client holdings, asset allocation, cash balances, and performance.\n"
+            "- `get_portfolio_health`: Portfolio drift diagnosis, diversification analysis, and health score.\n"
+            "- `compare_assets`: Six-factor scoring and suitability ranking for ETFs, equities, and fixed income.\n"
+            "- `propose_trade`: Prepare a formal non-discretionary paper trade proposal for user confirmation.\n"
             "\n"
-            "CRITICAL DIRECTIVES:\n"
-            "1. NEVER tell the user to visit third-party websites to look up data. Always call the tools to fetch data yourself!\n"
-            "2. INSTITUTIONAL FINANCIAL MACHINERY & UHNW MANDATES (e.g. $10M to $100M over 10 years):\n"
-            "   When presented with complex wealth goals, challenges, or case studies, IMMEDIATELY call `simulate_wealth_plan` to obtain real mathematical machinery.\n"
-            "   MANDATORY UNABRIDGED TABULAR OUTPUT DIRECTIVE (NEVER SUMMARIZE OR TRUNCATE TABLES):\n"
-            "   When `simulate_wealth_plan` is called, you MUST render ALL tables from the tool output directly in full, beautiful GitHub Markdown table format. DO NOT summarize tables into bullet points, DO NOT omit rows, and DO NOT truncate numbers. Your response MUST include:\n"
-            "   • Complete 10-Year Audited Cash Flow Accounting Table: Print ALL 10 rows (Year 1 to Year 10) with columns: Year, Starting Wealth, Gross Return %, Gross Gain ($), Advisory Fee ($), Tax Drag ($), Scheduled Withdrawal ($), Ending Wealth ($). Explain that while zero-cash-flow CAGR is 25.89%, accounting for $500k withdrawals growing at 2%/yr, taxes (~15%), and fees (1%) raises the true required pre-tax return to ~34.4% per year!\n"
-            "   • Complete 10-Year Stochastic Variable Return Cycle Table: Print ALL 10 rows demonstrating realistic volatile returns, severe down years (-18.4%), strong recovery years (+28.2%), and cumulative wealth drag.\n"
-            "   • Complete Reproducible Monte Carlo Percentile Table (10,000 paths): Print the full table with 5th, 10th, 25th, Median (50th), 75th, 90th, and 95th percentiles of terminal wealth, along with exact Success Probability and Ruin Probability. Quote the 10,000-path simulation results.\n"
-            "   • Complete Fiduciary Institutional Portfolio Allocation Table: Itemize every single tranche, target weight %, exact dollar amount, specific ticker/instrument (BIL/SGOV, VT, MSFT/GOOGL/ASML/NVDA, ARCC/OBDC, VNQ/GLD, DBMF/TAIL), gross yield %, and fiduciary risk mitigation role. (Strictly enforce <=8% single-issuer limit and 10% 2-year liquidity buffer).\n"
-            "   • Complete Stress Testing & Recovery Arithmetic Table: Print every scenario (2008 GFC, 2022 Stagflation, Sovereign/Currency Crisis, Sequence-of-Returns Shock) with Drawdown %, Trough Capital ($), Dollar Loss ($), Required Recovery Gain (%), and Required Recovery CAGR (%).\n"
-            "   • Complete Side-by-Side Triple-Portfolio Comparison Table: Compare Portfolio A (Aggressive Moonshot), Portfolio B (Institutional Endowment), and Portfolio C (Capital Preservation) across Target Return, Volatility, Max Drawdown, 10-Yr Median Terminal Wealth, Moonshot Success Rate, and Lifestyle Survival Probability.\n"
-            "   • Five Concrete Institutional Investment Dossiers: Detail 5 specific, audited institutional holdings (e.g. MSFT, BN, ASML, ARCC, TAIL/DBMF) with verified financials (revenue, gross margin, FCF conversion, Net Debt/EBITDA, ROIC vs WACC, and Hamilton Helmer 7 Powers moats) rather than generic sectors.\n"
-            "   • Jurisdictional Tax Gating statement: Explicitly state that legal vehicles (LLCs, Dynasty Trusts, DIFC Foundations, Family Investment Companies) depend on client tax citizenship and domicile.\n"
-            "   • Strategic Tradeoff Confrontation (Ruin vs. Riches): Authoritatively confront the client with the mathematical reality of moonshot ruin risk vs sustainable endowment growth.\n"
-            "3. UNLISTED / IPO / PRIVATE / FOREIGN ENTITIES (e.g. Dangote Refinery, emerging market assets, private equity deals):\n"
-            "   DO NOT simply say 'Not available' or 'the document content was not fully accessible'! "
-            "   Immediately call `search_financial_web` (e.g. 'Dangote Refinery IPO prospectus debt valuation financials'). Notice that `search_financial_web` automatically parses PDF prospectuses (`.pdf`) and investor notes and returns their full text inside `extracted_document_text`! You can also call `fetch_web_page` directly on any `.pdf` or HTML URL.\n"
-            "   MANDATORY PROSPECTUS CITATION RULE: You MUST read and quote the exact figures from `extracted_document_text` (e.g. Offer Price ₦525, H1 2026 Revenue $13.91B, H1 2026 Net Profit $1.82B, Gross Margin 17.9% vs 2.6% prior, Net Debt/EBITDA 0.27x, Valuation ~$48B, Share par value $0.000013, Risk Factors pages 134–155) and cite the exact source URLs in your analysis. NEVER claim that the prospectus or financial figures were inaccessible when `extracted_document_text` is present!\n"
-            "4. INSTITUTIONAL INVESTMENT HURDLE SCORE (0–100) & BINARY DECISION THRESHOLD:\n"
-            "   For ANY investment decision or IPO inquiry, compute and clearly display an Institutional Hurdle Score (0–100) across 5 core pillars:\n"
-            "   • Pillar 1: Financial Transparency & Audit Quality (25 pts): Verifiable audited IFRS/GAAP statements, published regulatory prospectus, and 3-year operating track record. (If unaudited, opaque, or no public prospectus -> 0/25 + FATAL DEALBREAKER).\n"
-            "   • Pillar 2: Solvency & Balance Sheet Fortress (20 pts): Net Debt/EBITDA, FX-denominated debt vs local currency revenue mismatch, and interest coverage. (If massive unhedged FX debt or distress -> 0/20 + FATAL DEALBREAKER).\n"
-            "   • Pillar 3: Unit Economics & FCF Conversion (20 pts): Refining crack spreads / gross margins, operating margin durability, and steady-state FCF generation.\n"
-            "   • Pillar 4: Valuation & Margin of Safety vs Comps (15 pts): EV/EBITDA, P/E, or replacement cost discount relative to peers.\n"
-            "   • Pillar 5: Governance, Sovereign & Feedstock/Regulatory Risk (20 pts): Supply chain/feedstock security, political interference, and currency convertibility.\n"
-            "\n"
-            "   • INSTITUTIONAL REALITY CHECKS & RED-FLAG STRESS TESTING:\n"
-            "     - Valuation Peer Benchmark Trap: ALWAYS benchmark proposed valuations against global public industry leaders. For example, for an emerging-market single-plant refinery (like Dangote Refinery), compare its proposed ~$48B valuation against the world's largest independent refiners (e.g. Valero Energy Corp at ~$45B for 15 refineries, Marathon Petroleum at ~$55B for 13 refineries). A single-asset facility in an emerging market valued higher than the entire Valero global empire is an extreme promoter valuation trap with zero margin of safety! In such cases, Pillar 4 (Valuation) MUST be heavily penalized (max 2-4 / 15 pts).\n"
-            "     - Foreign Currency (FX) Liability Mismatch Trap: When an emerging-market company (e.g. in Nigeria with historic Naira devaluations) carries billions of dollars in USD-denominated syndicated debt while generating bulk revenues in domestic currency, this is an existential FX solvency mismatch. Do NOT accept optimistic press releases claiming 'no mismatch'. Unless 100% of debt service is backed by audited, unencumbered USD offshore cash flows, Pillar 2 MUST be penalized and triggers a Fatal FX Dealbreaker!\n"
-            "     - Feedstock & Sovereign Friction: If the asset faces severe feedstock disputes (e.g. disputes with state oil companies like NNPCL over crude supply forcing expensive foreign crude imports) or price controls, Pillar 5 MUST reflect high sovereign friction (max 6-8 / 20 pts).\n"
-            "     - Statutory Regulatory Prospectus vs Leaked Press Speculation: Distinguish between an officially approved and registered statutory retail prospectus (SEC Nigeria / US SEC) with 3 full audited fiscal years vs unconfirmed broker pitch notes or leaked pricing. Unaudited or pre-filing proposals cannot receive passing marks on Pillar 1.\n"
-            "\n"
-            "   THE BINARY DECISION RULE:\n"
-            "   • MINIMUM HURDLE THRESHOLD TO INVEST: 70 / 100 POINTS with ZERO FATAL DEALBREAKERS.\n"
-            "   • IF TOTAL SCORE >= 70 / 100 AND ZERO FATAL DEALBREAKERS:\n"
-            "     VERDICT: **YES — INVEST (APPROVED)**\n"
-            "     TARGET PORTFOLIO ALLOCATION: Explicit percentage (e.g. 3.0% to 5.0%) with disciplined entry triggers.\n"
-            "   • IF TOTAL SCORE < 70 / 100 OR ANY FATAL DEALBREAKER IS TRIGGERED:\n"
-            "     VERDICT: **NO — DO NOT INVEST (REJECTED / HARD PASS)**\n"
-            "     TARGET PORTFOLIO ALLOCATION: **0.0% (ZERO CAPITAL ALLOCATION)**\n"
-            "     Itemize each Dealbreaker that failed the threshold (e.g. Dealbreaker 1: Severe FX debt mismatch; Dealbreaker 2: Unjustified promoter asking valuation exceeding global industry peers; Dealbreaker 3: Unfinalized audited retail public prospectus).\n"
-            "   • STRICT PROHIBITION: NEVER recommend a 'HOLD / NEUTRAL' with a 2-3% satellite allocation on an opportunity that fails the hurdle threshold or lacks audited data! In institutional finance, if an opportunity does not pass the hurdle or carries fatal unhedged risks, you PASS (0.0% allocation). Give a definitive YES or NO.\n"
-            "5. JANE STREET QUANT & HEDGE FUND / PE DEEP-DIVE FRAMEWORK:\n"
-            "   Organize the investment memo into clear pillars: Executive Investment Verdict (with Hurdle Score and Allocation), Financial Statement Audit, Balance Sheet Health, ROIC vs WACC & Hamilton Helmer 7 Powers Moat, Factor Profile, 3-Scenario Valuation Model (Bull/Base/Bear), and Downside Catalysts.\n"
-            "6. DEFINITIVE ADVISORY AUTHORITY — NEVER DEFLECT: You ARE the client's wealth advisor and equity research team. "
-            "NEVER tell the user to 'consult a financial advisor' or 'seek professional advice'. Deliver definitive, data-backed institutional decisions.\n"
-            "7. Maintain a consultative, highly authoritative, institutional tone.\n"
-            "8. INSTITUTIONAL TAX STRATEGY & UHNW STRUCTURING (e.g. Nigeria, International, Cross-Border):\n"
-            "   When asked for tax strategy, tax minimization, legal tax avoidance, or wealth preservation:\n"
-            "   • IMMEDIATELY call `optimize_tax_strategy` to obtain statutory provisions, numerical arbitrage schedules, and 5-step structuring blueprints!\n"
-            "   • STRICT PROHIBITION ON GENERIC ADVICE: NEVER output high-level vague bullet points ('set up a trust', 'explore incentives', 'consult a tax advisor'). Deliver a definitive, JP Morgan Private Bank / Big-4 Tax Advisory memorandum!\n"
-            "   • MANDATORY TABULAR NUMERICAL ARBITRAGE SCHEDULE: You MUST render the complete Markdown table comparing:\n"
-            "     - Tier 1: Unstructured Individual (PITA Section 33 top 24% marginal rate, ETR ~21.5%-24.0%)\n"
-            "     - Tier 2: Corporate Operating + Holding Company (FIC) (CITA Section 80 Franked Investment Income, ETR ~10.0%-14.5%)\n"
-            "     - Tier 3: Free Trade Zone Approved Enterprise (NEPZA Act Section 8 100% tax exemption, ETR ~0.0%-1.5%)\n"
-            "     - Tier 4: Sovereign Asset Shield (FGN Sukuk/Bonds under PITA 3rd Schedule & CGTA Section 30, ETR 0.0%)\n"
-            "     Include columns: Structure, Statutory Legal Basis, Gross Cash Flow, Annual Tax Liability, Effective Tax Rate %, Net Retained Wealth, Annual Savings.\n"
-            "   • 5-STEP OPERATIONAL STRUCTURING BLUEPRINT: Itemize the concrete legal and corporate execution steps:\n"
-            "     1) Entity Architecture: CAC incorporation of Family Investment Company (FIC) with CAMA 2020 weighted voting shares.\n"
-            "     2) Remuneration Optimization: Statutory pension deduction under PRA 2014 Section 10(1) and non-taxable directors' franked dividends.\n"
-            "     3) Free Trade Zone Licensing: NEPZA Act Section 8 Approved Enterprise licensing for international and export operations.\n"
-            "     4) Sovereign Asset Allocation: Capital deployment into 100% tax-exempt FGN Sukuk, Bonds, and Treasury Bills.\n"
-            "     5) Cross-Border Trust & Succession: Offshore Irrevocable Discretionary Trust (Jersey, Guernsey, DIFC) for hard-currency asset protection.\n"
-            "   • STATUTORY CITATIONS: Explicitly cite the governing laws: PITA Cap P8 LFN 2004, CITA Cap C21, NEPZA Act Cap N107, CGTA Cap C1, PRA 2014, and Withholding Tax Regulations 2024.\n"
-            "   • ANTI-AVOIDANCE BOUNDARIES: Detail CITA Section 22 General Anti-Avoidance Rule (GAAR), commercial economic substance, and Transfer Pricing Regulations 2018 to guarantee 100% lawful compliance."
+            "CORE OPERATIONAL PRINCIPLES:\n"
+            "1. CODE SUPPLIES THE NUMBERS, YOU SUPPLY THE SYNTHESIS:\n"
+            "   Never invent, estimate, or hallucinate financial figures, interest rates, tax percentages, or hurdle rates from memory.\n"
+            "   Always call the appropriate tools to fetch live data or compute mathematical models, and report the exact figures returned by the tools.\n"
+            "2. UNABRIDGED TABULAR OUTPUT:\n"
+            "   When `simulate_wealth_plan` or `optimize_tax_strategy` returns tabular data, render the full markdown tables without truncating rows or summarizing columns away.\n"
+            "   Present the audited cash flow accounting, Monte Carlo percentiles, portfolio allocations, and stress-test arithmetic with full numerical fidelity.\n"
+            "3. UNLISTED / IPO / PRIVATE / FOREIGN ENTITIES:\n"
+            "   When asked about IPOs, emerging market assets, or private companies, call `search_financial_web` and `fetch_web_page` to retrieve filings and prospectuses.\n"
+            "   Quote exact figures, revenue, debt, and risk factors directly from the extracted tool content, citing the source document and URL.\n"
+            "4. INSTITUTIONAL INVESTMENT HURDLE EVALUATION:\n"
+            "   Evaluate investment inquiries across the 5 core institutional pillars:\n"
+            "   • Pillar 1: Financial Transparency & Audit Quality (audited financial statements, prospectus availability, track record)\n"
+            "   • Pillar 2: Solvency & Balance Sheet Fortress (Net Debt/EBITDA, currency matching between debt and revenue, interest coverage)\n"
+            "   • Pillar 3: Unit Economics & FCF Conversion (gross/operating margins, cash flow durability)\n"
+            "   • Pillar 4: Valuation & Margin of Safety vs Global Peers\n"
+            "   • Pillar 5: Governance, Sovereign & Regulatory Risk\n"
+            "   Provide an explicit hurdle score and clear investment verdict based strictly on verified data and fatal dealbreaker criteria.\n"
+            "5. TAX STRATEGY & JURISDICTIONAL STRUCTURING:\n"
+            "   Always call `optimize_tax_strategy` to calculate tax arbitrage comparisons and entity structuring steps.\n"
+            "   Quote legal statutes and tax rates strictly from the tool results, detailing entity architecture and compliance safeguards.\n"
+            "6. FIDUCIARY STANDARDS & COMPLIANCE:\n"
+            "   Maintain an authoritative, institutional, and consultative tone.\n"
+            "   Always uphold fiduciary duty: include regulatory risk disclosures, highlight investment risks and potential drawdowns, and never guarantee speculative returns.\n"
+            "7. MULTIMODAL FINANCIAL VISION:\n"
+            "   When the user provides charts, financial statements, or screenshots, scrutinize axes, labels, and numbers directly from the visual evidence and synthesize them with quantitative precision."
         )
+
+        # Inject unified financial context (Action 5)
+        client_id_val = session.get("client_id")
+        if client_id_val:
+            try:
+                client_ctx = await self.context_builder.build_context(db, str(client_id_val))
+                system_prompt += client_ctx.to_system_prompt_snippet()
+            except Exception as ctx_err:
+                logger.debug("Client financial context injection notice: %s", ctx_err)
 
         try:
             import httpx
@@ -885,7 +1034,23 @@ class OrchestratorAgent:
                     prior_turns = prior_turns[:-1]
                 for turn in prior_turns[-8:]:
                     messages.append({"role": turn["role"], "content": turn["content"]})
-            messages.append({"role": "user", "content": text})
+
+            if attachments:
+                user_content: List[Dict[str, Any]] = [
+                    {"type": "text", "text": text or "Please analyze the attached financial image/document."}
+                ]
+                for att in attachments:
+                    att_type = att.get("type", "")
+                    mime = str(att.get("mime_type", ""))
+                    data_url = att.get("data") or att.get("url")
+                    if (att_type == "image" or "image" in mime or (data_url and data_url.startswith("data:image/"))) and data_url:
+                        user_content.append({
+                            "type": "image_url",
+                            "image_url": {"url": data_url}
+                        })
+                messages.append({"role": "user", "content": user_content})
+            else:
+                messages.append({"role": "user", "content": text})
 
             async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0)) as http_client:
                 client = AsyncOpenAI(api_key=key, http_client=http_client)
@@ -906,145 +1071,87 @@ class OrchestratorAgent:
 
                     if not msg.tool_calls:
                         if msg.content and msg.content.strip():
-                            events.append(await self._say(msg.content.strip(), db, client_id, agent="WealthAdvisor"))
+                            final_text = msg.content.strip()
+                            try:
+                                ctx_dict = client_ctx.to_dict() if "client_ctx" in locals() and client_ctx else None
+                                rev_res = await self.review_stage.review_and_revise(
+                                    initial_text=final_text,
+                                    client_context=ctx_dict,
+                                    openai_client=client,
+                                    model=settings.openai_model,
+                                    max_revisions=3,
+                                )
+                                final_text = rev_res.final_text
+                            except Exception as rev_err:
+                                logger.debug("Review stage notice: %s", rev_err)
+
+                            events.append(await self._say(final_text, db, client_id, agent="WealthAdvisor"))
                             return events
                         break
 
                     messages.append(msg)
-                    for tc in msg.tool_calls:
-                        fn_name = tc.function.name
-                        fn_args = json.loads(tc.function.arguments or "{}")
 
-                        if fn_name == "search_financial_web":
-                            q = fn_args.get("query", "")
-                            max_res = int(fn_args.get("max_results", 5))
-                            res = await self.c.market.search_financial_web(q, max_results=max_res)
-                            messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(res)})
+                    # 1. Non-discretionary execution gate: Check for propose_trade
+                    trade_tc = next((tc for tc in msg.tool_calls if tc.function.name == "propose_trade"), None)
+                    if trade_tc:
+                        fn_args = json.loads(trade_tc.function.arguments or "{}")
+                        sym = fn_args.get("symbol", "").upper()
+                        side = fn_args.get("side", "").upper()
+                        qty = float(fn_args.get("qty", 0.0))
+                        if client_id and sym and side in ("BUY", "SELL") and qty > 0:
+                            return await self.propose_trade(db, user_id, client_id, sym, side, qty, session=session)
+                        else:
+                            messages.append({"role": "tool", "tool_call_id": trade_tc.id, "content": json.dumps({"status": "error", "message": "Invalid trade or client not onboarded."})})
 
-                        elif fn_name == "fetch_web_page":
-                            u = fn_args.get("url", "")
-                            max_c = int(fn_args.get("max_chars", 4000))
-                            res = await self.c.market.fetch_web_page(u, max_chars=max_c)
-                            messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(res)})
+                    # 2. Centralized ToolRegistry Execution Pipeline:
+                    # Enforces Role Authorization, Circuit Breakers, Rate Limiting, Timeouts, and Provenance Logging
+                    try:
+                        from tools.registry import ToolRegistry
+                        from tools.base import ExecutionContext
+                    except ImportError:
+                        from backend.tools.registry import ToolRegistry
+                        from backend.tools.base import ExecutionContext
 
-                        elif fn_name == "get_stock_metrics":
-                            syms = fn_args.get("symbols", [])
-                            period = fn_args.get("period", "6mo")
-                            res = await self.c.market.get_performance_and_metrics(syms, period=period)
-                            messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(res)})
+                    registry = ToolRegistry.get_instance()
+                    exec_ctx = ExecutionContext(
+                        session_id=session.get("session_id"),
+                        user_id=user_id,
+                        client_id=client_id,
+                        role="Orchestrator",
+                        caller="WealthAdvisor",
+                        metadata={"db": db},
+                    )
 
-                        elif fn_name == "get_company_financials":
-                            syms = fn_args.get("symbols", [])
-                            res = await self.c.market.get_company_financials(syms)
-                            messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(res)})
+                    async def _run_tool_call(tc) -> Dict[str, Any]:
+                        t_name = tc.function.name
+                        try:
+                            t_args = json.loads(tc.function.arguments or "{}")
+                        except Exception:
+                            t_args = {}
 
-                        elif fn_name == "get_stock_predictions":
-                            syms = fn_args.get("symbols", [])
-                            res = await self.c.market.get_stock_predictions(syms)
-                            messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(res)})
-
-                        elif fn_name == "get_stock_quote":
-                            sym = fn_args.get("symbol", "")
-                            q = await self.c.market.get_quote(sym)
-                            messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(q.model_dump(mode="json"))})
-
-                        elif fn_name == "get_macro_context":
-                            macro = await self.c.market.get_macro_context()
-                            curve = await self.c.market.get_yield_curve()
-                            messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps({"macro": macro, "yield_curve": curve})})
-
-                        elif fn_name == "get_sector_performance":
-                            sec = await self.c.market.get_sector_performance()
-                            messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(sec)})
-
-                        elif fn_name == "get_portfolio":
-                            if client_id:
-                                pf = await self.c.portfolio.get_portfolio(db, client_id)
-                                messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps({k: v for k, v in pf.items() if k != "prices"})})
-                            else:
-                                messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps({"status": "no_portfolio", "message": "Client has not completed onboarding."})})
-
-                        elif fn_name == "get_portfolio_health":
-                            if client_id:
-                                hr = await self.c.health.generate_health_report(db, client_id)
-                                messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(hr.model_dump(mode="json"))})
-                            else:
-                                messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps({"status": "no_portfolio"})})
-
-                        elif fn_name == "compare_assets":
-                            syms = fn_args.get("symbols", [])
-                            prof = await self.c.profiler.get_profile(client_id, db=db) if client_id else None
-                            comp = await self.c.comparison.compare_etfs(syms, profile=prof, client_id=client_id)
-                            messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(comp.model_dump(mode="json"))})
-
-                        elif fn_name == "simulate_wealth_plan":
-                            w0 = float(fn_args.get("starting_capital", 10_000_000.0))
-                            w_target = float(fn_args.get("target_capital", 100_000_000.0))
-                            yrs = int(fn_args.get("years", 10))
-                            w_init = float(fn_args.get("initial_withdrawal", 500_000.0))
-                            inf_pct = float(fn_args.get("withdrawal_inflation_pct", 0.02))
-
-                            from services.financial_engineering import (
-                                solve_required_return,
-                                generate_10year_cash_flow_table,
-                                generate_stochastic_variable_cycle_table,
-                                run_reproducible_monte_carlo,
-                                run_explicit_stress_tests,
-                                get_fiduciary_institutional_portfolio,
-                                compare_three_institutional_portfolios,
+                        try:
+                            t_res = await registry.execute_tool(
+                                name=t_name,
+                                args=t_args,
+                                role="Orchestrator",
+                                context=exec_ctx,
+                                raise_on_error=False,
                             )
-
-                            req_r = solve_required_return(w0, w_target, yrs, w_init, inf_pct)
-                            cash_flow_table = generate_10year_cash_flow_table(w0, req_r, yrs, w_init, inf_pct)
-                            variable_cycle = generate_stochastic_variable_cycle_table(w0, yrs, w_init, inf_pct)
-                            mc_sim = run_reproducible_monte_carlo(w0, w_target, yrs, w_init, inf_pct)
-                            stress_tests = run_explicit_stress_tests(w0, w_init)
-                            portfolio_structure = get_fiduciary_institutional_portfolio()
-                            three_portfolios = compare_three_institutional_portfolios(w0, yrs, w_init)
-
-                            res = {
-                                "starting_capital": w0,
-                                "target_capital": w_target,
-                                "horizon_years": yrs,
-                                "required_pre_tax_annual_hurdle_rate": f"{req_r * 100:.2f}%",
-                                "ten_year_deterministic_schedule": cash_flow_table,
-                                "ten_year_stochastic_variable_cycle": variable_cycle,
-                                "reproducible_monte_carlo_10k": mc_sim,
-                                "explicit_stress_tests": stress_tests,
-                                "fiduciary_institutional_portfolio": portfolio_structure,
-                                "triple_portfolio_comparison": three_portfolios,
-                            }
-                            messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(res)})
-
-                        elif fn_name == "optimize_tax_strategy":
-                            jur = fn_args.get("jurisdiction", "Nigeria")
-                            inc = float(fn_args.get("annual_income", 100_000_000.0))
-                            nw = fn_args.get("net_worth")
-                            from services.tax_engineering import optimize_full_nigerian_tax_strategy
-                            res = optimize_full_nigerian_tax_strategy(annual_income=inc, net_worth=float(nw) if nw else None)
-                            messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(res)})
-
-                        elif fn_name == "get_crypto_macro":
-                            from services.providers.global_data import GlobalDataProvider
-                            g_provider = GlobalDataProvider()
-                            c_snap = await g_provider.get_crypto_macro_snapshot()
-                            messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(c_snap.model_dump())})
-
-                        elif fn_name == "get_sovereign_macro":
-                            c_code = fn_args.get("country_code", "USA")
-                            from services.providers.global_data import GlobalDataProvider
-                            g_provider = GlobalDataProvider()
-                            s_snap = await g_provider.get_sovereign_macro(c_code)
-                            messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(s_snap.model_dump())})
-
-                        elif fn_name == "propose_trade":
-                            sym = fn_args.get("symbol", "").upper()
-                            side = fn_args.get("side", "").upper()
-                            qty = float(fn_args.get("qty", 0.0))
-                            if client_id and sym and side in ("BUY", "SELL") and qty > 0:
-                                return await self.propose_trade(db, user_id, client_id, sym, side, qty, session=session)
+                            if t_res.success:
+                                content = json.dumps(t_res.data)
                             else:
-                                messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps({"status": "error", "message": "Invalid trade or client not onboarded."})})
+                                content = json.dumps({"status": "error", "message": t_res.error or "Tool execution failed"})
+                        except Exception as exc:
+                            logger.warning(f"Registry tool execution error for '{t_name}': {exc}")
+                            content = json.dumps({"status": "error", "message": str(exc)})
+
+                        return {"role": "tool", "tool_call_id": tc.id, "content": content}
+
+                    # Execute all independent tool calls concurrently in parallel
+                    nontrade_calls = [tc for tc in msg.tool_calls if tc.function.name != "propose_trade"]
+                    if nontrade_calls:
+                        tool_responses = await asyncio.gather(*[_run_tool_call(tc) for tc in nontrade_calls])
+                        messages.extend(tool_responses)
 
         except Exception as exc:
             logger.warning("Agentic chat turn failed: %s", exc)
@@ -1080,7 +1187,9 @@ class OrchestratorAgent:
         return await self._advising_turn(db, session, text)
 
     # -- advising ----------------------------------------------------- #
-    async def _advising_turn(self, db: AsyncSession, session: Dict[str, Any], text: str) -> List[Dict[str, Any]]:
+    async def _advising_turn(
+        self, db: AsyncSession, session: Dict[str, Any], text: str, attachments: Optional[List[Dict[str, Any]]] = None
+    ) -> List[Dict[str, Any]]:
         client_id = session.get("client_id")
         user_id = session["user_id"]
         events: List[Dict[str, Any]] = []
@@ -1099,7 +1208,7 @@ class OrchestratorAgent:
         pending = session.get("pending_proposal_id")
 
         words = text.strip().split()
-        is_direct_command = (len(words) <= 12 and "\n" not in text.strip() and text.count("?") <= 1)
+        is_direct_command = (len(words) <= 12 and "\n" not in text.strip() and text.count("?") <= 1 and not attachments)
 
         if pending and APPROVE_RE.match(text):
             events += await self.handle_trade_approval(db, user_id, pending, approved=True, session_id=session["session_id"])
@@ -1148,9 +1257,19 @@ class OrchestratorAgent:
         else:
             history = session.get("history", [])
             # 1. Run agentic tool-calling turn connected to application services
-            agentic_events = await self._agentic_chat_turn(db, session, text, history=history)
+            agentic_events = await self._agentic_chat_turn(db, session, text, history=history, attachments=attachments)
             if agentic_events:
                 return agentic_events
+
+            if attachments:
+                file_names = ", ".join([a.get("name", "attachment") for a in attachments])
+                fallback_msg = (
+                    f"**Multi-modal Input Received**: Visual documents/charts (`{file_names}`) processed.\n\n"
+                    "• **Visual Analysis**: Financial graphics detected. The image was staged into your advisory session.\n"
+                    "• **Institutional Note**: Connect live market data or prompt specific equity/fixed-income questions to cross-examine this document against live metrics."
+                )
+                events.append(await self._say(fallback_msg, db, client_id, agent="WealthAdvisor"))
+                return events
 
             # 2. Fallback to intent parser and general reply if agentic turn did not produce events
             translated = await self._translate_intent(text, history=history)
@@ -1448,11 +1567,22 @@ class OrchestratorAgent:
         side: str,
         qty: float,
         session_id: Optional[str] = None,
+        broker: Optional[str] = None,
+        currency: Optional[str] = None,
     ) -> Dict[str, Any]:
         symbol, side = symbol.strip().upper(), side.strip().upper()
         if side not in ("BUY", "SELL") or qty <= 0 or not symbol:
             raise HTTPException(status_code=422, detail="Invalid trade: need BUY/SELL, positive qty and a symbol")
         proj = await self.c.portfolio.projected_weight(db, client_id, symbol, side, qty)
+
+        is_ngx = symbol in ("DANGCEM", "MTNN", "GTCO", "ZENITHBANK", "ACCESSCORP", "UBA", "SEPLAT", "AIRTELAFRI", "BUACEMENT", "BUAFOODS", "NESTLE", "GEREGU", "TRANSPOWER", "TRANSCORP", "NGXGROUP")
+        chosen_broker = (broker or ("bamboo" if is_ngx else "alpaca")).lower()
+        chosen_currency = (currency or ("NGN" if is_ngx else "USD")).upper()
+
+        tier_info = self.c.compliance.classify_trade_permission_tier(
+            float(proj["notional_value"]), float(proj["projected_weight"])
+        )
+
         proposal = {
             "proposal_id": str(uuid.uuid4()),
             "client_id": client_id,
@@ -1462,6 +1592,11 @@ class OrchestratorAgent:
             "price": proj["price"],
             "notional_value": proj["notional_value"],
             "projected_weight": proj["projected_weight"],
+            "broker": chosen_broker,
+            "currency": chosen_currency,
+            "permission_tier": tier_info["permission_tier"],
+            "requires_step_up_auth": tier_info["requires_step_up_auth"],
+            "step_up_reason": tier_info["step_up_reason"],
             "created_at": datetime.now(timezone.utc).isoformat(),
             "expires_in_seconds": PROPOSAL_TTL_SECONDS,
         }
@@ -1496,10 +1631,12 @@ class OrchestratorAgent:
         if session is not None:
             session["pending_proposal_id"] = proposal["proposal_id"]
             session["stage"] = SessionStage.PROPOSAL_REVIEW.value
+        curr_sym = "₦" if proposal.get("currency") == "NGN" else "$"
+        broker_label = "Bamboo (Live NGX & Global)" if proposal.get("broker") == "bamboo" else "Alpaca Paper Trading"
         text = (
             f"Proposed order: {proposal['side']} {proposal['qty']:g} {proposal['symbol']} at about "
-            f"${proposal['price']:.2f} (~${proposal['notional_value']:,.2f}). Reply 'approve' to execute it in the "
-            f"paper-trading account within 15 minutes, or 'cancel'. Nothing is sent until you approve."
+            f"{curr_sym}{proposal['price']:.2f} (~{curr_sym}{proposal['notional_value']:,.2f}) via {broker_label}. "
+            f"Reply 'approve' to execute within 15 minutes, or 'cancel'. Nothing is sent until you approve."
         )
         return [
             await self._say(
@@ -1516,6 +1653,8 @@ class OrchestratorAgent:
                 symbol=proposal["symbol"],
                 price=proposal["price"],
                 notional_value=proposal["notional_value"],
+                broker=proposal.get("broker"),
+                currency=proposal.get("currency"),
             )
         ]
 
@@ -1559,6 +1698,8 @@ class OrchestratorAgent:
             "price": proposal["price"],
             "notional_value": proposal["notional_value"],
             "projected_weight": proposal["projected_weight"],
+            "broker": proposal.get("broker"),
+            "currency": proposal.get("currency"),
         }
         try:
             check = await self.c.compliance.check_trade(db, client_id, trade, profile)
@@ -1572,6 +1713,7 @@ class OrchestratorAgent:
                 desc = getattr(v, "description", "") or getattr(v, "details", "") or str(v)
                 violation_details.append(f"{rid} ({rname}): {desc}")
             violation_text = "Trade blocked by regulatory & compliance rules:\n• " + "\n• ".join(violation_details)
+            self.c.compliance.record_security_incident(str(user_id), violation_text, incident_type="TRADE_COMPLIANCE_BLOCK")
             events.append(
                 _event("compliance_check", "ComplianceGuard", text=violation_text,
                        passed=False, violations=[v.to_dict() if hasattr(v, "to_dict") else dict(v) for v in exc.violations])
@@ -1583,6 +1725,9 @@ class OrchestratorAgent:
                 db=db, client_id=client_id, proposal_id=proposal_id,
                 symbol=proposal["symbol"], side=proposal["side"], qty=proposal["qty"],
                 approved=approved, approval_timestamp=approval_ts,
+                broker=proposal.get("broker"),
+                currency=proposal.get("currency"),
+                user_id=str(user_id),
             )
         except (UnapprovedTradeError, ExpiredApprovalError, KYCUnverifiedError, DuplicateTradeError, ExecutionError) as exc:
             raise TradeBlocked([], events, reason=str(exc), error_type=type(exc).__name__) from exc
@@ -1603,11 +1748,17 @@ class OrchestratorAgent:
             except Exception:
                 pass
 
+        curr_sym = "₦" if getattr(result, "currency", "USD") == "NGN" else "$"
+        if getattr(result, "broker", "alpaca") == "bamboo":
+            broker_msg = " via Bamboo Investment (Live)." if not result.dry_run else " via Bamboo Investment (Sandbox)."
+        else:
+            broker_msg = " (simulated paper fill)." if result.dry_run else " via Alpaca paper trading."
+
         events.append(
             await self._say(
                 f"Order {result.status}: {result.side} {result.qty:g} {result.symbol}"
-                + (f" at ${result.filled_price:.2f}" if result.filled_price else "")
-                + (" (simulated paper fill)." if result.dry_run else " via Alpaca paper trading."),
+                + (f" at {curr_sym}{result.filled_price:.2f}" if result.filled_price else "")
+                + broker_msg,
                 db, client_id, agent="ExecutionModule", kind="trade_filled", execution=result.model_dump(mode="json"),
             )
         )

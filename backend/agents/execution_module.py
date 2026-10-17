@@ -22,6 +22,7 @@ from core.config import settings
 from db.models import DBTrade, DBClientProfile
 from services.cache import CacheService, get_cache_service, key_trade_lock, TTL_TRADE_LOCK
 from services.audit_logger import AuditLogger, get_audit_logger
+from services.providers.bamboo import BambooProvider, BAMBOO_SIMULATED_PRICES
 
 try:
     from alpaca.trading.client import TradingClient
@@ -70,7 +71,7 @@ class DuplicateTradeError(ExecutionError):
 class TradeExecutionResult(BaseModel):
     """Structured result returned by ExecutionModule.execute_trade."""
     success: bool = Field(..., description="Whether execution was completed")
-    order_id: Optional[str] = Field(None, description="Alpaca or simulated order ID")
+    order_id: Optional[str] = Field(None, description="Alpaca, Bamboo, or simulated order ID")
     trade_id: Optional[str] = Field(None, description="Database DBTrade record UUID")
     client_id: str = Field(..., description="Client identifier")
     proposal_id: str = Field(..., description="Trade proposal identifier")
@@ -79,6 +80,10 @@ class TradeExecutionResult(BaseModel):
     qty: float = Field(..., description="Quantity of shares")
     filled_price: Optional[float] = Field(None, description="Executed price per share")
     filled_qty: Optional[float] = Field(None, description="Total executed quantity")
+    broker: str = Field(default="alpaca", description="Brokerage route: alpaca or bamboo")
+    currency: str = Field(default="USD", description="Currency of execution: USD or NGN")
+    fee: Optional[float] = Field(default=None, description="Brokerage or commission fee")
+    total_price: Optional[float] = Field(default=None, description="Total order amount")
     status: str = Field(..., description="Order status: FILLED, PENDING, BLOCKED, REJECTED")
     executed_at: datetime = Field(..., description="Execution timestamp (UTC)")
     dry_run: bool = Field(default=False, description="Whether execution ran in dry-run mode")
@@ -105,6 +110,15 @@ SIMULATED_PRICES: Dict[str, float] = {
     "NVDA": 125.00,
     "AGG": 98.50,
     "SHY": 82.20,
+    # Nigerian Equities (NGX)
+    "DANGCEM": 650.00,
+    "MTNN": 240.00,
+    "GTCO": 48.50,
+    "ZENITHBANK": 42.00,
+    "ACCESSCORP": 21.50,
+    "UBA": 29.80,
+    "SEPLAT": 3400.00,
+    "AIRTELAFRI": 2150.00,
     "DEFAULT": 100.00,
 }
 
@@ -118,6 +132,9 @@ class ExecutionModule:
     Hardened Execution Agent for Wealth Advisory Agent.
     Enforces non-discretionary approval, freshness windows, KYC checks,
     mutual-exclusion locks, database persistence, and cryptographic audit logs.
+    Supports dual brokerage routing:
+    1. Alpaca Paper Brokerage (US equities paper trading)
+    2. Bamboo Investment APIs (Live & Sandbox for Nigerian & global equities)
     """
 
     def __init__(
@@ -127,8 +144,9 @@ class ExecutionModule:
         paper: bool = True,
         cache_service: Optional[CacheService] = None,
         audit_logger: Optional[AuditLogger] = None,
+        bamboo_provider: Optional[BambooProvider] = None,
     ):
-        # 1. Hard Paper Trading Enforcement Guard
+        # 1. Hard Paper Trading Enforcement Guard for Alpaca
         if not paper or not getattr(settings, "alpaca_paper", True):
             raise RuntimeError(
                 "CRITICAL SECURITY GUARD: Live trading is strictly prohibited! "
@@ -141,6 +159,7 @@ class ExecutionModule:
         self.secret_key = secret_key or getattr(settings, "alpaca_secret_key", "") or os.getenv("ALPACA_SECRET_KEY", "")
         self.cache_service = cache_service or get_cache_service()
         self.audit_logger = audit_logger or get_audit_logger()
+        self.bamboo = bamboo_provider or BambooProvider()
 
         # 3. Client Initialization with Graceful DRY_RUN Fallback
         is_global_dry_run = getattr(settings, "dry_run", False)
@@ -166,14 +185,24 @@ class ExecutionModule:
         approved: bool,
         approval_timestamp: datetime,
         dry_run: Optional[bool] = None,
+        broker: Optional[str] = None,
+        currency: Optional[str] = None,
+        user_id: Optional[str] = None,
     ) -> TradeExecutionResult:
         """
         Executes a trade order subject to strict pre-trade validation gates,
         distributed locks, database persistence, and audit logging.
+        Routes to Bamboo for Nigerian assets or explicit 'bamboo' broker flag,
+        and Alpaca for US equities paper trading.
         """
         symbol_clean = symbol.strip().upper() if symbol else ""
         side_clean = side.strip().upper() if side else ""
         now_utc = datetime.now(timezone.utc)
+
+        # Detect broker routing
+        is_ngx_asset = symbol_clean in ("DANGCEM", "MTNN", "GTCO", "ZENITHBANK", "ACCESSCORP", "UBA", "SEPLAT", "AIRTELAFRI", "BUACEMENT", "BUAFOODS", "NESTLE", "GEREGU", "TRANSPOWER", "TRANSCORP", "NGXGROUP")
+        chosen_broker = (broker or ("bamboo" if is_ngx_asset else "alpaca")).lower()
+        chosen_currency = (currency or ("NGN" if is_ngx_asset else "USD")).upper()
 
         # ---------------------------------------------------------------------
         # Pre-Trade Validation Gates
@@ -292,39 +321,46 @@ class ExecutionModule:
             )
 
         # ---------------------------------------------------------------------
-        # Order Execution Flow (Dual-Engine)
+        # Order Execution Flow (Multi-Engine: Bamboo vs Alpaca vs Dry-Run)
         # ---------------------------------------------------------------------
         is_global_dry_run = getattr(settings, "dry_run", False)
-        is_dry_run = dry_run if dry_run is not None else (is_global_dry_run or self.client is None)
+        order_fee = None
+        total_price = None
+        bamboo_order_id = None
+        alpaca_order_id = None
 
-        if is_dry_run:
-            # Engine B: Simulated Dry-Run Execution
-            order_id = f"dry-run-{uuid.uuid4()}"
-            status = "FILLED"
-            filled_price = SIMULATED_PRICES.get(symbol_clean, SIMULATED_PRICES["DEFAULT"])
-            filled_qty = float(qty)
-            executed_at = now_utc
-            logger.info(f"[DRY-RUN] Executed simulated {side_clean} {qty} {symbol_clean} @ ${filled_price:.2f}")
-        else:
-            # Engine A: Alpaca Paper Trading Execution
-            order_side = OrderSide.BUY if side_clean == "BUY" else OrderSide.SELL
-            order_request = MarketOrderRequest(
-                symbol=symbol_clean,
-                qty=qty,
-                side=order_side,
-                time_in_force=TimeInForce.DAY,
-            )
+        if chosen_broker == "bamboo":
+            # Engine Bamboo: calculate order then submit to Bamboo
+            bamboo_dry_run = dry_run if dry_run is not None else (is_global_dry_run or not self.bamboo.is_configured)
+            effective_user = user_id or str(getattr(profile, "user_id", client_id))
             try:
-                # Alpaca SDK submit_order is synchronous; run non-blocking in threadpool
-                order = await asyncio.to_thread(self.client.submit_order, order_request)
-                order_id = str(order.id)
-                status = str(order.status.value if hasattr(order.status, "value") else order.status).upper()
-                filled_price = float(order.filled_avg_price) if getattr(order, "filled_avg_price", None) else None
-                filled_qty = float(order.filled_qty) if getattr(order, "filled_qty", None) else 0.0
-                cand_time = getattr(order, "filled_at", None) or getattr(order, "submitted_at", None)
-                executed_at = cand_time if isinstance(cand_time, datetime) else now_utc
+                calc = await self.bamboo.calculate_order(
+                    symbol=symbol_clean,
+                    side=side_clean.lower(),
+                    quantity=qty,
+                    currency=chosen_currency,
+                    user_id=effective_user,
+                )
+                b_res = await self.bamboo.place_order(
+                    calculation=calc,
+                    user_id=effective_user,
+                    dry_run=bamboo_dry_run,
+                )
+                order_id = b_res.order_id
+                bamboo_order_id = order_id
+                status = b_res.status
+                filled_price = b_res.price_per_share
+                filled_qty = b_res.quantity
+                order_fee = b_res.fee
+                total_price = b_res.total_price
+                executed_at = now_utc
+                is_dry_run = b_res.dry_run
+                logger.info(
+                    "[BAMBOO] Executed order %s: %s %s %s @ %s %s (status: %s, dry_run: %s)",
+                    order_id, side_clean, filled_qty, symbol_clean, filled_price, chosen_currency, status, is_dry_run
+                )
             except Exception as e:
-                logger.error(f"Alpaca API order submission error: {e}")
+                logger.error("Bamboo trade execution failed: %s", e)
                 await self._log_block(
                     db=db,
                     client_id=client_id,
@@ -332,10 +368,56 @@ class ExecutionModule:
                     symbol=symbol_clean,
                     side=side_clean,
                     qty=qty,
-                    gate="BROKER_API_ERROR",
-                    reason=f"Alpaca API execution failed: {str(e)}",
+                    gate="BAMBOO_API_ERROR",
+                    reason=f"Bamboo API execution failed: {str(e)}",
                 )
                 raise
+        else:
+            # Engine Alpaca / Dry-run Paper Trading
+            is_dry_run = dry_run if dry_run is not None else (is_global_dry_run or self.client is None)
+            if is_dry_run:
+                # Engine B: Simulated Dry-Run Execution
+                order_id = f"dry-run-{uuid.uuid4()}"
+                alpaca_order_id = order_id
+                status = "FILLED"
+                filled_price = SIMULATED_PRICES.get(symbol_clean, SIMULATED_PRICES["DEFAULT"])
+                filled_qty = float(qty)
+                total_price = filled_price * filled_qty
+                executed_at = now_utc
+                logger.info(f"[DRY-RUN] Executed simulated {side_clean} {qty} {symbol_clean} @ ${filled_price:.2f}")
+            else:
+                # Engine A: Alpaca Paper Trading Execution
+                order_side = OrderSide.BUY if side_clean == "BUY" else OrderSide.SELL
+                order_request = MarketOrderRequest(
+                    symbol=symbol_clean,
+                    qty=qty,
+                    side=order_side,
+                    time_in_force=TimeInForce.DAY,
+                )
+                try:
+                    # Alpaca SDK submit_order is synchronous; run non-blocking in threadpool
+                    order = await asyncio.to_thread(self.client.submit_order, order_request)
+                    order_id = str(order.id)
+                    alpaca_order_id = order_id
+                    status = str(order.status.value if hasattr(order.status, "value") else order.status).upper()
+                    filled_price = float(order.filled_avg_price) if getattr(order, "filled_avg_price", None) else None
+                    filled_qty = float(order.filled_qty) if getattr(order, "filled_qty", None) else 0.0
+                    total_price = (filled_price * filled_qty) if filled_price else None
+                    cand_time = getattr(order, "filled_at", None) or getattr(order, "submitted_at", None)
+                    executed_at = cand_time if isinstance(cand_time, datetime) else now_utc
+                except Exception as e:
+                    logger.error(f"Alpaca API order submission error: {e}")
+                    await self._log_block(
+                        db=db,
+                        client_id=client_id,
+                        proposal_id=proposal_id,
+                        symbol=symbol_clean,
+                        side=side_clean,
+                        qty=qty,
+                        gate="BROKER_API_ERROR",
+                        reason=f"Alpaca API execution failed: {str(e)}",
+                    )
+                    raise
 
         # ---------------------------------------------------------------------
         # Database Persistence (`trades` table / DBTrade)
@@ -351,12 +433,19 @@ class ExecutionModule:
             status=status,
             filled_price=filled_price,
             filled_qty=filled_qty,
-            alpaca_order_id=order_id,
+            broker=chosen_broker,
+            currency=chosen_currency,
+            alpaca_order_id=alpaca_order_id,
+            bamboo_order_id=bamboo_order_id,
             compliance_report={
                 "proposal_id": proposal_id,
                 "approved": approved,
                 "approval_timestamp": ts_utc.isoformat(),
                 "dry_run": is_dry_run,
+                "broker": chosen_broker,
+                "currency": chosen_currency,
+                "fee": order_fee,
+                "total_price": total_price,
                 "validation_gates": ["REG-003", "REG-004", "KYC", "30S_LOCK"],
             },
             user_approved_at=ts_utc,
@@ -374,16 +463,20 @@ class ExecutionModule:
             db=db,
             client_id=client_id,
             event_type="TRADE_EXECUTED",
-            actor="SYSTEM:EXECUTION_MODULE",
+            actor=f"SYSTEM:EXECUTION_MODULE:{chosen_broker.upper()}",
             details={
                 "trade_id": trade_id,
                 "order_id": order_id,
+                "broker": chosen_broker,
+                "currency": chosen_currency,
                 "proposal_id": proposal_id,
                 "symbol": symbol_clean,
                 "side": side_clean,
                 "qty": qty,
                 "filled_price": filled_price,
                 "filled_qty": filled_qty,
+                "fee": order_fee,
+                "total_price": total_price,
                 "status": status,
                 "dry_run": is_dry_run,
             },
@@ -401,15 +494,22 @@ class ExecutionModule:
             qty=qty,
             filled_price=filled_price,
             filled_qty=filled_qty,
+            broker=chosen_broker,
+            currency=chosen_currency,
+            fee=order_fee,
+            total_price=total_price,
             status=status,
             executed_at=executed_at,
             dry_run=is_dry_run,
         )
 
-    async def get_order_status(self, order_id: str) -> Dict[str, Any]:
+    async def get_order_status(self, order_id: str, broker: Optional[str] = None) -> Dict[str, Any]:
         """
-        Polls or retrieves order status from Alpaca or simulated engine.
+        Polls or retrieves order status from Bamboo, Alpaca, or simulated engine.
         """
+        if order_id.startswith("bamboo-") or broker == "bamboo":
+            return await self.bamboo.get_order_status(order_id)
+
         if order_id.startswith(("dry-run-", "mock-", "sim-")) or not self.client:
             return {
                 "order_id": order_id,

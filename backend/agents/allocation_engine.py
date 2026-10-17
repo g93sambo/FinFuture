@@ -100,9 +100,16 @@ class AllocationEngine:
         self,
         market_data_agent: Optional[MarketDataAgent] = None,
         openai_api_key: Optional[str] = None,
+        openai_model: Optional[str] = None,
     ) -> None:
         self.market_data = market_data_agent or MarketDataAgent()
         self.openai_api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
+        try:
+            from core.config import settings
+            default_model = getattr(settings, "openai_model", "gpt-4o")
+        except Exception:
+            default_model = "gpt-4o"
+        self.openai_model = openai_model or os.getenv("OPENAI_MODEL", default_model)
 
     # ------------------------------------------------------------------
     # Profile Constraint Translation
@@ -363,7 +370,7 @@ class AllocationEngine:
                     f"Factor Attributions: {attributions}"
                 )
                 resp = await client.chat.completions.create(
-                    model="gpt-4o",
+                    model=self.openai_model,
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.3,
                     max_tokens=250,

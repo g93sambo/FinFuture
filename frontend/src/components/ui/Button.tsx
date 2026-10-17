@@ -5,18 +5,18 @@ type Variant = "primary" | "secondary" | "quiet" | "danger";
 type Size = "sm" | "md";
 
 const base =
-  "inline-flex items-center justify-center gap-2 rounded-control font-medium whitespace-nowrap transition-all duration-140 ease-out select-none touch-manipulation active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100";
+  "inline-flex items-center justify-center gap-2 rounded-control font-medium whitespace-nowrap transition-all duration-140 ease-out select-none touch-manipulation active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100";
 
 const variants: Record<Variant, string> = {
-  primary: "bg-primary text-on-primary hover:bg-primary-hover active:bg-primary-hover shadow-sm",
-  secondary: "border border-ink/25 bg-background text-ink hover:border-ink hover:bg-surface active:bg-surface-muted",
-  quiet: "text-primary underline decoration-primary/30 underline-offset-4 hover:decoration-primary active:opacity-75",
-  danger: "border border-danger bg-background text-danger hover:bg-danger-soft active:bg-danger-soft",
+  primary: "bg-primary text-on-primary hover:bg-primary-hover active:bg-primary-hover shadow-xs",
+  secondary: "border border-line bg-background text-ink hover:border-primary/40 hover:bg-surface active:bg-surface-muted",
+  quiet: "text-accent font-medium hover:text-primary underline decoration-accent/30 underline-offset-4 hover:decoration-primary active:opacity-75",
+  danger: "border border-danger/40 bg-danger-soft/50 text-danger hover:bg-danger-soft active:bg-danger-soft",
 };
 
 const sizes: Record<Size, string> = {
-  sm: "h-8 px-3 text-[13px]",
-  md: "h-10 px-4 text-sm",
+  sm: "h-8 px-3.5 text-[12.5px]",
+  md: "h-10 px-4 text-[13.5px]",
 };
 
 export function buttonClass(variant: Variant = "primary", size: Size = "md", extra = "") {

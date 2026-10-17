@@ -18,6 +18,7 @@ interface AuthState {
   register: (email: string, password: string) => Promise<void>;
   logout: () => void;
   ensureSession: () => Promise<SessionStart | null>;
+  refreshSession: () => Promise<SessionStart | null>;
   setClientId: (id: string) => void;
 }
 
@@ -76,6 +77,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return sessionPromise.current;
   }, []);
 
+  const refreshSession = useCallback(async () => {
+    sessionPromise.current = null;
+    return ensureSession();
+  }, [ensureSession]);
+
   const login = useCallback(async (email: string, password: string) => {
     const { access_token } = await api.login(email, password);
     tokenStore.set(access_token);
@@ -104,9 +110,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       register,
       logout: reset,
       ensureSession,
+      refreshSession,
       setClientId: setClientIdState,
     }),
-    [status, user, session, sessionError, clientId, login, register, reset, ensureSession],
+    [status, user, session, sessionError, clientId, login, register, reset, ensureSession, refreshSession],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

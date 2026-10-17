@@ -79,6 +79,7 @@ export function LineChart({
 
   if (points.length === 0) return null;
   const path = geo.coords.map((c, i) => `${i ? "L" : "M"}${c.cx.toFixed(1)},${c.cy.toFixed(1)}`).join("");
+  const areaPath = `${path} L${geo.coords[geo.coords.length - 1].cx.toFixed(1)},${(PAD.top + ih).toFixed(1)} L${geo.coords[0].cx.toFixed(1)},${(PAD.top + ih).toFixed(1)} Z`;
 
   const onMove = (e: React.PointerEvent<SVGRectElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -97,6 +98,12 @@ export function LineChart({
     <figure className="relative">
       <figcaption className="sr-only">{title}</figcaption>
       <svg viewBox={`0 0 ${W} ${H}`} className="block h-auto w-full" role="img" aria-label={title}>
+        <defs>
+          <linearGradient id="equifyLineArea" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.22" />
+            <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.0" />
+          </linearGradient>
+        </defs>
         {geo.yTicks.map((t) => (
           <g key={`y${t}`}>
             <line x1={PAD.left} x2={W - PAD.right} y1={geo.sy(t)} y2={geo.sy(t)} className="stroke-chart-grid" strokeWidth={1} />
@@ -116,7 +123,7 @@ export function LineChart({
                 {formatX(t)}
               </text>
             ))}
-        <line x1={PAD.left} x2={W - PAD.right} y1={PAD.top + ih} y2={PAD.top + ih} className="stroke-ink/40" strokeWidth={1} />
+        <line x1={PAD.left} x2={W - PAD.right} y1={PAD.top + ih} y2={PAD.top + ih} className="stroke-line" strokeWidth={1} />
         <text x={PAD.left + iw / 2} y={H - 4} textAnchor="middle" className="fill-muted text-[11px]">
           {xLabel}
         </text>
@@ -124,18 +131,18 @@ export function LineChart({
           {yLabel}
         </text>
 
-        <path d={path} fill="none" className="stroke-primary" strokeWidth={2} strokeLinejoin="round" />
+        <path d={areaPath} fill="url(#equifyLineArea)" />
+        <path d={path} fill="none" className="stroke-accent" strokeWidth={2.25} strokeLinecap="round" strokeLinejoin="round" />
         {markers
-          ? geo.coords.map((c, i) => <circle key={i} cx={c.cx} cy={c.cy} r={4} className="fill-primary stroke-background" strokeWidth={2} />)
+          ? geo.coords.map((c, i) => <circle key={i} cx={c.cx} cy={c.cy} r={4} className="fill-accent stroke-background" strokeWidth={2} />)
           : null}
         {highlight !== undefined && geo.coords[highlight] ? (
           <g>
-            <rect
-              x={geo.coords[highlight].cx - 6}
-              y={geo.coords[highlight].cy - 6}
-              width={12}
-              height={12}
-              className="fill-background stroke-ink"
+            <circle
+              cx={geo.coords[highlight].cx}
+              cy={geo.coords[highlight].cy}
+              r={6}
+              className="fill-primary stroke-background"
               strokeWidth={2}
             />
             {highlightLabel ? (
@@ -148,8 +155,8 @@ export function LineChart({
 
         {hc ? (
           <g pointerEvents="none">
-            <line x1={hc.cx} x2={hc.cx} y1={PAD.top} y2={PAD.top + ih} className="stroke-ink/50" strokeWidth={1} strokeDasharray="3 3" />
-            <circle cx={hc.cx} cy={hc.cy} r={5} className="fill-primary stroke-background" strokeWidth={2} />
+            <line x1={hc.cx} x2={hc.cx} y1={PAD.top} y2={PAD.top + ih} className="stroke-accent/50" strokeWidth={1} strokeDasharray="3 3" />
+            <circle cx={hc.cx} cy={hc.cy} r={5} className="fill-accent stroke-background" strokeWidth={2} />
           </g>
         ) : null}
         <rect
@@ -165,15 +172,15 @@ export function LineChart({
       </svg>
       {hp && hc ? (
         <div
-          className="pointer-events-none absolute z-10 border border-ink bg-background px-2.5 py-1.5 text-[12.5px] text-ink"
+          className="pointer-events-none absolute z-10 rounded-lg border border-line bg-background px-3 py-2 text-[12px] text-ink shadow-md"
           style={{
             left: `${(hc.cx / W) * 100}%`,
             top: `${(hc.cy / H) * 100}%`,
             transform: `translate(${hc.cx > W * 0.65 ? "calc(-100% - 12px)" : "12px"}, -50%)`,
           }}
         >
-          <p className="font-medium">{hp.label}</p>
-          <p className="figures text-muted">
+          <p className="font-semibold text-ink">{hp.label}</p>
+          <p className="figures text-accent font-medium">
             {yLabel}: {formatY(hp.y)}
           </p>
           {!categoricalX ? (
@@ -187,3 +194,4 @@ export function LineChart({
     </figure>
   );
 }
+

@@ -28,35 +28,38 @@ export function BulletBars({ rows, max, title }: { rows: BulletRow[]; max?: numb
     <figure>
       <figcaption className="sr-only">{title}</figcaption>
       {hasTarget ? (
-        <div className="mb-3 flex items-center gap-5 text-[13px] text-muted" aria-hidden>
+        <div className="mb-3 flex items-center gap-5 text-[12.5px] text-muted" aria-hidden>
           <span className="flex items-center gap-2">
-            <span className="inline-block h-2.5 w-4 bg-primary" /> Current
+            <span className="inline-block h-2.5 w-4 rounded-full bg-accent" /> Current
           </span>
           <span className="flex items-center gap-2">
-            <span className="inline-block h-3.5 w-0.5 bg-ink" /> Target
+            <span className="inline-block h-3.5 w-1 rounded-full bg-primary" /> Target
           </span>
         </div>
       ) : null}
-      <ul className="space-y-1" role="list">
+      <ul className="space-y-1.5" role="list">
         {rows.map((r, i) => (
           <li
             key={r.label}
-            className={`grid grid-cols-[4.5rem_1fr_auto] items-center gap-3 py-1.5 sm:grid-cols-[6rem_1fr_7.5rem] ${hover === i ? "bg-surface" : ""}`}
+            className={`grid grid-cols-[4.5rem_1fr_auto] items-center gap-3 rounded-lg px-2 py-1.5 transition-colors sm:grid-cols-[6.5rem_1fr_7.5rem] ${hover === i ? "bg-surface" : ""}`}
             onMouseEnter={() => setHover(i)}
             onMouseLeave={() => setHover(null)}
           >
             <span className="truncate text-sm font-medium text-ink" title={r.sublabel ?? r.label}>
               {r.label}
             </span>
-            <span className="relative block h-3.5 bg-chart-track" aria-hidden>
-              <span className="absolute inset-y-0 left-0 bg-primary transition-[width] duration-300" style={{ width: w(r.value) }} />
+            <span className="relative block h-3 rounded-full bg-chart-track overflow-visible" aria-hidden>
+              <span
+                className={`absolute inset-y-0 left-0 rounded-full transition-[width] duration-300 ${i % 2 === 0 ? "bg-accent" : "bg-primary"}`}
+                style={{ width: w(r.value) }}
+              />
               {r.target !== undefined ? (
-                <span className="absolute -inset-y-1 w-0.5 bg-ink" style={{ left: `calc(${w(r.target)} - 1px)` }} />
+                <span className="absolute -inset-y-1 w-1 rounded-full bg-primary" style={{ left: `calc(${w(r.target)} - 2px)` }} />
               ) : null}
             </span>
-            <span className="figures text-right text-[13px] text-ink">
+            <span className="figures text-right text-[13px] font-medium text-ink">
               {r.valueText ?? `${(r.value * 100).toFixed(1)}%`}
-              {r.target !== undefined ? <span className="block text-muted sm:inline"> / {(r.target * 100).toFixed(1)}%</span> : null}
+              {r.target !== undefined ? <span className="block text-muted font-normal sm:inline"> / {(r.target * 100).toFixed(1)}%</span> : null}
             </span>
           </li>
         ))}
@@ -64,3 +67,4 @@ export function BulletBars({ rows, max, title }: { rows: BulletRow[]; max?: numb
     </figure>
   );
 }
+

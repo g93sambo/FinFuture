@@ -1188,3 +1188,166 @@ class ComplianceGuard:
         except Exception as e:
             logger.error(f"Failed to record audit log for compliance check: {e}")
             return None
+
+    # ========================================================================
+    # 5. Three-Tier Permission Grading (GREEN / YELLOW / RED) & Circuit Breaker
+    # ========================================================================
+
+    _circuit_breaker_events: Dict[str, List[Dict[str, Any]]] = {}
+    _circuit_breaker_locked_until: Dict[str, datetime] = {}
+
+    @staticmethod
+    def get_permission_tier_catalog() -> List[Dict[str, Any]]:
+        """Returns the 3-tier permission grading matrix (Green / Yellow / Red)."""
+        return [
+            {
+                "tier": "GREEN",
+                "label": "Auto-Execute (Low Risk / Read-Only)",
+                "execution_policy": "Executed autonomously upon intent recognition without secondary confirmation.",
+                "operations": [
+                    "Live market quotes & historical OHLCV lookups (Yahoo / Cboe / CalcFi)",
+                    "US Treasury yield curve & macroeconomic indicator queries",
+                    "Portfolio holdings, cash balance & drift/health diagnostic checks",
+                    "Multi-dimensional ETF & bond screening / suitability comparison",
+                    "Cryptographic SHA-256 audit chain verification & Merkle proof inspection",
+                ],
+                "safeguards": [
+                    "Strict read-only tool scope in ToolRegistry",
+                    "Tri-layer prompt injection sanitizer on external web/filing data",
+                    "Deterministic math engine (zero LLM arithmetic)",
+                ],
+            },
+            {
+                "tier": "YELLOW",
+                "label": "User Confirmation (Medium Risk / State & Small Orders)",
+                "execution_policy": "Displays structured operation details and requires explicit 1-click user confirmation.",
+                "operations": [
+                    "Updating client risk profile or suitability questionnaire answers",
+                    "Generating a formal target asset allocation or rebalance plan",
+                    "Standard paper-trade proposals (notional <= $1,000 and projected weight <= 5%)",
+                    "Anchoring audit trail Merkle root to Ethereum Sepolia testnet",
+                ],
+                "safeguards": [
+                    "15-minute proposal expiration window (REG-004)",
+                    "Pre-display suitability & concentration check (SUIT-001..003, CONC-001..003)",
+                    "Behavioral bias cool-off nudge when emotional risk is elevated",
+                ],
+            },
+            {
+                "tier": "RED",
+                "label": "Strong Multi-Factor Verification (High Risk / Capital Execution)",
+                "execution_policy": "Requires explicit user approval + Step-Up Multi-Factor Verification (6-digit security challenge & suitability attestation) before sandbox execution.",
+                "operations": [
+                    "Large paper-trade execution (notional > $1,000 or projected holding weight > 5%)",
+                    "Multi-leg portfolio rebalance execution",
+                    "Orders placed during elevated behavioral bias / market shock states",
+                ],
+                "safeguards": [
+                    "Mandatory Step-Up Verification Code challenge + Non-Discretionary Gate (REG-003)",
+                    "30-second idempotency lock preventing duplicate submissions",
+                    "Hard paper-trading sandbox isolation (Alpaca Paper API / Mainnet Chain ID 1 forbidden)",
+                    "Anomaly Circuit Breaker auto-lock on >= 3 consecutive blocked attempts",
+                ],
+            },
+        ]
+
+    @staticmethod
+    def get_known_risk_register() -> List[Dict[str, str]]:
+        """Returns the Security Self-Assessment Known-Risk List & Mitigations."""
+        return [
+            {
+                "risk_id": "RISK-01",
+                "category": "LLM Hallucination",
+                "description": "Generative models fabricating asset prices, returns, Sharpe ratios, or order fill receipts.",
+                "mitigation": "100% of pricing, MPT optimization, Student-t Monte Carlo, and order execution are delegated to deterministic Python modules and verified APIs; REG-001/002 filters all outgoing text.",
+                "status": "MITIGATED",
+            },
+            {
+                "risk_id": "RISK-02",
+                "category": "Indirect Prompt Injection",
+                "description": "Malicious instructions embedded in scraped web news or SEC filings attempting to bypass compliance or trigger unauthorized trades.",
+                "mitigation": "Tri-layer Sanitizer (HTML/Unicode stripping, <untrusted_external_content> XML isolation, regex heuristic screening) + non-discretionary approval gate.",
+                "status": "MITIGATED",
+            },
+            {
+                "risk_id": "RISK-03",
+                "category": "Unauthorized / Runaway Agent Execution",
+                "description": "Agent autonomously executing high-value or rapid-fire trades without human oversight.",
+                "mitigation": "Three-tier Green/Yellow/Red permission model, 15-minute proposal TTL, 30s duplicate-order lock, AML-002 velocity cap (max 5 orders/10m), and Anomaly Circuit Breaker.",
+                "status": "MITIGATED",
+            },
+            {
+                "risk_id": "RISK-04",
+                "category": "Emotional / Panic Trading in Market Drawdowns",
+                "description": "Retail investors panic-selling during drawdowns or chasing hype against their long-term financial plan.",
+                "mitigation": "BehavioralBiasAgent detects 5 cognitive biases in real time, tracks Stated vs. Revealed risk calibration, and triggers 24-hour cool-off nudges.",
+                "status": "MITIGATED",
+            },
+            {
+                "risk_id": "RISK-05",
+                "category": "Audit Log Tampering & Repudiation",
+                "description": "Post-hoc alteration or deletion of compliance checks, recommendations, or trade approvals.",
+                "mitigation": "Append-only SHA-256 hash-chained DBAuditLog with HMAC signatures and verifiable Merkle root anchoring to Ethereum Sepolia Testnet.",
+                "status": "MITIGATED",
+            },
+        ]
+
+    @staticmethod
+    def classify_trade_permission_tier(notional_value: float, projected_weight: float) -> Dict[str, Any]:
+        """Classifies a proposed trade into YELLOW or RED permission tier."""
+        if notional_value > 1000.0 or projected_weight > 0.05:
+            reasons = []
+            if notional_value > 1000.0:
+                reasons.append(f"notional value (${notional_value:,.2f}) exceeds $1,000 threshold")
+            if projected_weight > 0.05:
+                reasons.append(f"projected portfolio weight ({projected_weight:.1%}) exceeds 5.0% threshold")
+            return {
+                "permission_tier": "RED",
+                "requires_step_up_auth": True,
+                "step_up_reason": "Red-Tier Strong Verification required: " + " and ".join(reasons) + ".",
+            }
+        return {
+            "permission_tier": "YELLOW",
+            "requires_step_up_auth": False,
+            "step_up_reason": "Yellow-Tier Standard Confirmation required (notional <= $1,000 and weight <= 5%).",
+        }
+
+    def record_security_incident(self, client_id: str, reason: str, incident_type: str = "COMPLIANCE_BLOCK") -> Dict[str, Any]:
+        """Records a security/compliance block and trips the Anomaly Circuit Breaker if >= 3 occur within 60s."""
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(seconds=60)
+        events = [e for e in self._circuit_breaker_events.get(client_id, []) if e["ts"] >= cutoff]
+        events.append({"ts": now, "reason": reason, "type": incident_type})
+        self._circuit_breaker_events[client_id] = events
+
+        if len(events) >= 3:
+            self._circuit_breaker_locked_until[client_id] = now + timedelta(minutes=15)
+
+        return self.get_circuit_breaker_status(client_id)
+
+    def get_circuit_breaker_status(self, client_id: str = "global") -> Dict[str, Any]:
+        """Returns current Anomaly Circuit Breaker state for a client."""
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(seconds=60)
+        events = [e for e in self._circuit_breaker_events.get(client_id, []) if e["ts"] >= cutoff]
+        locked_until = self._circuit_breaker_locked_until.get(client_id)
+        is_locked = bool(locked_until and locked_until > now)
+        return {
+            "client_id": client_id,
+            "state": "OPEN_LOCKED" if is_locked else ("HALF_OPEN_WATCH" if len(events) > 0 else "CLOSED_NORMAL"),
+            "is_locked": is_locked,
+            "recent_incidents_60s": len(events),
+            "trip_threshold": 3,
+            "locked_until": locked_until.isoformat() if is_locked and locked_until else None,
+            "recent_events": [
+                {"timestamp": e["ts"].isoformat(), "type": e["type"], "reason": e["reason"]}
+                for e in events[-5:]
+            ],
+        }
+
+    def reset_circuit_breaker(self, client_id: str = "global") -> Dict[str, Any]:
+        """Resets the Anomaly Circuit Breaker for a client."""
+        self._circuit_breaker_events.pop(client_id, None)
+        self._circuit_breaker_locked_until.pop(client_id, None)
+        return self.get_circuit_breaker_status(client_id)
+

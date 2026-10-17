@@ -33,6 +33,17 @@ export function ProposalTicket({
   onReject?: () => void;
 }) {
   const { expired, label } = useCountdown(proposal.created_at, proposal.expires_in_seconds);
+  const isRedTier =
+    proposal.permission_tier === "RED" ||
+    proposal.requires_step_up_auth === true ||
+    proposal.notional_value > 1000 ||
+    proposal.projected_weight > 0.05;
+
+  const expectedCode = proposal.proposal_id.replace(/[^0-9]/g, "").slice(0, 6).padEnd(6, "4");
+  const [stepUpOpen, setStepUpOpen] = useState(false);
+  const [mfaCode, setMfaCode] = useState("");
+  const [attested, setAttested] = useState(false);
+
   const actionable = (state === "open" || state === "approving" || state === "rejecting") && !expired && (onApprove || onReject);
   const status =
     state === "done" ? (
@@ -47,12 +58,29 @@ export function ProposalTicket({
       <span className="figures text-[13px] text-muted">Expires in {label}</span>
     );
 
+  function handlePrimaryApprove() {
+    if (isRedTier && !stepUpOpen) {
+      setStepUpOpen(true);
+      return;
+    }
+    onApprove?.();
+  }
+
+  const mfaValid = !isRedTier || (mfaCode.trim() === expectedCode && attested);
+
   return (
-    <div className="border border-ink bg-background">
-      <div className="flex items-center justify-between gap-3 border-b border-ink px-4 py-2.5">
-        <p className="text-sm font-semibold text-ink">
-          {proposal.side === "BUY" ? "Buy" : "Sell"} {qty(proposal.qty)} {proposal.symbol}
-        </p>
+    <div className="overflow-hidden rounded-card border border-line bg-background shadow-xs">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-surface/50 px-4 py-3">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <p className="text-sm font-semibold text-ink">
+            {proposal.side === "BUY" ? "Buy" : "Sell"} {qty(proposal.qty)} {proposal.symbol}
+          </p>
+          {isRedTier ? (
+            <Tag tone="danger">RED TIER · Strong Verification</Tag>
+          ) : (
+            <Tag tone="warning">YELLOW TIER · User Confirmation</Tag>
+          )}
+        </div>
         {status}
       </div>
       <dl className="grid grid-cols-2 gap-x-6 px-4 py-3 text-sm sm:grid-cols-4">
@@ -63,20 +91,78 @@ export function ProposalTicket({
           ["Reference", proposal.proposal_id.slice(0, 8)],
         ].map(([k, v]) => (
           <div key={k} className="py-1">
-            <dt className="text-[13px] text-muted">{k}</dt>
-            <dd className="figures text-ink">{v}</dd>
+            <dt className="text-[12.5px] text-muted">{k}</dt>
+            <dd className="figures font-medium text-ink">{v}</dd>
           </div>
         ))}
       </dl>
+
+      {actionable && isRedTier && stepUpOpen ? (
+        <div className="border-t border-danger/30 bg-danger-soft/40 px-4 py-3 text-xs space-y-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="font-semibold text-ink">
+              Red-Tier Step-Up Security Verification Required (REG-003)
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setMfaCode(expectedCode);
+                setAttested(true);
+              }}
+              className="text-accent underline underline-offset-4 font-medium"
+            >
+              Auto-fill sandbox OTP ({expectedCode})
+            </button>
+          </div>
+          <p className="text-muted">
+            {proposal.step_up_reason ??
+              "This order exceeds the Yellow-Tier threshold ($1,000 notional or 5% portfolio weight) and requires multi-factor confirmation."}
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-2 text-ink">
+              <span>6-digit OTP:</span>
+              <input
+                type="text"
+                maxLength={6}
+                value={mfaCode}
+                onChange={(e) => setMfaCode(e.target.value)}
+                placeholder={expectedCode}
+                className="figures w-24 rounded-md border border-line bg-background px-2.5 py-1 text-xs text-ink focus:border-accent focus:outline-none"
+              />
+            </label>
+            <label className="flex items-center gap-1.5 text-ink cursor-pointer">
+              <input
+                type="checkbox"
+                checked={attested}
+                onChange={(e) => setAttested(e.target.checked)}
+                className="accent-primary"
+              />
+              <span>I confirm this non-discretionary paper order matches my risk profile.</span>
+            </label>
+          </div>
+        </div>
+      ) : null}
+
       {actionable ? (
         <div className="flex flex-wrap items-center gap-3 border-t border-line bg-surface px-4 py-3">
-          <Button size="sm" onClick={onApprove} pending={state === "approving"} disabled={state !== "open"}>
-            Approve and place order
+          <Button
+            size="sm"
+            onClick={handlePrimaryApprove}
+            pending={state === "approving"}
+            disabled={state !== "open" || (isRedTier && stepUpOpen && !mfaValid)}
+          >
+            {isRedTier && !stepUpOpen
+              ? "Proceed to Red-Tier Verification"
+              : "Approve and place order"}
           </Button>
           <Button size="sm" variant="secondary" onClick={onReject} disabled={state !== "open"}>
             Cancel
           </Button>
-          <span className="text-[13px] text-muted">Pre-trade compliance runs when you approve.</span>
+          <span className="text-[12.5px] text-muted">
+            {isRedTier
+              ? "Red-Tier gate: requires MFA + 12-rule pre-trade compliance check."
+              : "Yellow-Tier gate: pre-trade compliance runs when you approve."}
+          </span>
         </div>
       ) : null}
     </div>
@@ -87,8 +173,8 @@ export function ProposalTicket({
 export function ExecutionReceipt({ execution }: { execution: Execution }) {
   const filled = execution.status === "FILLED";
   return (
-    <div className="border border-success/40 bg-success-soft">
-      <div className="flex items-center justify-between gap-3 border-b border-success/30 px-4 py-2.5">
+    <div className="overflow-hidden rounded-card border border-success/35 bg-success-soft">
+      <div className="flex items-center justify-between gap-3 border-b border-success/25 px-4 py-2.5">
         <p className="text-sm font-semibold text-ink">
           {execution.side === "BUY" ? "Bought" : "Sold"} {qty(execution.filled_qty ?? execution.qty)} {execution.symbol}
         </p>
@@ -102,11 +188,12 @@ export function ExecutionReceipt({ execution }: { execution: Execution }) {
           ["Order", (execution.order_id ?? "").replace(/^dry-run-/, "").slice(0, 8)],
         ].map(([k, v]) => (
           <div key={k} className="py-1">
-            <dt className="text-[13px] text-muted">{k}</dt>
-            <dd className="figures text-ink">{v}</dd>
+            <dt className="text-[12.5px] text-muted">{k}</dt>
+            <dd className="figures font-medium text-ink">{v}</dd>
           </div>
         ))}
       </dl>
     </div>
   );
 }
+

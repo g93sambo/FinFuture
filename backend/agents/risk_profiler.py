@@ -180,11 +180,11 @@ class RiskProfilerAgent:
 
         # 1. Demographics
         # Age
-        age_match = re.search(r"\b(?:i am|i'm|age\s*(?:is|:)?)\s*(\d{1,3})\b", text_lower)
+        age_match = re.search(r"\b(?:i am|i'm|im|i’m|age\s*(?:is|:)?)\s*(\d{1,3})\b", text_lower)
         if not age_match:
-            # Match stand-alone 2-digit number when discussing age
+            # Match stand-alone 2-digit number when discussing age or bare 2-digit input
             age_match = re.search(r"\b(\d{2})\s*(?:years?\s*old|yo)\b", text_lower)
-        if not age_match and "age" in text_lower:
+        if not age_match and ("age" in text_lower or re.match(r"^\s*(\d{2})\s*$", text_lower)):
             age_match = re.search(r"\b(\d{2})\b", text_lower)
         if age_match:
             try:
@@ -261,7 +261,11 @@ class RiskProfilerAgent:
         # Primary goal (personal investment goals)
         if re.search(r"\b(capital preservation|preserve capital|safety of principal)\b", text_lower):
             extracted["primary_goal"] = "capital_preservation"
-        elif re.search(r"\b(?:(?:my\s+)?(?:primary\s+)?(?:goal|objective|aim|target)\b.*)?\b(income|dividends?|cash flow)\b", text_lower):
+        elif (
+            re.search(r"\b(?:(?:my\s+)?(?:primary\s+)?(?:goal|objective|aim|target)\s*(?:is|:)?\s*.*)?\b(dividend\s+income|steady\s+income|passive\s+income|dividend|dividends|cash\s+flow)\b", text_lower)
+            or re.search(r"\b(?:goal|objective|aim|target)\s*(?:is|to\s+generate)?\s*(?:steady\s+)?income\b", text_lower)
+            or re.search(r"\b(investing\s+for\s+income|seeking\s+income|focus(?:ed)?\s+on\s+income)\b", text_lower)
+        ) and not re.search(r"\b(?:annual|monthly|yearly|current|my)\s+income\b|\bincome\s+(?:is|of|around|about|:)\s*\$?\d+|\bearn\b", text_lower):
             extracted["primary_goal"] = "income"
         elif re.search(r"\b(?:(?:my\s+)?(?:primary\s+)?(?:goal|objective|aim|target)\b.*)?\b(balanced|moderate)\b", text_lower):
             extracted["primary_goal"] = "balanced"
@@ -402,6 +406,104 @@ class RiskProfilerAgent:
             return True, None
 
         return True, None
+
+    def get_state_options(self, state: str, data: Dict[str, Any]) -> List[str]:
+        """
+        Returns tap-to-answer quick-reply options tailored to the currently missing field in state.
+        """
+        if state == STATE_DEMOGRAPHICS:
+            if data.get("age") is None:
+                return ["18-25", "26-35", "36-50", "51-65", "65+"]
+            if not data.get("employment_status"):
+                return ["Employed (Full-time)", "Self-Employed / Business", "Retired", "Student"]
+            return []
+
+        elif state == STATE_FINANCIAL_SITUATION:
+            if data.get("annual_income") is None:
+                return ["$45,000", "$90,000", "$150,000", "$300,000+"]
+            if data.get("liquid_assets") is None:
+                return ["$15,000", "$50,000", "$100,000", "$250,000+"]
+            return []
+
+        elif state == STATE_TIME_HORIZON:
+            if data.get("investment_horizon_years") is None:
+                return ["1 to 3 years", "3 to 5 years", "5 to 10 years", "10+ years"]
+            if not data.get("primary_goal"):
+                return ["Capital Preservation", "Balanced Growth", "Long-term Growth", "Aggressive Growth"]
+            return []
+
+        elif state == STATE_RISK_TOLERANCE:
+            if data.get("risk_tolerance_score") is None:
+                return ["Conservative (3/10)", "Moderate (5/10)", "Growth (7/10)", "Aggressive (9/10)"]
+            if not data.get("drawdown_reaction"):
+                return ["Buy more at a discount", "Hold steady", "Trim some exposure", "Sell all"]
+            return []
+
+        elif state == STATE_EXPERIENCE:
+            if not data.get("investment_experience"):
+                return ["Beginner / None", "Novice (1-2 years)", "Intermediate (3-5 years)", "Advanced / Active"]
+            if not data.get("source_of_funds"):
+                return ["Employment Salary", "Business Profits", "Investments", "Savings / Inheritance"]
+            if data.get("pep_status") is None:
+                return ["Not a PEP", "I or a family member am a PEP"]
+            return []
+
+        return []
+
+    async def _extract_with_model(self, user_message: str, current_state: str, current_extracted: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Model-assisted field extraction for ambiguous free-text inputs.
+        Does NOT calculate scores or make decisions; strictly extracts entity attributes.
+        """
+        if not self.openai_client:
+            return current_extracted
+
+        try:
+            prompt = (
+                f"You are a structured data extraction engine for client onboarding. "
+                f"Extract any mentioned client attributes from the user's message into strict JSON.\n"
+                f"User message: \"{user_message}\"\n"
+                f"Current state: {current_state}\n"
+                f"Fields to extract (return null if unmentioned):\n"
+                f"- age: integer (e.g. 19)\n"
+                f"- employment_status: string ('employed', 'self-employed', 'retired', 'student', 'unemployed')\n"
+                f"- dependents: integer\n"
+                f"- annual_income: float in dollars/naira numeric (e.g. 90000)\n"
+                f"- liquid_assets: float in dollars/naira numeric (e.g. 25000)\n"
+                f"- monthly_expenses: float\n"
+                f"- existing_debts: float\n"
+                f"- investment_horizon_years: integer\n"
+                f"- primary_goal: string ('capital_preservation', 'income', 'balanced', 'growth', 'aggressive_growth')\n"
+                f"- risk_tolerance_score: float from 1.0 to 10.0\n"
+                f"- drawdown_reaction: string ('buy_more', 'hold', 'anxious', 'sell_some', 'sell_all')\n"
+                f"- investment_experience: string ('none', 'novice', 'intermediate', 'advanced', 'expert')\n"
+                f"- source_of_funds: string ('salary', 'business', 'investments', 'inheritance', 'savings')\n"
+                f"- pep_status: boolean\n\n"
+                f"Respond ONLY with a valid JSON object."
+            )
+            try:
+                from core.config import settings
+                model = getattr(settings, "openai_model", "gpt-4o")
+            except Exception:
+                model = "gpt-4o"
+
+            resp = await self.openai_client.chat.completions.create(
+                model=model,
+                messages=[{"role": "system", "content": "You are a JSON-only entity extractor."}, {"role": "user", "content": prompt}],
+                temperature=0.0,
+                response_format={"type": "json_object"},
+                max_tokens=300,
+            )
+            raw = resp.choices[0].message.content or "{}"
+            parsed = json.loads(raw)
+            updated = dict(current_extracted)
+            for k, v in parsed.items():
+                if v is not None and (updated.get(k) is None or updated.get(k) == 0):
+                    updated[k] = v
+            return updated
+        except Exception as e:
+            logger.debug("Model-based field extraction fallback skipped: %s", e)
+            return current_extracted
 
     # ------------------------------------------------------------------
     # Quantitative Scoring Engines
@@ -692,6 +794,12 @@ class RiskProfilerAgent:
         while state_idx < FSM_STATES.index(STATE_PROFILE_SYNTHESIS):
             this_state = FSM_STATES[state_idx]
             is_complete, prompt = self.validate_state_completion(this_state, draft["extracted_data"])
+            
+            # If heuristic extraction was incomplete, try model-based extraction fallback
+            if not is_complete and self.openai_client:
+                draft["extracted_data"] = await self._extract_with_model(user_message, this_state, draft["extracted_data"])
+                is_complete, prompt = self.validate_state_completion(this_state, draft["extracted_data"])
+
             if is_complete:
                 state_idx += 1
                 current_state = FSM_STATES[state_idx]
@@ -710,6 +818,7 @@ class RiskProfilerAgent:
                         "status": "in_progress",
                         "current_state": current_state,
                         "response": response_text,
+                        "options": [],
                         "client_id": draft["client_id"],
                         "extracted_data": draft["extracted_data"],
                         "profile": None,
@@ -717,9 +826,11 @@ class RiskProfilerAgent:
 
                 # Missing info in this state -> prompt user and break
                 response_text = prompt or STATE_PROMPTS.get(this_state, "Please provide more details.")
+                opts = self.get_state_options(this_state, draft["extracted_data"])
                 draft["conversation_history"].append({
                     "role": "assistant",
                     "content": response_text,
+                    "options": opts,
                     "timestamp": datetime.utcnow().isoformat(),
                 })
                 await self._save_draft(session_id, draft)
@@ -727,6 +838,7 @@ class RiskProfilerAgent:
                     "status": "in_progress",
                     "current_state": current_state,
                     "response": response_text,
+                    "options": opts,
                     "client_id": draft["client_id"],
                     "extracted_data": draft["extracted_data"],
                     "profile": None,
@@ -769,6 +881,11 @@ class RiskProfilerAgent:
                 "panic_sell_likelihood": panic_prob,
                 "kyc_verified": kyc_ok,
                 "aml_flag": aml_flag,
+                "source_of_funds": ext.get("source_of_funds", "salary"),
+                "drawdown_reaction": ext.get("drawdown_reaction", "hold"),
+                "monitoring_frequency": ext.get("monitoring_frequency", "monthly"),
+                "pep_status": bool(ext.get("pep_status", False)),
+                "high_risk_jurisdiction": bool(ext.get("high_risk_jurisdiction", False)),
                 "profiling_session_transcript": transcript_str,
             }
 

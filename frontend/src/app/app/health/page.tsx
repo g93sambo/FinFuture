@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { BulletBars } from "@/components/charts/BulletBars";
 import { RequireProfile } from "@/components/shell/RequireProfile";
 import { Button, ButtonLink } from "@/components/ui/Button";
@@ -9,7 +10,7 @@ import { Table, Td, Th, Tr } from "@/components/ui/Table";
 import { api } from "@/lib/api";
 import { dateTime, fixed, humanize, money, pct, qty, signedPct } from "@/lib/format";
 import type { HealthReport } from "@/lib/types";
-import { useRequest } from "@/lib/useRequest";
+import { useAction, useRequest } from "@/lib/useRequest";
 
 const gradeTone: Record<HealthReport["health_grade"], Tone> = {
   EXCELLENT: "success",
@@ -19,6 +20,29 @@ const gradeTone: Record<HealthReport["health_grade"], Tone> = {
   CRITICAL: "danger",
 };
 const alertTone: Record<string, Tone> = { INFO: "neutral", WARNING: "warning", CRITICAL: "danger" };
+
+const shockScenarios = [
+  {
+    id: "bull_drift_30d",
+    label: "+30 Days: Equity Tech Rally",
+    badge: "Equity +18% · Bond −4%",
+  },
+  {
+    id: "rate_hike_150bps",
+    label: "Macro Shock: +150 bps Rate Hike",
+    badge: "Equity −9% · Bond −11%",
+  },
+  {
+    id: "crash_2008_gfc",
+    label: "Tail Risk: 2008 GFC Drawdown",
+    badge: "Equity −38% · Bond +7%",
+  },
+  {
+    id: "stagflation_shock",
+    label: "2022 Stagflation Replay",
+    badge: "Equity −19% · Bond −13%",
+  },
+] as const;
 
 function ScoreScale({ score }: { score: number }) {
   const bands = [
@@ -30,11 +54,17 @@ function ScoreScale({ score }: { score: number }) {
   ] as const;
   return (
     <div aria-hidden>
-      <div className="relative flex h-3">
+      <div className="relative flex h-3.5 overflow-hidden rounded-full bg-chart-track">
         {bands.map(([name, a, b], i) => (
-          <span key={name} className={`h-full ${i > 0 ? "border-l-2 border-background" : ""} ${score >= a && score < b + (b === 100 ? 1 : 0) ? "bg-primary" : "bg-chart-track"}`} style={{ width: `${b - a}%` }} />
+          <span
+            key={name}
+            className={`h-full ${i > 0 ? "border-l-2 border-background" : ""} ${
+              score >= a && score < b + (b === 100 ? 1 : 0) ? "bg-accent" : "bg-chart-track"
+            }`}
+            style={{ width: `${b - a}%` }}
+          />
         ))}
-        <span className="absolute -top-1.5 h-6 w-0.5 bg-ink" style={{ left: `calc(${Math.min(100, Math.max(0, score))}% - 1px)` }} />
+        <span className="absolute -top-1.5 h-6 w-1 rounded-full bg-primary" style={{ left: `calc(${Math.min(100, Math.max(0, score))}% - 2px)` }} />
       </div>
       <div className="mt-1.5 flex text-[12px] text-muted">
         {bands.map(([name, a, b]) => (
@@ -47,23 +77,99 @@ function ScoreScale({ score }: { score: number }) {
   );
 }
 
-function Report({ r, rerun, pending }: { r: HealthReport; rerun: () => void; pending: boolean }) {
+function Report({
+  r,
+  rerun,
+  pending,
+  activeScenario,
+  onSelectScenario,
+  onResetLive,
+  simPending,
+}: {
+  r: HealthReport;
+  rerun: () => void;
+  pending: boolean;
+  activeScenario: string | null;
+  onSelectScenario: (id: string) => void;
+  onResetLive: () => void;
+  simPending: boolean;
+}) {
   const sb = r.score_breakdown;
   const drifts = Object.values(r.drift_analysis.asset_drifts).sort((a, b) => b.absolute_drift - a.absolute_drift);
   const bc = r.benchmark_comparison;
   const plan = r.rebalancing_plan;
   const n = r.narrative;
+  const meta = r.scenario_meta;
 
   return (
     <div className="space-y-8">
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-line pb-4 text-sm text-muted">
-        <span>
-          Prepared {dateTime(r.timestamp)} · {r.portfolio_summary.holdings_count} holdings · {money(r.portfolio_summary.total_value)}
-        </span>
-        <Button variant="secondary" size="sm" onClick={rerun} pending={pending}>
-          Run again
-        </Button>
+        <div className="flex flex-wrap items-center gap-3">
+          <span>
+            Prepared {dateTime(r.timestamp)} · {r.portfolio_summary.holdings_count} holdings · {money(r.portfolio_summary.total_value)}
+          </span>
+          <Tag tone={meta ? "warning" : "neutral"}>
+            {meta ? `WHAT-IF SIMULATION · ${meta.title}` : "LIVE PORTFOLIO · GREEN TIER"}
+          </Tag>
+        </div>
+        <div className="flex items-center gap-2">
+          {activeScenario ? (
+            <Button variant="secondary" size="sm" onClick={onResetLive} disabled={simPending}>
+              Reset to Live Portfolio
+            </Button>
+          ) : null}
+          <Button variant="secondary" size="sm" onClick={rerun} pending={pending && !simPending}>
+            Run again
+          </Button>
+        </div>
       </div>
+
+      <Panel
+        title="Time-Machine & Macro Shock Simulator"
+        aside={<Tag tone="neutral">Proactive Drift & Behavioral Coaching</Tag>}
+      >
+        <p className="text-sm text-muted">
+          Fast-forward your portfolio through a 30-day market rally or historical macro shock to see how asset weights drift out of bounds, how your Health Score responds, and what trades restore balance.
+        </p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {shockScenarios.map((sc) => {
+            const selected = activeScenario === sc.id;
+            return (
+              <button
+                key={sc.id}
+                type="button"
+                disabled={simPending}
+                onClick={() => onSelectScenario(sc.id)}
+                className={`rounded-xl border p-3.5 text-left transition-all ${
+                  selected
+                    ? "border-accent bg-accent-soft/70 ring-1 ring-accent"
+                    : "border-line bg-surface/70 hover:border-primary/40"
+                } disabled:opacity-50`}
+              >
+                <p className="text-xs font-semibold text-ink">{sc.label}</p>
+                <p className="figures mt-1 text-xs text-muted">{sc.badge}</p>
+              </button>
+            );
+          })}
+        </div>
+        {meta ? (
+          <div className="mt-4 rounded-r-xl border-l-3 border-accent bg-surface p-4 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="font-semibold text-ink">
+                Simulated Scenario: {meta.title} · Post-Shock NAV{" "}
+                <span className="figures">{money(r.portfolio_summary.total_value)}</span>
+              </p>
+              <Tag tone={meta.id === "bull_drift_30d" ? "success" : "warning"}>
+                {meta.id === "bull_drift_30d" ? "Bull Drift Regime" : "Macro Stress Regime"}
+              </Tag>
+            </div>
+            <p className="mt-1.5 text-xs text-muted">{meta.description}</p>
+            <p className="mt-2 text-xs font-medium text-ink">
+              <span className="font-semibold text-accent">Behavioral Coaching Nudge:</span> {meta.behavioral_nudge}
+            </p>
+          </div>
+        ) : null}
+      </Panel>
 
       <div className="grid gap-8 xl:grid-cols-12">
         <Panel title="Health score" className="xl:col-span-7">
@@ -282,10 +388,42 @@ function HealthSkeleton() {
 
 function Health({ clientId }: { clientId: string }) {
   const { data, error, loading, reload } = useRequest(`health:${clientId}`, () => api.healthReport(clientId));
+  const [simulatedReport, setSimulatedReport] = useState<HealthReport | null>(null);
+  const [activeScenario, setActiveScenario] = useState<string | null>(null);
+
+  const simAction = useAction(async (scenario: string) => {
+    setActiveScenario(scenario);
+    const res = await api.simulateShock(clientId, scenario);
+    setSimulatedReport(res);
+  });
+
   if (loading && !data) return <HealthSkeleton />;
   if (error && !data) return <ErrorNotice error={error} onRetry={reload} />;
   if (!data) return null;
-  return <Report r={data} rerun={reload} pending={loading} />;
+
+  const shownReport = simulatedReport ?? data;
+
+  return (
+    <>
+      <ErrorNotice error={simAction.error} />
+      <Report
+        r={shownReport}
+        rerun={() => {
+          setSimulatedReport(null);
+          setActiveScenario(null);
+          reload();
+        }}
+        pending={loading || simAction.pending}
+        activeScenario={activeScenario}
+        onSelectScenario={(id) => void simAction.run(id)}
+        onResetLive={() => {
+          setSimulatedReport(null);
+          setActiveScenario(null);
+        }}
+        simPending={simAction.pending}
+      />
+    </>
+  );
 }
 
 export default function HealthPage() {

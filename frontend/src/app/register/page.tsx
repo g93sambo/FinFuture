@@ -19,7 +19,7 @@ export default function RegisterPage() {
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
-    if (status === "authenticated") router.replace("/app/advisor");
+    if (status === "authenticated") router.replace("/onboarding");
   }, [status, router]);
 
   const pwError = password && password.length < 8 ? "Use at least 8 characters." : password.length > 72 ? "Use 72 characters or fewer." : null;
@@ -32,7 +32,7 @@ export default function RegisterPage() {
     setError(null);
     try {
       await register(email.trim(), password);
-      router.replace("/app/advisor");
+      router.replace("/onboarding");
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -46,14 +46,13 @@ export default function RegisterPage() {
       lede="A paper-trading account with $100,000 of simulated cash."
       aside={
         <div className="text-sm">
-          <p className="font-semibold text-ink">Have these to hand for profiling</p>
+          <p className="font-semibold text-ink">What happens next?</p>
           <ol className="mt-3 divide-y divide-line border-y border-line text-muted">
             {[
-              "Age, employment status and number of dependents",
-              "Approximate annual income, savings, monthly costs and debts",
-              "How many years you plan to invest for, and why",
-              "A risk rating from 1 to 10, and what you would do after a 20% fall",
-              "Your investing experience and where the money comes from",
+              "Create your account credentials",
+              "Set your financial profile and risk appetite via interactive options and sliders",
+              "Receive your automated suitability tier and panic sell likelihood assessment",
+              "Get tailored portfolio allocations, fund comparisons, and paper trading",
             ].map((t, i) => (
               <li key={t} className="grid grid-cols-[1.75rem_1fr] py-2.5">
                 <span className="figures">{i + 1}</span>

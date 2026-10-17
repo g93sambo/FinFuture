@@ -16,10 +16,10 @@ export function RequireProfile({ children }: { children: (clientId: string) => R
   return (
     <Empty
       title="Your risk profile is not finished yet"
-      action={<ButtonLink href="/app/advisor">Answer the profiling questions</ButtonLink>}
+      action={<ButtonLink href="/onboarding">Complete risk questionnaire</ButtonLink>}
     >
-      Recommendations, trades and reports are all tailored to your profile. The Advisor asks five short sets of questions
-      about you, your finances, your time horizon, your attitude to risk and your experience. It takes about three minutes.
+      Recommendations, trades and health reports are all tailored to your investor profile. Complete the interactive
+      onboarding questionnaire to configure your financial parameters, risk tolerance, and investment goals. It takes under two minutes.
     </Empty>
   );
 }

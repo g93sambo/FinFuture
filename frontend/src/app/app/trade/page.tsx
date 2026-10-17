@@ -3,6 +3,7 @@
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { ComplianceSummary, Violations } from "@/components/domain/Compliance";
+import { TickerAutocomplete } from "@/components/domain/TickerAutocomplete";
 import { ExecutionReceipt, ProposalTicket } from "@/components/domain/TradeTicket";
 import { RequireProfile } from "@/components/shell/RequireProfile";
 import { Button } from "@/components/ui/Button";
@@ -110,18 +111,16 @@ function TradeDesk({ clientId }: { clientId: string }) {
               />
             </div>
             <Field
-              label="Ticker"
-              hint={symbol && symbolOk && side === "SELL" ? `You hold ${qty(held)} ${symbol}.` : "For example BND, VTI or SPY."}
+              label="Ticker / Security"
+              hint={symbol && symbolOk && side === "SELL" ? `You hold ${qty(held)} ${symbol}.` : "For example SPY, Apple, or BND."}
               error={symbol && !symbolOk ? "Letters only, up to ten." : null}
             >
-              {(p) => (
-                <Input
-                  {...p}
+              {() => (
+                <TickerAutocomplete
                   value={symbol}
-                  onChange={(e) => setSymbol(e.target.value.toUpperCase().trim())}
-                  autoCapitalize="characters"
-                  spellCheck={false}
-                  className="figures uppercase"
+                  onChange={(val) => setSymbol(val.toUpperCase().trim())}
+                  onSelectSymbol={(sym) => setSymbol(sym)}
+                  placeholder="Type symbol or name (e.g. SPY, Apple, BND)..."
                 />
               )}
             </Field>
@@ -187,7 +186,7 @@ function TradeDesk({ clientId }: { clientId: string }) {
             </div>
           </Panel>
         ) : (
-          <div className="border border-dashed border-line px-6 py-10 text-sm text-muted">
+          <div className="rounded-card border border-dashed border-line bg-surface/40 px-6 py-10 text-sm text-muted">
             Your drafted order will appear here with its estimated cost and the weight it would take in your portfolio.
           </div>
         )}

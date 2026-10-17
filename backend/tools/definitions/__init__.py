@@ -17,15 +17,45 @@ try:
     from backend.tools.definitions.portfolio_optimizer import PortfolioOptimizerTool, PortfolioOptimizerArgs
     from backend.tools.definitions.tax_strategy import TaxStrategyTool, TaxStrategyArgs
     from backend.tools.definitions.global_intelligence import CryptoMacroTool, CryptoMacroArgs, SovereignMacroTool, SovereignMacroArgs
+    from backend.tools.definitions.bamboo_invest import BambooCalculateOrderTool, BambooCalculateOrderArgs, BambooPortfolioTool, BambooPortfolioArgs
+    from backend.tools.definitions.web_intelligence import SearchFinancialWebTool, SearchFinancialWebArgs, FetchWebPageTool, FetchWebPageArgs
+    from backend.tools.definitions.market_analytics import (
+        StockMetricsTool,
+        StockMetricsArgs,
+        CompanyFinancialsTool,
+        CompanyFinancialsArgs,
+        StockPredictionsTool,
+        StockPredictionsArgs,
+        SectorPerformanceTool,
+        SectorPerformanceArgs,
+        AssetComparisonTool,
+        AssetComparisonArgs,
+    )
+    from backend.tools.definitions.portfolio_tools import GetPortfolioTool, GetPortfolioArgs, GetPortfolioHealthTool, GetPortfolioHealthArgs
+    from backend.tools.definitions.deep_research import DeepResearchTool, DeepResearchArgs
+    from backend.tools.definitions.legal_statutes import SearchLegalStatutesTool, LegalStatuteArgs
+    from backend.tools.definitions.black_litterman_tool import BlackLittermanAllocationTool, BlackLittermanArgs
 except ImportError:
-    from .market_quote import MarketQuoteTool, MarketQuoteArgs
-    from .macro_indicators import MacroIndicatorsTool, MacroIndicatorsArgs
-    from .treasury_yield_curve import TreasuryYieldCurveTool, TreasuryYieldCurveArgs
-    from .asset_screener import AssetScreenerTool, AssetScreenerArgs
-    from .wealth_simulation import WealthSimulationTool, WealthSimulationArgs
-    from .portfolio_optimizer import PortfolioOptimizerTool, PortfolioOptimizerArgs
     from .tax_strategy import TaxStrategyTool, TaxStrategyArgs
     from .global_intelligence import CryptoMacroTool, CryptoMacroArgs, SovereignMacroTool, SovereignMacroArgs
+    from .bamboo_invest import BambooCalculateOrderTool, BambooCalculateOrderArgs, BambooPortfolioTool, BambooPortfolioArgs
+    from .web_intelligence import SearchFinancialWebTool, SearchFinancialWebArgs, FetchWebPageTool, FetchWebPageArgs
+    from .market_analytics import (
+        StockMetricsTool,
+        StockMetricsArgs,
+        CompanyFinancialsTool,
+        CompanyFinancialsArgs,
+        StockPredictionsTool,
+        StockPredictionsArgs,
+        SectorPerformanceTool,
+        SectorPerformanceArgs,
+        AssetComparisonTool,
+        AssetComparisonArgs,
+    )
+    from .portfolio_tools import GetPortfolioTool, GetPortfolioArgs, GetPortfolioHealthTool, GetPortfolioHealthArgs
+    from .deep_research import DeepResearchTool, DeepResearchArgs
+    from .legal_statutes import SearchLegalStatutesTool, LegalStatuteArgs
+    from .black_litterman_tool import BlackLittermanAllocationTool, BlackLittermanArgs
 
 if TYPE_CHECKING:
     try:
@@ -52,6 +82,34 @@ __all__ = [
     "CryptoMacroArgs",
     "SovereignMacroTool",
     "SovereignMacroArgs",
+    "BambooCalculateOrderTool",
+    "BambooCalculateOrderArgs",
+    "BambooPortfolioTool",
+    "BambooPortfolioArgs",
+    "SearchFinancialWebTool",
+    "SearchFinancialWebArgs",
+    "FetchWebPageTool",
+    "FetchWebPageArgs",
+    "StockMetricsTool",
+    "StockMetricsArgs",
+    "CompanyFinancialsTool",
+    "CompanyFinancialsArgs",
+    "StockPredictionsTool",
+    "StockPredictionsArgs",
+    "SectorPerformanceTool",
+    "SectorPerformanceArgs",
+    "AssetComparisonTool",
+    "AssetComparisonArgs",
+    "GetPortfolioTool",
+    "GetPortfolioArgs",
+    "GetPortfolioHealthTool",
+    "GetPortfolioHealthArgs",
+    "DeepResearchTool",
+    "DeepResearchArgs",
+    "SearchLegalStatutesTool",
+    "LegalStatuteArgs",
+    "BlackLittermanAllocationTool",
+    "BlackLittermanArgs",
     "register_core_tools",
 ]
 
@@ -62,7 +120,10 @@ def register_core_tools(registry: Optional[ToolRegistry] = None) -> None:
     or the default global ToolRegistry singleton if none is provided.
     """
     if registry is None:
-        from backend.tools.registry import ToolRegistry
+        try:
+            from tools.registry import ToolRegistry
+        except ImportError:
+            from backend.tools.registry import ToolRegistry
         registry = ToolRegistry.get_instance()
 
     registry.register(MarketQuoteTool())
@@ -75,3 +136,17 @@ def register_core_tools(registry: Optional[ToolRegistry] = None) -> None:
     registry.register(TaxStrategyTool())
     registry.register(CryptoMacroTool())
     registry.register(SovereignMacroTool())
+    registry.register(BambooCalculateOrderTool())
+    registry.register(BambooPortfolioTool())
+    registry.register(SearchFinancialWebTool())
+    registry.register(FetchWebPageTool())
+    registry.register(StockMetricsTool())
+    registry.register(CompanyFinancialsTool())
+    registry.register(StockPredictionsTool())
+    registry.register(SectorPerformanceTool())
+    registry.register(AssetComparisonTool())
+    registry.register(GetPortfolioTool())
+    registry.register(GetPortfolioHealthTool())
+    registry.register(DeepResearchTool())
+    registry.register(SearchLegalStatutesTool())
+    registry.register(BlackLittermanAllocationTool())

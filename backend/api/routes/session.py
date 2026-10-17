@@ -36,7 +36,7 @@ async def start_session(
             select(DBClientProfile).where(DBClientProfile.user_id == user.id).order_by(DBClientProfile.created_at.desc())
         )
     ).scalars().first()
-    started = await c.orchestrator.start_session(user.id, client_id=existing.client_id if existing else None)
+    started = await c.orchestrator.start_session(user.id, client_id=existing.client_id if existing else None, db=db)
     s = started["session"]
     return SessionStartResponse(
         session_id=s["session_id"], message=started["message"], stage=s["stage"], client_id=s["client_id"]

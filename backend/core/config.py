@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     environment: str = Field(default="development", description="Environment: development, test, production")
     debug: bool = Field(default=False, description="Debug mode flag")
     log_level: str = Field(default="INFO", description="Log level: DEBUG, INFO, WARNING, ERROR")
+    cors_origins: str = Field(
+        default="http://localhost:3000,http://127.0.0.1:3000",
+        description="Allowed CORS origins (comma-separated string, or '*' for open)"
+    )
 
     # --- Security & JWT Authentication ---
     secret_key: str = Field(
@@ -68,6 +72,20 @@ class Settings(BaseSettings):
     )
     alpaca_api_key: Optional[str] = Field(default=None, description="Alpaca Paper API Key")
     alpaca_secret_key: Optional[str] = Field(default=None, description="Alpaca Paper Secret Key")
+
+    # --- Bamboo Investment Brokerage (Nigeria & Global) ---
+    bamboo_live_mode: bool = Field(
+        default=False,
+        description="Bamboo live investment execution flag for Nigerian and global assets."
+    )
+    bamboo_base_url: str = Field(
+        default="https://powered-by-bamboo-sandbox.investbamboo.com",
+        description="Bamboo API base URL (sandbox or production powered-by-bamboo endpoint)."
+    )
+    bamboo_app_key: Optional[str] = Field(default=None, description="Bamboo App Key identifying tenant")
+    bamboo_username: Optional[str] = Field(default=None, description="Bamboo Tenant Username")
+    bamboo_password: Optional[str] = Field(default=None, description="Bamboo Tenant Password")
+
 
     # --- Web3 & Sepolia Anchoring Guard ---
     sepolia_chain_id: int = Field(
@@ -195,6 +213,14 @@ class Settings(BaseSettings):
         if url.startswith("sqlite://") and not url.startswith("sqlite+aiosqlite://"):
             return url.replace("sqlite://", "sqlite+aiosqlite://", 1)
         return url
+
+    @property
+    def allowed_cors_origins(self) -> List[str]:
+        if not self.cors_origins:
+            return ["http://localhost:3000", "http://127.0.0.1:3000"]
+        if self.cors_origins.strip() == "*":
+            return ["*"]
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
     @property
     def is_anchoring_configured(self) -> bool:

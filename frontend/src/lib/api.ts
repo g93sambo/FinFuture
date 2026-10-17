@@ -2,12 +2,19 @@ import type {
   AgentEvent,
   AnchorResult,
   AuditEntry,
+  ChatMessageAttachment,
+  ChatSessionDetail,
+  ChatSessionItem,
+  CircuitBreakerStatus,
   ClientProfile,
   CompareResponse,
   ComplianceRule,
   Execution,
   HealthReport,
   MacroResponse,
+  MerkleProofResponse,
+  OnboardingData,
+  PermissionTiersResponse,
   Portfolio,
   Proposal,
   Quote,
@@ -122,17 +129,44 @@ export const api = {
 
   // session & chat
   startSession: () => request<SessionStart>("/api/v1/session/start", { method: "POST" }),
-  sendMessage: (session_id: string, message: string) =>
+  getChatSessions: () => request<ChatSessionItem[]>("/api/v1/chat/sessions"),
+  createChatSession: (title?: string) =>
+    request<{ session_id: string; title: string; stage: string; message: string; client_id: string | null }>(
+      "/api/v1/chat/sessions",
+      { method: "POST", body: json({ title }) },
+    ),
+  getChatSession: (sessionId: string) =>
+    request<ChatSessionDetail>(`/api/v1/chat/sessions/${encodeURIComponent(sessionId)}`),
+  deleteChatSession: (sessionId: string) =>
+    request<{ deleted: boolean; session_id: string }>(`/api/v1/chat/sessions/${encodeURIComponent(sessionId)}`, {
+      method: "DELETE",
+    }),
+  renameChatSession: (sessionId: string, title: string) =>
+    request<{ session_id: string; title: string }>(`/api/v1/chat/sessions/${encodeURIComponent(sessionId)}`, {
+      method: "PATCH",
+      body: json({ title }),
+    }),
+  sendMessage: (session_id: string, message: string, attachments?: ChatMessageAttachment[]) =>
     request<{ text: string; agent: string; type: string; events: AgentEvent[] }>("/api/v1/chat/message", {
       method: "POST",
-      body: json({ session_id, message }),
+      body: json({ session_id, message, attachments: attachments || [] }),
     }),
 
   // profile & portfolio
   profile: (clientId: string) => request<ClientProfile>(`/api/v1/profile/${encodeURIComponent(clientId)}`),
+  myProfile: () => request<ClientProfile>("/api/v1/profile"),
+  submitOnboarding: (data: OnboardingData) =>
+    request<ClientProfile>("/api/v1/profile/onboarding", { method: "POST", body: json(data) }),
+  updateProfile: (data: Partial<OnboardingData> & { client_id?: string }) =>
+    request<ClientProfile>("/api/v1/profile", { method: "PUT", body: json(data) }),
   portfolio: (clientId: string) => request<Portfolio>(`/api/v1/portfolio/${encodeURIComponent(clientId)}`),
   healthReport: (clientId: string) =>
     request<HealthReport>("/api/v1/portfolio/health-report", { method: "POST", body: json({ client_id: clientId }) }),
+  simulateShock: (clientId: string, scenario: string) =>
+    request<HealthReport>("/api/v1/portfolio/simulate-shock", {
+      method: "POST",
+      body: json({ client_id: clientId, scenario }),
+    }),
   recommendAllocation: (clientId: string) =>
     request<{ client_id: string; events: AgentEvent[] }>("/api/v1/allocation/recommend", {
       method: "POST",
@@ -166,7 +200,16 @@ export const api = {
     ),
   anchorAudit: (clientId: string) =>
     request<AnchorResult>(`/api/v1/audit/${encodeURIComponent(clientId)}/anchor`, { method: "POST" }),
+  merkleProof: (clientId: string, entryId: string) =>
+    request<MerkleProofResponse>(
+      `/api/v1/audit/${encodeURIComponent(clientId)}/merkle-proof/${encodeURIComponent(entryId)}`,
+    ),
   rules: () => request<{ rules: ComplianceRule[] }>("/api/v1/compliance/rules"),
+  permissionTiers: () => request<PermissionTiersResponse>("/api/v1/compliance/permission-tiers"),
+  simulateCircuitBreaker: () =>
+    request<{ circuit_breaker: CircuitBreakerStatus }>("/api/v1/compliance/circuit-breaker/simulate", { method: "POST" }),
+  resetCircuitBreaker: () =>
+    request<{ circuit_breaker: CircuitBreakerStatus }>("/api/v1/compliance/circuit-breaker/reset", { method: "POST" }),
 
   // market data
   quote: (symbol: string) => request<Quote>(`/api/v1/market/quote/${encodeURIComponent(symbol)}`),

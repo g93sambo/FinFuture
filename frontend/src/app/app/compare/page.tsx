@@ -1,10 +1,11 @@
 "use client";
 
 import { Fragment, useState } from "react";
+import { TickerAutocomplete } from "@/components/domain/TickerAutocomplete";
 import { RequireProfile } from "@/components/shell/RequireProfile";
 import { Button } from "@/components/ui/Button";
 import { ErrorNotice, Tag } from "@/components/ui/Feedback";
-import { Field, Input, Segmented } from "@/components/ui/Field";
+import { Field, Segmented } from "@/components/ui/Field";
 import { PageHeader, Panel } from "@/components/ui/Layout";
 import { Table, Td, Th, Tr } from "@/components/ui/Table";
 import { api } from "@/lib/api";
@@ -87,17 +88,69 @@ function ProductDetail({ p }: { p: ComparedProduct }) {
 
 function Results({ res }: { res: CompareResponse }) {
   const [open, setOpen] = useState<string | null>(res.ranked_products[0]?.symbol ?? null);
+  const [explainMode, setExplainMode] = useState<"novice" | "quant">("novice");
   const winner = res.ranked_products[0];
   return (
     <div className="space-y-8">
-      {winner ? (
-        <div className="border-l-2 border-primary pl-5">
-          <p className="text-sm text-muted">Best fit for your profile</p>
-          <p className="mt-1 text-[22px] font-semibold text-ink">
-            {winner.symbol} <span className="font-normal text-muted">· {winner.name}</span>
-          </p>
-          <p className="figures mt-1 text-sm text-ink">Composite score {fixed(winner.composite_score)} out of 10</p>
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-line pb-4">
+        {winner ? (
+          <div className="rounded-r-xl border-l-3 border-accent bg-accent-soft/40 py-2 pl-5 pr-4">
+            <div className="flex items-center gap-2">
+              <p className="text-sm text-muted">Best fit for your profile</p>
+              <Tag tone="neutral">GREEN TIER · Read-Only Screening</Tag>
+            </div>
+            <p className="mt-1 text-[22px] font-semibold text-ink">
+              {winner.symbol} <span className="font-normal text-muted">· {winner.name}</span>
+            </p>
+            <p className="figures mt-1 text-sm text-ink">Composite score {fixed(winner.composite_score)} out of 10</p>
+          </div>
+        ) : <div />}
+        <Segmented
+          label="Comparison explanation mode"
+          value={explainMode}
+          onChange={setExplainMode}
+          options={[
+            { value: "novice", label: "Novice Plain-English" },
+            { value: "quant", label: "6-Factor Quant Breakdown" },
+          ]}
+        />
+      </div>
+
+      {explainMode === "novice" && winner ? (
+        <Panel title="Plain-English Fund Translation" aside={<Tag tone="success">Novice Analogy Mode</Tag>}>
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="rounded-xl border border-line bg-surface/70 p-4">
+              <p className="text-xs font-semibold tracking-wider text-muted uppercase">1. Fee Drag (Cost 30%)</p>
+              <p className="mt-1 text-sm font-medium text-ink">
+                {winner.symbol} charges {pct(winner.factor_breakdown.raw_metrics?.expense_ratio, 2)} per year
+              </p>
+              <p className="mt-1.5 text-xs text-muted">
+                Like a highway toll: on every $10,000 invested, you pay only about $
+                {fixed((winner.factor_breakdown.raw_metrics?.expense_ratio ?? 0.0005) * 10000, 1)} annually to the fund manager.
+              </p>
+            </div>
+            <div className="rounded-xl border border-line bg-surface/70 p-4">
+              <p className="text-xs font-semibold tracking-wider text-muted uppercase">2. Ease of Trading (Liquidity 20%)</p>
+              <p className="mt-1 text-sm font-medium text-ink">
+                Bid-ask spread of {pct(winner.factor_breakdown.raw_metrics?.spread_pct, 3)}
+              </p>
+              <p className="mt-1.5 text-xs text-muted">
+                Measures how easily you can enter or exit without price slippage—like exchanging major currencies at wholesale rates.
+              </p>
+            </div>
+            <div className="rounded-xl border border-line bg-surface/70 p-4">
+              <p className="text-xs font-semibold tracking-wider text-muted uppercase">3. Suitability Guardrail</p>
+              <p className="mt-1 text-sm font-medium text-ink">
+                Risk Level {winner.risk_level}/5 vs. Your Tier {res.report?.client_risk_tier ?? "—"}/5
+              </p>
+              <p className="mt-1.5 text-xs text-muted">
+                {res.unsuitable_products.length > 0
+                  ? `${res.unsuitable_products.length} fund(s) were automatically filtered out before ranking because their volatility exceeds your sleep-at-night threshold.`
+                  : "All compared funds sit safely inside your personal risk ceiling."}
+              </p>
+            </div>
+          </div>
+        </Panel>
       ) : null}
 
       <Panel title="Ranking" aside={<span>Factor scores out of 10, weights in brackets</span>} flush>
@@ -207,7 +260,7 @@ function Compare({ clientId }: { clientId: string }) {
           e.preventDefault();
           if (!tooFew && !tooMany) void run(kind, symbols);
         }}
-        className="grid gap-5 border border-line bg-surface p-5 lg:grid-cols-[auto_1fr_auto] lg:items-end"
+        className="grid gap-5 rounded-card border border-line bg-surface/70 p-5 shadow-[0_2px_12px_rgba(15,41,34,0.03)] lg:grid-cols-[auto_1fr_auto] lg:items-end"
       >
         <div>
           <p className="mb-1.5 text-sm font-medium text-ink">Fund type</p>
@@ -239,7 +292,14 @@ function Compare({ clientId }: { clientId: string }) {
           }
           error={input && tooFew ? "Enter at least two tickers." : tooMany ? "Fifteen tickers at most." : null}
         >
-          {(p) => <Input {...p} value={input} onChange={(e) => setInput(e.target.value)} autoCapitalize="characters" spellCheck={false} />}
+          {() => (
+            <TickerAutocomplete
+              value={input}
+              onChange={(val) => setInput(val)}
+              allowMultiple
+              placeholder="Type tickers separated by spaces (e.g. SPY VTI QQQ)..."
+            />
+          )}
         </Field>
         <Button type="submit" pending={pending} disabled={tooFew || tooMany} className="lg:mb-[26px]">
           Compare
@@ -247,7 +307,24 @@ function Compare({ clientId }: { clientId: string }) {
       </form>
 
       <ErrorNotice error={error} />
-      {res ? <Results res={res} /> : null}
+
+      {pending && (
+        <div className="rounded-xl border border-dashed border-line bg-surface/50 p-8 text-center animate-fadeIn my-6">
+          <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-accent-soft text-accent">
+            <span className="h-5 w-5 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+          </div>
+          <p className="mt-3 text-sm font-semibold text-ink">Analyzing & Scoring Funds…</p>
+          <p className="mt-1 text-xs text-muted max-w-[50ch] mx-auto">
+            Computing 6-factor quantitative matrix: expense ratios, tracking errors, liquidity buffers, and manager suitability.
+          </p>
+        </div>
+      )}
+
+      {res ? (
+        <div className={pending ? "opacity-40 pointer-events-none transition-opacity" : "opacity-100 transition-opacity"}>
+          <Results res={res} />
+        </div>
+      ) : null}
       {!res && !pending ? (
         <p className="max-w-[70ch] text-sm text-muted">
           Each fund is scored on six factors and combined with fixed weights. Funds above your risk tier are listed separately with the reason;

@@ -1,7 +1,7 @@
 import { forwardRef, useId, type ComponentProps, type ReactNode } from "react";
 
 const control =
-  "block w-full rounded-control border border-ink/25 bg-background px-3 text-[15px] text-ink placeholder:text-muted/80 transition-all duration-140 ease-out hover:border-ink/45 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none aria-[invalid=true]:border-danger";
+  "block w-full rounded-control border border-line bg-surface/60 px-3.5 text-[14.5px] text-ink placeholder:text-muted/80 transition-all duration-140 ease-out hover:border-primary/35 focus:border-accent focus:bg-background focus:ring-2 focus:ring-accent/15 focus:outline-none aria-[invalid=true]:border-danger";
 
 interface FieldProps {
   label: string;
@@ -17,16 +17,16 @@ export function Field({ label, hint, error, children, className = "" }: FieldPro
   const describedBy = error || hint ? `${id}-note` : undefined;
   return (
     <div className={className}>
-      <label htmlFor={id} className="mb-1.5 block text-sm font-medium text-ink">
+      <label htmlFor={id} className="mb-1.5 block text-[13.5px] font-medium text-ink">
         {label}
       </label>
       {children({ id, "aria-describedby": describedBy, "aria-invalid": error ? true : undefined })}
       {error ? (
-        <p id={describedBy} className="mt-1.5 text-[13px] text-danger">
+        <p id={describedBy} className="mt-1.5 text-[12.5px] text-danger">
           {error}
         </p>
       ) : hint ? (
-        <p id={describedBy} className="mt-1.5 text-[13px] text-muted">
+        <p id={describedBy} className="mt-1.5 text-[12.5px] text-muted">
           {hint}
         </p>
       ) : null}
@@ -55,7 +55,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, ComponentProps<"textarea
   return <textarea ref={ref} className={`${control} py-2.5 ${className}`} {...rest} />;
 });
 
-/** Two-option toggle rendered as joined square buttons (e.g. Buy / Sell). */
+/** Pill-style segmented toggle matching the Equify navigation and filter pills. */
 export function Segmented<T extends string>({
   value,
   options,
@@ -68,8 +68,8 @@ export function Segmented<T extends string>({
   label: string;
 }) {
   return (
-    <div role="radiogroup" aria-label={label} className="inline-flex border border-ink/25">
-      {options.map((o, i) => {
+    <div role="radiogroup" aria-label={label} className="inline-flex rounded-full border border-line bg-surface p-1 gap-1">
+      {options.map((o) => {
         const on = o.value === value;
         return (
           <button
@@ -78,8 +78,8 @@ export function Segmented<T extends string>({
             role="radio"
             aria-checked={on}
             onClick={() => onChange(o.value)}
-            className={`h-10 min-w-20 px-4 text-sm font-medium transition-colors ${i > 0 ? "border-l border-ink/25" : ""} ${
-              on ? "bg-primary text-on-primary" : "bg-background text-ink hover:bg-surface"
+            className={`h-8 min-w-20 rounded-full px-4 text-xs font-medium transition-all ${
+              on ? "bg-primary text-on-primary shadow-xs" : "text-muted hover:text-ink"
             }`}
           >
             {o.label}
@@ -89,3 +89,4 @@ export function Segmented<T extends string>({
     </div>
   );
 }
+

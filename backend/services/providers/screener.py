@@ -223,7 +223,63 @@ class AssetScreenerProvider:
                 duration=6.2,
                 credit_rating="A",
                 suitable_horizons=["MEDIUM", "LONG"]
-            )
+            ),
+            # Nigerian Equities (NGX traded via Bamboo)
+            AssetMetadata(
+                symbol="DANGCEM",
+                name="Dangote Cement Plc",
+                asset_class="equity",
+                sub_category="industrial_materials",
+                expense_ratio=0.0,
+                aum_billions=11.2,
+                yield_30d=0.055,
+                risk_level=3,
+                suitable_horizons=["MEDIUM", "LONG"]
+            ),
+            AssetMetadata(
+                symbol="MTNN",
+                name="MTN Nigeria Communications Plc",
+                asset_class="equity",
+                sub_category="telecom_infrastructure",
+                expense_ratio=0.0,
+                aum_billions=5.4,
+                yield_30d=0.062,
+                risk_level=3,
+                suitable_horizons=["MEDIUM", "LONG"]
+            ),
+            AssetMetadata(
+                symbol="GTCO",
+                name="Guaranty Trust Holding Company Plc",
+                asset_class="equity",
+                sub_category="banking_financial_services",
+                expense_ratio=0.0,
+                aum_billions=1.6,
+                yield_30d=0.082,
+                risk_level=3,
+                suitable_horizons=["MEDIUM", "LONG"]
+            ),
+            AssetMetadata(
+                symbol="ZENITHBANK",
+                name="Zenith Bank Plc",
+                asset_class="equity",
+                sub_category="banking_financial_services",
+                expense_ratio=0.0,
+                aum_billions=1.4,
+                yield_30d=0.088,
+                risk_level=3,
+                suitable_horizons=["MEDIUM", "LONG"]
+            ),
+            AssetMetadata(
+                symbol="SEPLAT",
+                name="Seplat Energy Plc",
+                asset_class="equity",
+                sub_category="energy_oil_gas",
+                expense_ratio=0.0,
+                aum_billions=2.1,
+                yield_30d=0.075,
+                risk_level=4,
+                suitable_horizons=["LONG"]
+            ),
         ]
 
     def screen(

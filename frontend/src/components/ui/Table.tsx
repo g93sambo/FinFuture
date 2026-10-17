@@ -16,7 +16,7 @@ export function Th({ numeric, className = "", ...rest }: ComponentProps<"th"> & 
   return (
     <th
       scope="col"
-      className={`border-b border-ink/70 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap text-muted first:pl-5 last:pr-5 ${numeric ? "text-right" : ""} ${className}`}
+      className={`border-b border-line bg-surface/60 px-4 py-2.5 text-[12px] font-medium whitespace-nowrap text-muted first:pl-5 last:pr-5 ${numeric ? "text-right" : ""} ${className}`}
       {...rest}
     />
   );
@@ -25,12 +25,13 @@ export function Th({ numeric, className = "", ...rest }: ComponentProps<"th"> & 
 export function Td({ numeric, className = "", ...rest }: ComponentProps<"td"> & { numeric?: boolean }) {
   return (
     <td
-      className={`border-b border-line px-4 py-3 align-top text-ink first:pl-5 last:pr-5 ${numeric ? "figures text-right whitespace-nowrap" : ""} ${className}`}
+      className={`border-b border-line/70 px-4 py-3 align-middle text-ink first:pl-5 last:pr-5 ${numeric ? "figures text-right whitespace-nowrap" : ""} ${className}`}
       {...rest}
     />
   );
 }
 
 export function Tr({ className = "", ...rest }: ComponentProps<"tr">) {
-  return <tr className={`hover:bg-surface ${className}`} {...rest} />;
+  return <tr className={`transition-colors hover:bg-surface/80 ${className}`} {...rest} />;
 }
+

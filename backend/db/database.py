@@ -33,6 +33,28 @@ async def get_db():
 
 
 async def init_db():
-    """Initialize database tables from SQLAlchemy metadata."""
+    """Initialize database tables from SQLAlchemy metadata and ensure schema columns."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+        def _migrate_columns(sync_conn):
+            from sqlalchemy import text
+            try:
+                # Check columns in client_profiles
+                result = sync_conn.execute(text("PRAGMA table_info(client_profiles)"))
+                existing = {row[1] for row in result.fetchall()}
+                new_cols = [
+                    ("source_of_funds", "TEXT DEFAULT 'salary'"),
+                    ("drawdown_reaction", "TEXT DEFAULT 'hold'"),
+                    ("monitoring_frequency", "TEXT DEFAULT 'monthly'"),
+                    ("pep_status", "BOOLEAN DEFAULT 0"),
+                    ("high_risk_jurisdiction", "BOOLEAN DEFAULT 0"),
+                ]
+                for col_name, col_type in new_cols:
+                    if col_name not in existing:
+                        sync_conn.execute(text(f"ALTER TABLE client_profiles ADD COLUMN {col_name} {col_type}"))
+            except Exception:
+                pass
+
+        if DATABASE_URL.startswith("sqlite"):
+            await conn.run_sync(_migrate_columns)

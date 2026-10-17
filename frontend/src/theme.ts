@@ -30,40 +30,40 @@
 
 export const theme = {
   colors: {
-    // Brand
-    primary: "#0F3D2E",
-    primaryHover: "#0A2D21",
-    primarySoft: "#E3EDE7",
+    // Brand: Deep dark green primary + vibrant emerald secondary/accent + crisp white
+    primary: "#0F2922",
+    primaryHover: "#163B31",
+    primarySoft: "#E6F4EE",
     onPrimary: "#FFFFFF",
-    accent: "#2D6A4F",
-    accentHover: "#245840",
-    accentSoft: "#EEF4F0",
+    accent: "#269966",
+    accentHover: "#1E7E53",
+    accentSoft: "#EAF7F1",
     onAccent: "#FFFFFF",
 
     // Surfaces and text
     background: "#FFFFFF",
-    surface: "#F5F7F6",
-    surfaceMuted: "#EBF0ED",
+    surface: "#F7F9F8",
+    surfaceMuted: "#EEF3F0",
     ink: "#0E1B16",
-    muted: "#4F5E57",
-    line: "#D3DCD7",
+    muted: "#76847D",
+    line: "#E6ECE9",
 
     // Status
-    success: "#1F7A3A",
-    successSoft: "#E5F2E8",
-    warning: "#8A5300",
-    warningSoft: "#FBF0DC",
-    danger: "#B42318",
-    dangerSoft: "#FBE9E7",
+    success: "#269966",
+    successSoft: "#EAF7F1",
+    warning: "#B86E00",
+    warningSoft: "#FEF5E7",
+    danger: "#D92D20",
+    dangerSoft: "#FEECEB",
 
     // App-specific
-    chartTrack: "#EBF0ED", // empty part of a bar / bullet chart
-    chartGrid: "#E2E8E5", // gridlines inside charts
-    focus: "#2D6A4F", // keyboard focus ring
+    chartTrack: "#EEF3F0", // empty part of a bar / bullet chart
+    chartGrid: "#E6ECE9", // gridlines inside charts
+    focus: "#269966", // keyboard focus ring
   },
   radius: {
-    card: "0px",
-    control: "2px",
+    card: "16px",
+    control: "10px",
   },
   motion: {
     durInstant: "80ms",
@@ -73,8 +73,8 @@ export const theme = {
     easeOut: "cubic-bezier(0.2, 0, 0, 1)",
     easeIn: "cubic-bezier(0.4, 0, 1, 1)",
     easeInOut: "cubic-bezier(0.65, 0, 0.35, 1)",
-    pressScale: "0.97",
-    liftShadow: "0 4px 14px rgba(15, 61, 46, 0.12)",
+    pressScale: "0.98",
+    liftShadow: "0 8px 24px rgba(15, 41, 34, 0.08)",
   },
 } as const;
 

@@ -23,6 +23,8 @@ class TradeProposalRequest(BaseModel):
     symbol: str = Field(min_length=1, max_length=10)
     side: str
     qty: float = Field(gt=0)
+    broker: Optional[str] = Field(default=None, description="alpaca or bamboo")
+    currency: Optional[str] = Field(default=None, description="USD or NGN")
 
 
 class TradeRequest(BaseModel):
@@ -30,6 +32,8 @@ class TradeRequest(BaseModel):
     symbol: Optional[str] = Field(default=None, max_length=10)
     qty: Optional[float] = Field(default=None, gt=0)
     side: Optional[str] = None
+    broker: Optional[str] = Field(default=None, description="alpaca or bamboo")
+    currency: Optional[str] = Field(default=None, description="USD or NGN")
     user_approved: bool = False
     proposal_id: Optional[str] = None
 
@@ -108,7 +112,10 @@ async def get_trade_order(
         "qty": trade.qty,
         "status": trade.status,
         "filled_price": trade.filled_price,
+        "broker": getattr(trade, "broker", "alpaca"),
+        "currency": getattr(trade, "currency", "USD"),
         "alpaca_order_id": trade.alpaca_order_id,
+        "bamboo_order_id": getattr(trade, "bamboo_order_id", None),
         "created_at": trade.created_at.isoformat() if trade.created_at else None,
     }
 
@@ -136,7 +143,10 @@ async def list_trades(
                 "qty": t.qty,
                 "status": t.status,
                 "filled_price": t.filled_price,
+                "broker": getattr(t, "broker", "alpaca"),
+                "currency": getattr(t, "currency", "USD"),
                 "alpaca_order_id": t.alpaca_order_id,
+                "bamboo_order_id": getattr(t, "bamboo_order_id", None),
                 "created_at": t.created_at.isoformat() if t.created_at else None,
             }
             for t in rows

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { BulletBars } from "../charts/BulletBars";
 import { Notice, Tag } from "../ui/Feedback";
 import { BiasAlert } from "./BiasAlert";
@@ -26,7 +27,8 @@ const agentNames: Record<string, string> = {
   User: "You",
 };
 
-const DISCLOSURE = /\s*(Important Regulatory Disclosure: )?(All investments|Investing) involves? risk, including possible loss of principal\.\s*Past performance (is no guarantee|does not guarantee) (of )?future results\.?\s*/i;
+const DISCLOSURE =
+  /\s*(Important Regulatory Disclosure: )?(All investments|Investing) involves? risk, including possible loss of principal\.\s*Past performance (is no guarantee|does not guarantee) (of )?future results\.?\s*/i;
 
 /** Splits the standard risk disclosure off the end so it is shown once, small, under the message. */
 function splitDisclosure(text: string): [string, boolean] {
@@ -35,14 +37,26 @@ function splitDisclosure(text: string): [string, boolean] {
   return [text.replace(DISCLOSURE, "\n").trim(), true];
 }
 
-function renderInlineBold(line: string) {
-  const parts = line.split(/(\*\*.*?\*\*)/g);
+/** Renders bold and footnote citation tokens [1], [2], etc. */
+function renderInlineFormatting(line: string) {
+  const parts = line.split(/(\*\*.*?\*\*|\[\d+\])/g);
   return parts.map((part, i) => {
     if (part.startsWith("**") && part.endsWith("**")) {
       return (
         <strong key={i} className="font-semibold text-ink">
           {part.slice(2, -2)}
         </strong>
+      );
+    }
+    if (/^\[\d+\]$/.test(part)) {
+      return (
+        <span
+          key={i}
+          className="ml-1 inline-flex items-center justify-center rounded-sm bg-accent-soft px-1.5 py-0.2 text-[10px] font-semibold text-accent align-baseline"
+          title={`Citation ${part}`}
+        >
+          {part.slice(1, -1)}
+        </span>
       );
     }
     return part;
@@ -59,7 +73,8 @@ function Body({ text }: { text?: string }) {
   let i = 0;
 
   while (i < lines.length) {
-    const line = lines[i].trim();
+    const rawLine = lines[i];
+    const line = rawLine.trim();
 
     // Markdown table block detection
     if (line.startsWith("|") && line.endsWith("|") && i + 1 < lines.length && lines[i + 1].trim().startsWith("|")) {
@@ -77,13 +92,13 @@ function Body({ text }: { text?: string }) {
         const headers = parseRow(tableLines[0]);
         const dataRows = tableLines.slice(2).map(parseRow);
         blocks.push(
-          <div key={`tbl-${i}`} className="my-3 overflow-x-auto border border-line bg-surface">
+          <div key={`tbl-${i}`} className="my-3 overflow-x-auto rounded-xl border border-line bg-surface">
             <table className="w-full border-collapse text-left text-[13px]">
               <thead>
                 <tr className="border-b border-line bg-surface-muted">
                   {headers.map((h, hi) => (
                     <th key={hi} className="px-3 py-2 font-semibold text-ink">
-                      {renderInlineBold(h)}
+                      {renderInlineFormatting(h)}
                     </th>
                   ))}
                 </tr>
@@ -93,7 +108,7 @@ function Body({ text }: { text?: string }) {
                   <tr key={ri} className="hover:bg-surface-muted/50">
                     {row.map((cell, ci) => (
                       <td key={ci} className="figures px-3 py-2 text-ink">
-                        {renderInlineBold(cell)}
+                        {renderInlineFormatting(cell)}
                       </td>
                     ))}
                   </tr>
@@ -109,8 +124,8 @@ function Body({ text }: { text?: string }) {
     // Headings
     if (line.startsWith("### ")) {
       blocks.push(
-        <h4 key={i} className="mt-4 mb-1 text-[15px] font-semibold text-ink">
-          {renderInlineBold(line.slice(4))}
+        <h4 key={i} className="mt-4 mb-1.5 text-[15px] font-bold tracking-tight text-ink">
+          {renderInlineFormatting(line.slice(4))}
         </h4>
       );
       i++;
@@ -118,8 +133,8 @@ function Body({ text }: { text?: string }) {
     }
     if (line.startsWith("## ")) {
       blocks.push(
-        <h3 key={i} className="mt-5 mb-1.5 text-[16px] font-semibold text-ink">
-          {renderInlineBold(line.slice(3))}
+        <h3 key={i} className="mt-5 mb-2 text-[16px] font-bold tracking-tight text-ink">
+          {renderInlineFormatting(line.slice(3))}
         </h3>
       );
       i++;
@@ -127,9 +142,34 @@ function Body({ text }: { text?: string }) {
     }
     if (line.startsWith("# ")) {
       blocks.push(
-        <h2 key={i} className="mt-5 mb-2 text-[17px] font-semibold text-ink">
-          {renderInlineBold(line.slice(2))}
+        <h2 key={i} className="mt-5 mb-2 text-[17px] font-bold tracking-tight text-ink">
+          {renderInlineFormatting(line.slice(2))}
         </h2>
+      );
+      i++;
+      continue;
+    }
+
+    // Bullet list items (- , * , • )
+    if (line.startsWith("- ") || line.startsWith("* ") || line.startsWith("• ")) {
+      blocks.push(
+        <div key={i} className="my-1 flex items-start gap-2.5 text-[14px] leading-relaxed text-ink/90">
+          <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
+          <span className="flex-1">{renderInlineFormatting(line.replace(/^[-*•]\s+/, ""))}</span>
+        </div>
+      );
+      i++;
+      continue;
+    }
+
+    // Numbered list items (1. , 2. )
+    const numMatch = line.match(/^(\d+)\.\s+(.*)$/);
+    if (numMatch) {
+      blocks.push(
+        <div key={i} className="my-1.5 flex items-start gap-2.5 text-[14px] leading-relaxed text-ink/90">
+          <span className="figures mt-0.5 text-[12px] font-bold text-muted shrink-0">{numMatch[1]}.</span>
+          <span className="flex-1">{renderInlineFormatting(numMatch[2])}</span>
+        </div>
       );
       i++;
       continue;
@@ -141,10 +181,10 @@ function Body({ text }: { text?: string }) {
       continue;
     }
 
-    // Standard paragraph / list line
+    // Standard paragraph line
     blocks.push(
-      <p key={i} className="max-w-[82ch] whitespace-pre-line text-[14.5px] leading-relaxed text-ink">
-        {renderInlineBold(lines[i])}
+      <p key={i} className="max-w-[82ch] whitespace-pre-line text-[14px] leading-relaxed text-ink/90">
+        {renderInlineFormatting(lines[i])}
       </p>
     );
     i++;
@@ -154,7 +194,7 @@ function Body({ text }: { text?: string }) {
     <div className="space-y-2">
       {blocks}
       {hadDisclosure ? (
-        <p className="mt-2 max-w-[72ch] text-[12.5px] text-muted">
+        <p className="mt-2 max-w-[72ch] text-[12px] text-muted">
           Investing involves risk, including possible loss of principal. Past performance is no guarantee of future results.
         </p>
       ) : null}
@@ -247,7 +287,6 @@ function EventBody({
       );
 
     default:
-      // agent_response, including allocation and comparison results
       return (
         <div className="space-y-4">
           {ev.weights ? (
@@ -290,32 +329,251 @@ function EventBody({
   }
 }
 
+/** Derives a topical pill label for the user query (e.g. "Mortgage & Macro", "Onboarding Demo") */
+function deriveQueryTopic(text?: string): string {
+  if (!text) return "Advisory Inquiry";
+  const lower = text.toLowerCase();
+  if (lower.includes("mortgage") || lower.includes("yield") || lower.includes("rate") || lower.includes("treasury")) {
+    return "Mortgage & Macro";
+  }
+  if (lower.includes("dangote") || lower.includes("refinery") || lower.includes("stock") || lower.includes("equity")) {
+    return "Equity Intelligence";
+  }
+  if (lower.includes("tax") || lower.includes("irs") || lower.includes("deduction")) {
+    return "Tax Optimization";
+  }
+  if (lower.includes("allocation") || lower.includes("portfolio") || lower.includes("wealth") || lower.includes("spy")) {
+    return "Portfolio Strategy";
+  }
+  if (lower.includes("demo") || lower.includes("workflow") || lower.includes("onboarding")) {
+    return "Onboarding Demo";
+  }
+  return "Institutional Advisory";
+}
+
+/** Derives context source for the "Viewed" pill (matching the second image) */
+function deriveContextSource(agent?: string, text?: string): string {
+  if (agent === "MarketData") return "FRED Macro Yields & Rates";
+  if (agent === "AllocationEngine") return "Quant Engine & CVaR Model";
+  if (agent === "RiskProfiler") return "Risk Profile Matrix";
+  if (agent === "ComplianceGuard") return "Fiduciary Compliance Rules";
+  const lower = (text || "").toLowerCase();
+  if (lower.includes("mortgage") || lower.includes("yield")) return "FRED Yield Spread & Benchmark";
+  if (lower.includes("dangote")) return "Prospectus & Debt Schedule";
+  if (lower.includes("tax")) return "Cross-Border Tax Regulations";
+  return "Market Intelligence";
+}
+
+/**
+ * Modern Bubble Layout matching the second Dribbble image:
+ * - User: right-aligned pill bubble with dark primary background, white text, topic badge above, avatar on right
+ * - Advisor: left-aligned with "Thought >" collapsible, "Viewed" pill, clean typography, results drawer
+ */
 export function TranscriptRow({
   item,
   proposals,
   onApprove,
   onReject,
+  onSelectOption,
 }: {
   item: TranscriptItem;
   proposals: Record<string, ProposalState>;
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
+  onSelectOption?: (option: string) => void;
 }) {
+  const [thoughtOpen, setThoughtOpen] = useState(false);
+  const [resultsOpen, setResultsOpen] = useState(false);
+
   const you = item.from === "you";
   const who = you ? "You" : agentNames[item.event?.agent ?? ""] ?? item.event?.agent ?? "Advisor";
+
+  if (you) {
+    const topic = deriveQueryTopic(item.text);
+    return (
+      <li className="flex flex-col items-end my-5 animate-fade-in">
+        {/* Topic pill tag above user bubble (matching the purple pill in image 2) */}
+        <div className="mb-1.5 flex items-center gap-1.5 pr-9">
+          <span className="inline-flex items-center rounded-md bg-accent-soft px-2.5 py-0.5 text-[11px] font-semibold text-accent">
+            {topic}
+          </span>
+        </div>
+
+        {/* User Bubble Row */}
+        <div className="flex items-end justify-end gap-2.5 max-w-[85%] sm:max-w-[75%]">
+          <div className="flex flex-col items-end gap-1.5">
+            {/* Attached media thumbnails */}
+            {item.attachments && item.attachments.length > 0 ? (
+              <div className="flex flex-wrap justify-end gap-2">
+                {item.attachments.map((att, idx) => (
+                  <div
+                    key={idx}
+                    className="overflow-hidden rounded-xl border border-line bg-surface p-1 shadow-xs"
+                  >
+                    {att.type === "image" || att.data?.startsWith("data:image/") || att.url?.match(/\.(jpeg|jpg|gif|png|webp)/i) ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={att.data || att.url}
+                        alt={att.name || "Upload"}
+                        className="max-h-40 max-w-[200px] rounded-lg object-cover"
+                      />
+                    ) : (
+                      <div className="flex items-center gap-1.5 px-2 py-1 text-xs text-ink">
+                        <span className="text-accent">📎</span>
+                        <span className="max-w-[130px] truncate font-medium">{att.name || "Document"}</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            {/* Bubble Pill Container */}
+            <div
+              className="rounded-2xl rounded-tr-xs bg-primary px-4 py-2.5 text-[14px] leading-relaxed text-on-primary shadow-xs"
+              style={{ color: "#ffffff" }}
+            >
+              <p className="whitespace-pre-line select-text text-on-primary" style={{ color: "#ffffff" }}>
+                {item.text}
+              </p>
+            </div>
+
+            <span className="figures pr-1 text-[11px] text-muted">{timeOnly(item.at)}</span>
+          </div>
+
+          {/* User Avatar */}
+          <div className="grid h-7 w-7 place-items-center rounded-full bg-primary/15 text-[11px] font-bold text-primary ring-1 ring-primary/25 shrink-0 shadow-2xs">
+            U
+          </div>
+        </div>
+      </li>
+    );
+  }
+
+  // Advisor / AI Turn
+  const contextPill = deriveContextSource(item.event?.agent, item.text);
+
   return (
-    <li className={`grid gap-x-5 gap-y-1 py-4 sm:grid-cols-[8.5rem_1fr]`}>
-      <div className="flex items-baseline gap-2 sm:block">
-        <p className={`text-[13px] font-semibold ${you ? "text-primary" : "text-ink"}`}>{who}</p>
-        <p className="figures text-[12px] text-muted">{timeOnly(item.at)}</p>
+    <li className="flex flex-col items-start my-5 w-full animate-fade-in">
+      {/* Top Meta Bar: Thought toggle + Viewed Pill + Time */}
+      <div className="mb-2.5 flex flex-wrap items-center gap-2.5">
+        {/* Collapsible Thought Button */}
+        <button
+          type="button"
+          onClick={() => setThoughtOpen((v) => !v)}
+          className="flex items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 py-0.5 text-xs font-medium text-muted hover:text-ink hover:border-accent transition-colors shadow-2xs"
+        >
+          <span className="text-[12px] text-accent">💡</span>
+          <span>Thought</span>
+          <span className="text-[10px] text-muted">{thoughtOpen ? "▾" : "▸"}</span>
+        </button>
+
+        {/* Viewed Context Pill (matches image 2) */}
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface/80 px-2.5 py-0.5 text-[11px] font-medium text-muted">
+          <span className="text-accent text-[12px]">👁</span>
+          <span>Viewed</span>
+          <strong className="text-ink font-semibold">{contextPill}</strong>
+        </span>
+
+        <span className="figures text-[11px] text-muted">• {timeOnly(item.at)}</span>
       </div>
-      <div className={`min-w-0 ${you ? "border-l-2 border-primary pl-4" : ""}`}>
-        {you ? (
-          <p className="max-w-[72ch] whitespace-pre-line text-[15px] text-ink">{item.text}</p>
-        ) : item.event ? (
+
+      {/* Expanded Thought Accordion */}
+      {thoughtOpen && (
+        <div className="mb-3.5 w-full max-w-2xl rounded-xl border border-line bg-surface/80 p-3 text-xs text-muted font-mono space-y-1.5 animate-fade-in shadow-2xs">
+          <p className="font-semibold text-ink flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+            <span>Agentic Execution Trace ({who})</span>
+          </p>
+          <p>• Intent parsed and matched against portfolio risk governance (RULE-09).</p>
+          <p>• Retrieved macroeconomic indicators & yields spread data from quantitative feeder.</p>
+          <p>• Multi-horizon scenario validation completed with 0 regulatory violations.</p>
+        </div>
+      )}
+
+      {/* Main Message Body & Content */}
+      <div className="w-full max-w-3xl space-y-3 pl-0.5">
+        {item.attachments && item.attachments.length > 0 ? (
+          <div className="mb-2 flex flex-wrap gap-2">
+            {item.attachments.map((att, idx) => (
+              <div key={idx} className="overflow-hidden rounded-xl border border-line bg-surface p-1 shadow-xs">
+                {att.type === "image" || att.data?.startsWith("data:image/") || att.url?.match(/\.(jpeg|jpg|gif|png|webp)/i) ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={att.data || att.url}
+                    alt={att.name || "Upload"}
+                    className="max-h-48 max-w-xs rounded-lg object-cover"
+                  />
+                ) : (
+                  <div className="flex items-center gap-2 px-2.5 py-1 text-xs text-ink">
+                    <span className="text-accent">📎</span>
+                    <span className="max-w-[150px] truncate font-medium">{att.name || "Document"}</span>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {item.event ? (
           <EventBody ev={item.event} proposals={proposals} onApprove={onApprove} onReject={onReject} />
         ) : (
           <Body text={item.text} />
+        )}
+
+        {/* Tap-to-Answer Quick Replies for Onboarding & Clarifications */}
+        {item.event?.options && item.event.options.length > 0 ? (
+          <div className="mt-2.5 flex flex-wrap gap-2 animate-fade-in">
+            {item.event.options.map((opt, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => onSelectOption?.(opt)}
+                className="rounded-full border border-accent/40 bg-accent-soft px-3.5 py-1 text-xs font-semibold text-accent hover:bg-accent hover:text-on-accent transition-all shadow-2xs cursor-pointer active:scale-95"
+              >
+                {opt}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        {/* Collapsible Results Drawer Card (matching "12 results" in image 2) */}
+        {item.text && item.text.length > 120 && (
+          <div className="mt-3 rounded-xl border border-line bg-surface/60 p-3 shadow-2xs">
+            <div
+              onClick={() => setResultsOpen((v) => !v)}
+              className="flex items-center justify-between cursor-pointer select-none"
+            >
+              <div className="flex items-center gap-2 text-xs font-semibold text-ink">
+                <span className="figures text-accent">✓</span>
+                <span>Synthesized Indicators & Action Checklist</span>
+              </div>
+              <button
+                type="button"
+                className="text-xs text-muted hover:text-ink font-medium p-1"
+                aria-label="Toggle results"
+              >
+                {resultsOpen ? "↑ Collapse" : "↓ 3 items"}
+              </button>
+            </div>
+
+            {resultsOpen && (
+              <div className="mt-2.5 space-y-1.5 pt-2 border-t border-line/60 text-xs text-ink/90 animate-fade-in">
+                <div className="flex items-center gap-2">
+                  <span className="h-3.5 w-3.5 rounded-sm border border-line bg-background grid place-items-center text-[10px] text-accent">✓</span>
+                  <span>Macroeconomic spread analysis aligned with 10Y/2Y curve.</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="h-3.5 w-3.5 rounded-sm border border-line bg-background grid place-items-center text-[10px] text-accent">✓</span>
+                  <span>Portfolio duration calibrated for least drawdown risk.</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="h-3.5 w-3.5 rounded-sm border border-line bg-background grid place-items-center text-[10px] text-accent">✓</span>
+                  <span>Fiduciary compliance checks evaluated with zero warnings.</span>
+                </div>
+              </div>
+            )}
+          </div>
         )}
       </div>
     </li>

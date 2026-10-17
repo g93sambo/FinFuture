@@ -1,11 +1,14 @@
 "use client";
 
-import { ErrorNotice, Loading, Tag } from "@/components/ui/Feedback";
+import { useState } from "react";
+import { Button } from "@/components/ui/Button";
+import { ErrorNotice, Loading, Notice, Tag, type Tone } from "@/components/ui/Feedback";
 import { PageHeader, Panel } from "@/components/ui/Layout";
+import { Table, Td, Th, Tr } from "@/components/ui/Table";
 import { api } from "@/lib/api";
-import { humanize } from "@/lib/format";
-import type { ComplianceRule } from "@/lib/types";
-import { useRequest } from "@/lib/useRequest";
+import { dateTime, humanize } from "@/lib/format";
+import type { CircuitBreakerStatus, ComplianceRule } from "@/lib/types";
+import { useAction, useRequest } from "@/lib/useRequest";
 
 const categoryOrder = ["SUITABILITY", "CONCENTRATION", "REGULATORY", "AML"];
 const categoryNotes: Record<string, string> = {
@@ -13,6 +16,12 @@ const categoryNotes: Record<string, string> = {
   CONCENTRATION: "Is the portfolio spread widely enough?",
   REGULATORY: "Is the wording fair and is every order authorised?",
   AML: "Is the activity consistent with legitimate use?",
+};
+
+const tierTone: Record<string, Tone> = {
+  GREEN: "success",
+  YELLOW: "warning",
+  RED: "danger",
 };
 
 function formatParam(v: unknown): string {
@@ -50,18 +59,170 @@ function RuleRow({ r }: { r: ComplianceRule }) {
 
 export default function CompliancePage() {
   const { data, error, loading, reload } = useRequest("rules", () => api.rules());
+  const tiersReq = useRequest("permission-tiers", () => api.permissionTiers());
+  const [cbOverride, setCbOverride] = useState<CircuitBreakerStatus | null>(null);
+
+  const simulateCb = useAction(async () => {
+    const res = await api.simulateCircuitBreaker();
+    setCbOverride(res.circuit_breaker);
+  });
+
+  const resetCb = useAction(async () => {
+    const res = await api.resetCircuitBreaker();
+    setCbOverride(res.circuit_breaker);
+  });
+
   const rules = data?.rules ?? [];
-  const cats = [...categoryOrder.filter((c) => rules.some((r) => r.category === c)), ...Array.from(new Set(rules.map((r) => r.category))).filter((c) => !categoryOrder.includes(c))];
+  const cats = [
+    ...categoryOrder.filter((c) => rules.some((r) => r.category === c)),
+    ...Array.from(new Set(rules.map((r) => r.category))).filter((c) => !categoryOrder.includes(c)),
+  ];
+
+  const tiers = tiersReq.data?.permission_tiers ?? [];
+  const knownRisks = tiersReq.data?.known_risks ?? [];
+  const pillars = tiersReq.data?.security_pillars ?? [];
+  const cb = cbOverride ?? tiersReq.data?.circuit_breaker;
 
   return (
     <>
       <PageHeader
-        title="Compliance rules"
-        lede="The active rule catalogue, read live from the backend. A rule that blocks stops the recommendation or order. A rule that warns lets it through with a note."
+        title="Compliance & security self-assessment"
+        lede="Runtime 3-tier permission grading (Green / Yellow / Red), anomaly circuit breaker, 5-pillar defense architecture, known-risk mitigations, and the active 12-rule regulatory catalogue."
       />
-      {loading && !data ? <Loading label="Loading rules" /> : null}
+      {loading && !data ? <Loading label="Loading compliance architecture" /> : null}
       <ErrorNotice error={error} onRetry={reload} />
+
       <div className="space-y-8">
+        {tiers.length > 0 ? (
+          <Panel
+            title="Three-tier permission grading matrix (Green / Yellow / Red)"
+            aside={<span>Low-risk auto-execute · Medium-risk confirm · High-risk strong MFA</span>}
+          >
+            <div className="grid gap-6 lg:grid-cols-3">
+              {tiers.map((t) => (
+                <div key={t.tier} className="rounded-xl border border-line bg-surface/70 p-4 flex flex-col justify-between space-y-4">
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <Tag tone={tierTone[t.tier] ?? "neutral"}>{t.tier} TIER</Tag>
+                      <span className="text-xs font-medium text-muted">{t.label}</span>
+                    </div>
+                    <p className="text-xs text-ink font-medium">{t.execution_policy}</p>
+                    <div>
+                      <p className="text-[11.5px] uppercase tracking-wider text-muted mb-1">Permitted operations</p>
+                      <ul className="list-disc list-inside space-y-1 text-xs text-ink marker:text-muted">
+                        {t.operations.map((op) => (
+                          <li key={op}>{op}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                  <div className="border-t border-line pt-2.5">
+                    <p className="text-[11.5px] uppercase tracking-wider text-muted mb-1">Active safeguards</p>
+                    <ul className="list-disc list-inside space-y-0.5 text-[12px] text-muted">
+                      {t.safeguards.map((sg) => (
+                        <li key={sg}>{sg}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Panel>
+        ) : null}
+
+        <div className="grid gap-8 xl:grid-cols-12">
+          <Panel
+            title="Anomaly circuit breaker (live stress-test)"
+            className="xl:col-span-6"
+            aside={
+              cb ? (
+                <Tag tone={cb.is_locked ? "danger" : cb.recent_incidents_60s > 0 ? "warning" : "success"}>
+                  {cb.state.replace(/_/g, " ")}
+                </Tag>
+              ) : null
+            }
+          >
+            <p className="text-sm text-muted">
+              Automatically trips into a 15-minute security lock if a session triggers 3 or more consecutive compliance blocks or
+              adversarial override attempts within 60 seconds.
+            </p>
+            {cb ? (
+              <div className="mt-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface/70 px-4 py-3 text-sm">
+                  <span>
+                    Blocked anomalies (last 60s):{" "}
+                    <strong className="figures text-ink">
+                      {cb.recent_incidents_60s} / {cb.trip_threshold}
+                    </strong>
+                  </span>
+                  {cb.is_locked && cb.locked_until ? (
+                    <span className="text-xs text-danger font-medium">Locked until {dateTime(cb.locked_until)}</span>
+                  ) : (
+                    <span className="text-xs text-muted">Execution channel open</span>
+                  )}
+                </div>
+                {cb.is_locked ? (
+                  <Notice tone="danger" title="Circuit breaker tripped (OPEN_LOCKED)">
+                    High-risk trade execution is temporarily frozen due to repeated blocked compliance/injection attempts. Click Reset below to
+                    clear the lock.
+                  </Notice>
+                ) : null}
+                <div className="flex flex-wrap gap-3 pt-1">
+                  <Button size="sm" variant="secondary" onClick={() => simulateCb.run()} pending={simulateCb.pending}>
+                    Simulate blocked anomaly (+1)
+                  </Button>
+                  <Button size="sm" variant="quiet" onClick={() => resetCb.run()} pending={resetCb.pending}>
+                    Reset circuit breaker
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+          </Panel>
+
+          <Panel title="Five mandatory security pillars" className="xl:col-span-6">
+            <ul className="divide-y divide-line -my-2">
+              {pillars.map((p) => (
+                <li key={p.id} className="py-2.5 flex items-start justify-between gap-4 text-sm">
+                  <div>
+                    <p className="font-medium text-ink">{p.name}</p>
+                    <p className="text-xs text-muted mt-0.5">{p.detail}</p>
+                  </div>
+                  <Tag tone={p.status === "LOCKED" ? "danger" : "success"}>{p.status}</Tag>
+                </li>
+              ))}
+            </ul>
+          </Panel>
+        </div>
+
+        {knownRisks.length > 0 ? (
+          <Panel title="Security self-assessment: known-risk register & mitigations" flush>
+            <Table caption="Known risks and technical mitigations">
+              <thead>
+                <tr>
+                  <Th>ID</Th>
+                  <Th>Risk category</Th>
+                  <Th>Known risk description</Th>
+                  <Th>Architectural mitigation</Th>
+                  <Th>Status</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {knownRisks.map((kr) => (
+                  <Tr key={kr.risk_id}>
+                    <Td className="figures text-primary font-medium whitespace-nowrap">{kr.risk_id}</Td>
+                    <Td className="font-medium whitespace-nowrap">{kr.category}</Td>
+                    <Td className="text-sm text-muted max-w-[34ch]">{kr.description}</Td>
+                    <Td className="text-sm text-ink max-w-[46ch]">{kr.mitigation}</Td>
+                    <Td>
+                      <Tag tone="success">{kr.status}</Tag>
+                    </Td>
+                  </Tr>
+                ))}
+              </tbody>
+            </Table>
+          </Panel>
+        ) : null}
+
         {cats.map((c) => (
           <Panel key={c} title={humanize(c)} aside={<span>{categoryNotes[c] ?? ""}</span>}>
             <ul className="-my-4 divide-y divide-line">
@@ -77,3 +238,4 @@ export default function CompliancePage() {
     </>
   );
 }
+

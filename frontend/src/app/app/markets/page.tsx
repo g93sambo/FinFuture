@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { LineChart } from "@/components/charts/LineChart";
+import { TickerAutocomplete } from "@/components/domain/TickerAutocomplete";
 import { Button } from "@/components/ui/Button";
 import { ErrorNotice, Loading, Skeleton, Tag } from "@/components/ui/Feedback";
-import { Field, Input } from "@/components/ui/Field";
+import { Field } from "@/components/ui/Field";
 import { Ledger, PageHeader, Panel } from "@/components/ui/Layout";
 import { Table, Td, Th } from "@/components/ui/Table";
 import { api } from "@/lib/api";
@@ -70,21 +71,33 @@ function QuoteBlock({
         }}
         className="flex items-end gap-3"
       >
-        <Field label="Ticker" className="flex-1">
-          {(p) => <Input {...p} value={input} onChange={(e) => setInput(e.target.value.toUpperCase())} className="figures" spellCheck={false} />}
+        <Field label="Ticker / Security Name" className="flex-1">
+          {() => (
+            <TickerAutocomplete
+              value={input}
+              onChange={(val) => setInput(val.toUpperCase())}
+              onSelectSymbol={(sym) => {
+                setInput(sym);
+                void run(sym);
+              }}
+              placeholder="Search ticker or name (e.g. SPY, Apple, Vanguard)..."
+            />
+          )}
         </Field>
         <Button type="submit" pending={pending}>
           Look up
         </Button>
       </form>
-      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+      <div className="mt-3 flex flex-wrap gap-1.5 text-xs">
         {quick.map((s) => (
           <button
             key={s}
             type="button"
             onClick={() => lookup(s)}
-            className={`figures underline underline-offset-4 transition-all duration-140 ease-out active:scale-95 ${
-              activeSymbol === s ? "font-semibold text-ink decoration-ink" : "text-primary decoration-primary/30"
+            className={`figures rounded-full px-2.5 py-1 font-medium transition-all duration-140 ease-out active:scale-95 ${
+              activeSymbol === s
+                ? "bg-primary text-on-primary shadow-xs"
+                : "border border-line bg-surface text-muted hover:text-ink"
             }`}
           >
             {s}
@@ -95,11 +108,11 @@ function QuoteBlock({
         <ErrorNotice error={error} />
         {quote ? (
           <div className={`transition-opacity duration-140 ${pending ? "opacity-60" : "opacity-100"}`}>
-            <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b border-ink pb-3">
+            <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b border-line pb-3">
               <p className="text-lg font-semibold text-ink">{quote.symbol}</p>
-              <p className="figures text-[26px] text-ink">{money(quote.price)}</p>
+              <p className="figures text-[26px] font-bold text-ink">{money(quote.price)}</p>
               {quote.change_pct !== null ? (
-                <p className={`figures text-sm ${quote.change_pct > 0 ? "text-success" : quote.change_pct < 0 ? "text-danger" : "text-muted"}`}>
+                <p className={`figures text-sm font-medium ${quote.change_pct > 0 ? "text-success" : quote.change_pct < 0 ? "text-danger" : "text-muted"}`}>
                   {quote.change_pct > 0 ? "+" : ""}
                   {fixed(quote.change, 2)} ({quote.change_pct > 0 ? "+" : ""}
                   {fixed(quote.change_pct, 2)}%)
@@ -194,42 +207,61 @@ export default function MarketsPage() {
                     {fixed(historyData.period_return_pct, 2)}% ({period.toUpperCase()})
                   </Tag>
                 ) : null}
-                <div className="flex border border-line bg-surface">
-                  {periods.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => setPeriod(p.id)}
-                      className={`px-2 py-0.5 text-[12px] font-medium transition-all duration-140 ease-out active:scale-95 ${
-                        period === p.id ? "bg-primary text-on-primary" : "text-muted hover:text-ink hover:bg-black/5"
-                      }`}
-                    >
-                      {p.label}
-                    </button>
-                  ))}
+                <div className="flex rounded-full border border-line bg-surface p-0.5 gap-0.5">
+                  {periods.map((p) => {
+                    const isActive = period === p.id;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => setPeriod(p.id)}
+                        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11.5px] font-medium transition-all duration-140 ease-out active:scale-95 ${
+                          isActive
+                            ? "bg-primary text-on-primary shadow-xs font-semibold"
+                            : "text-muted hover:text-ink"
+                        }`}
+                      >
+                        {isActive && historyLoading && (
+                          <span className="h-2 w-2 animate-spin rounded-full border border-white border-t-transparent" />
+                        )}
+                        <span>{p.label}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             }
           >
-            {historyLoading && !historyData ? (
-              <div className="h-[220px] flex items-center justify-center border border-dashed border-line bg-surface/30">
-                <Loading label={`Loading ${activeSymbol} price history`} />
+            <div className="relative min-h-[220px]">
+              {/* Active Loading Overlay during timeframe change */}
+              {historyLoading && (
+                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center rounded-xl bg-background/75 backdrop-blur-[2px] transition-all duration-200 animate-fadeIn">
+                  <div className="flex items-center gap-2.5 rounded-full border border-line bg-background px-4 py-2 shadow-md">
+                    <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+                    <span className="text-xs font-semibold text-ink">
+                      Loading {activeSymbol} {periods.find((p) => p.id === period)?.label ?? period} data…
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <div className={`transition-opacity duration-200 ${historyLoading ? "opacity-30" : "opacity-100"}`}>
+                <ErrorNotice error={historyError} />
+                {sampledPricePoints.length > 1 ? (
+                  <LineChart
+                    title={`${activeSymbol} historical closing price`}
+                    points={sampledPricePoints}
+                    categoricalX
+                    xLabel="Date"
+                    yLabel="Price (USD)"
+                    formatX={(v) => String(v)}
+                    formatY={(v) => `$${v.toFixed(0)}`}
+                  />
+                ) : !historyLoading ? (
+                  <p className="text-sm text-muted py-8 text-center">No historical price series available for {activeSymbol}.</p>
+                ) : null}
               </div>
-            ) : null}
-            <ErrorNotice error={historyError} />
-            {sampledPricePoints.length > 1 ? (
-              <LineChart
-                title={`${activeSymbol} historical closing price`}
-                points={sampledPricePoints}
-                categoricalX
-                xLabel="Date"
-                yLabel="Price (USD)"
-                formatX={(v) => String(v)}
-                formatY={(v) => `$${v.toFixed(0)}`}
-              />
-            ) : !historyLoading ? (
-              <p className="text-sm text-muted">No historical price series available for {activeSymbol}.</p>
-            ) : null}
+            </div>
           </Panel>
 
           {loading && !data ? (

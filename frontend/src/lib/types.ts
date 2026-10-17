@@ -12,6 +12,42 @@ export interface SessionStart {
   client_id: string | null;
 }
 
+export interface ChatMessageAttachment {
+  type: "image" | "file" | string;
+  name?: string;
+  mime_type?: string;
+  url?: string;
+  data?: string;
+  size?: number;
+}
+
+export interface ChatSessionItem {
+  session_id: string;
+  title: string;
+  stage: string;
+  last_message?: string | null;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
+}
+
+export interface ChatSessionDetail {
+  session_id: string;
+  title: string;
+  stage: string;
+  created_at: string;
+  updated_at: string;
+  messages: {
+    id: string;
+    sender: "user" | "agent";
+    agent?: string;
+    text?: string;
+    attachments?: ChatMessageAttachment[];
+    events?: AgentEvent[];
+    created_at: string;
+  }[];
+}
+
 export interface ClientProfile {
   client_id: string;
   user_id: string | null;
@@ -37,8 +73,38 @@ export interface ClientProfile {
   panic_sell_likelihood: number | null;
   kyc_verified: boolean | null;
   aml_flag: boolean | null;
+  source_of_funds?: string | null;
+  drawdown_reaction?: string | null;
+  monitoring_frequency?: string | null;
+  pep_status?: boolean | null;
+  high_risk_jurisdiction?: boolean | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface OnboardingData {
+  age: number;
+  employment_status: string;
+  dependents: number;
+  annual_income: number;
+  net_worth?: number | null;
+  liquid_assets: number;
+  monthly_expenses: number;
+  existing_debts: number;
+  investment_experience: string;
+  risk_tolerance_score: number;
+  investment_horizon_years: number;
+  liquidity_needs: string;
+  loss_capacity: string;
+  primary_goal: string;
+  target_return?: number | null;
+  specific_goals?: string[];
+  drawdown_reaction: string;
+  monitoring_frequency: string;
+  source_of_funds: string;
+  pep_status?: boolean;
+  high_risk_jurisdiction?: boolean;
+  session_id?: string | null;
 }
 
 export interface Position {
@@ -80,6 +146,11 @@ export interface Proposal {
   price: number;
   notional_value: number;
   projected_weight: number;
+  broker?: string;
+  currency?: string;
+  permission_tier?: "GREEN" | "YELLOW" | "RED" | string;
+  requires_step_up_auth?: boolean;
+  step_up_reason?: string;
   created_at: string;
   expires_in_seconds: number;
 }
@@ -183,6 +254,8 @@ export interface AgentEvent {
   profile_complete?: boolean;
   stage?: string;
   session_id?: string;
+  options?: string[];
+  attachments?: ChatMessageAttachment[];
   // bias_alert
   bias_type?: string;
   severity?: string;
@@ -330,6 +403,13 @@ export interface HealthReport {
     regulatory_disclosure: string;
     generation_mode: string;
   };
+  scenario_meta?: {
+    id: string;
+    title: string;
+    description: string;
+    multipliers: Record<string, number>;
+    behavioral_nudge: string;
+  };
 }
 
 export interface AuditEntry {
@@ -354,6 +434,24 @@ export interface AnchorResult {
   entries_count: number;
 }
 
+export interface MerkleProofStep {
+  position: "left" | "right" | string;
+  hash: string;
+}
+
+export interface MerkleProofResponse {
+  client_id: string;
+  entry_id: string;
+  verified: boolean;
+  leaf_index: number;
+  total_leaves: number;
+  leaf_hash: string | null;
+  merkle_root: string;
+  proof: MerkleProofStep[];
+  chain_id?: number;
+  network?: string;
+}
+
 export interface ComplianceRule {
   id: string;
   name: string;
@@ -361,6 +459,46 @@ export interface ComplianceRule {
   severity: "BLOCK" | "WARN" | string;
   description: string | null;
   parameters: Record<string, unknown>;
+}
+
+export interface PermissionTierItem {
+  tier: "GREEN" | "YELLOW" | "RED" | string;
+  label: string;
+  execution_policy: string;
+  operations: string[];
+  safeguards: string[];
+}
+
+export interface KnownRiskItem {
+  risk_id: string;
+  category: string;
+  description: string;
+  mitigation: string;
+  status: string;
+}
+
+export interface CircuitBreakerStatus {
+  client_id: string;
+  state: "CLOSED_NORMAL" | "HALF_OPEN_WATCH" | "OPEN_LOCKED" | string;
+  is_locked: boolean;
+  recent_incidents_60s: number;
+  trip_threshold: number;
+  locked_until: string | null;
+  recent_events: { timestamp: string; type: string; reason: string }[];
+}
+
+export interface SecurityPillarItem {
+  id: string;
+  name: string;
+  status: string;
+  detail: string;
+}
+
+export interface PermissionTiersResponse {
+  permission_tiers: PermissionTierItem[];
+  known_risks: KnownRiskItem[];
+  circuit_breaker: CircuitBreakerStatus;
+  security_pillars: SecurityPillarItem[];
 }
 
 export interface Quote {
@@ -407,3 +545,4 @@ export interface TradeBlockedDetail {
   violations: Violation[];
   proposal_id: string;
 }
+

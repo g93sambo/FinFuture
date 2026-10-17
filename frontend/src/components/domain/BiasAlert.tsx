@@ -24,7 +24,7 @@ export function BiasAlert({
   coolOff?: boolean;
 }) {
   return (
-    <div className="border border-warning/35 bg-warning-soft px-4 py-3">
+    <div className="rounded-card border border-warning/35 bg-warning-soft px-4 py-3">
       <div className="flex flex-wrap items-center gap-2">
         <p className="text-sm font-semibold text-warning">{names[biasType ?? ""] ?? humanize(biasType)}</p>
         {severity ? <Tag tone="warning">{humanize(severity)} signal</Tag> : null}
@@ -35,3 +35,4 @@ export function BiasAlert({
     </div>
   );
 }
+

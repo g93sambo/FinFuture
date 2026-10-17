@@ -50,6 +50,51 @@ class DBUser(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    chat_sessions = relationship(
+        "DBChatSession",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="DBChatSession.updated_at.desc()",
+    )
+
+
+class DBChatSession(Base):
+    """Chat session entity for persisting multi-turn conversations and history."""
+    __tablename__ = "chat_sessions"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String, nullable=False, default="New Advisory Conversation")
+    stage = Column(String, nullable=False, default="ADVICE_GENERATION")
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False, index=True)
+
+    # Relationships
+    user = relationship("DBUser", back_populates="chat_sessions")
+    messages = relationship(
+        "DBChatMessage",
+        back_populates="session",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="DBChatMessage.created_at.asc()",
+    )
+
+
+class DBChatMessage(Base):
+    """Individual chat message within a session, supporting multimodal attachments and structured events."""
+    __tablename__ = "chat_messages"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    session_id = Column(String, ForeignKey("chat_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
+    sender = Column(String, nullable=False)  # "user" | "agent"
+    agent = Column(String, nullable=True, default="Orchestrator")
+    text = Column(Text, nullable=True)
+    attachments = Column(JSON, nullable=True, default=list)  # list of {"type": "image", "url": "...", "name": "..."}
+    events = Column(JSON, nullable=True, default=list)        # list of event dicts
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    session = relationship("DBChatSession", back_populates="messages")
 
 
 class DBClientProfile(Base):
@@ -68,6 +113,7 @@ class DBClientProfile(Base):
     liquid_assets = Column(Float, nullable=True, default=0.0)
     monthly_expenses = Column(Float, nullable=True, default=0.0)
     existing_debts = Column(Float, nullable=True, default=0.0)
+    source_of_funds = Column(String, nullable=True, default="salary")
 
     # Investment Parameters & Preferences
     investment_experience = Column(String, nullable=True)
@@ -78,6 +124,8 @@ class DBClientProfile(Base):
     primary_goal = Column(String, nullable=True)
     target_return = Column(Float, nullable=True)
     specific_goals = Column(JSON, default=list)
+    drawdown_reaction = Column(String, nullable=True, default="hold")
+    monitoring_frequency = Column(String, nullable=True, default="monthly")
 
     # Synthesis & Psychology
     suitability_category = Column(String, nullable=True)
@@ -89,6 +137,8 @@ class DBClientProfile(Base):
     # Compliance & Status
     kyc_verified = Column(Boolean, default=False)
     aml_flag = Column(Boolean, default=False)
+    pep_status = Column(Boolean, default=False)
+    high_risk_jurisdiction = Column(Boolean, default=False)
 
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -145,7 +195,10 @@ class DBTrade(Base):
 
     filled_price = Column(Float, nullable=True)
     filled_qty = Column(Float, nullable=True, default=0.0)
+    broker = Column(String, nullable=False, default="alpaca")  # alpaca / bamboo
+    currency = Column(String, nullable=False, default="USD")   # USD / NGN
     alpaca_order_id = Column(String, nullable=True, index=True)
+    bamboo_order_id = Column(String, nullable=True, index=True)
 
     compliance_report = Column(JSON, nullable=True, default=dict)
     user_approved_at = Column(DateTime, nullable=True)

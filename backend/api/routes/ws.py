@@ -195,7 +195,8 @@ async def _handle_connection(websocket: WebSocket, session_id: Optional[str], to
                                 }
                             ]
                     else:
-                        if not text.strip():
+                        attachments = obj.get("attachments") if isinstance(obj, dict) else None
+                        if not text.strip() and not attachments:
                             continue
                         events = await orch.process_user_message(
                             session_id=session_id,
@@ -203,6 +204,7 @@ async def _handle_connection(websocket: WebSocket, session_id: Optional[str], to
                             client_id=session.get("client_id"),
                             message=text,
                             db=db,
+                            attachments=attachments,
                         )
                 except TradeBlocked as blocked:
                     events = blocked.events if blocked.events else [

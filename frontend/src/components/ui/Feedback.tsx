@@ -10,10 +10,10 @@ const tagTones: Record<Tone, string> = {
   danger: "border-danger/30 bg-danger-soft text-danger",
 };
 
-/** Square status label. Always carries words, never colour alone. */
+/** Pill status label. Always carries words, never colour alone. */
 export function Tag({ tone = "neutral", children, className = "" }: { tone?: Tone; children: ReactNode; className?: string }) {
   return (
-    <span className={`inline-flex h-6 items-center border px-2 text-[12.5px] font-medium leading-none whitespace-nowrap ${tagTones[tone]} ${className}`}>
+    <span className={`inline-flex h-6 items-center rounded-full border px-2.5 text-[11.5px] font-medium leading-none whitespace-nowrap ${tagTones[tone]} ${className}`}>
       {children}
     </span>
   );
@@ -50,7 +50,7 @@ export function Notice({
   return (
     <div
       role={tone === "danger" ? "alert" : "status"}
-      className={`flex flex-wrap items-start justify-between gap-x-6 gap-y-3 border px-4 py-3 ${noticeTones[tone]} ${className}`}
+      className={`flex flex-wrap items-start justify-between gap-x-6 gap-y-3 rounded-card border px-4 py-3.5 ${noticeTones[tone]} ${className}`}
     >
       <div className="min-w-0 max-w-[70ch]">
         {title ? <p className={`text-sm font-semibold ${noticeTitle[tone]}`}>{title}</p> : null}
@@ -121,7 +121,7 @@ export function TableSkeleton({
 }) {
   const count = columns ?? cols;
   return (
-    <div className="space-y-3 py-4" aria-busy="true" aria-label="Loading content">
+    <div className="space-y-3 p-5" aria-busy="true" aria-label="Loading content">
       <Skeleton className="h-6 w-1/3" />
       <div className="space-y-2">
         {Array.from({ length: rows }).map((_, r) => (
@@ -140,7 +140,7 @@ export function TableSkeleton({
 export function Loading({ label = "Loading" }: { label?: string }) {
   return (
     <div className="flex items-center gap-3 py-8 text-sm text-muted animate-fade-in" role="status">
-      <svg className="h-4 w-4 animate-spin text-primary" viewBox="0 0 24 24" fill="none">
+      <svg className="h-4 w-4 animate-spin text-accent" viewBox="0 0 24 24" fill="none">
         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
       </svg>
@@ -151,10 +151,11 @@ export function Loading({ label = "Loading" }: { label?: string }) {
 
 export function Empty({ title, children, action }: { title: string; children?: ReactNode; action?: ReactNode }) {
   return (
-    <div className="border border-dashed border-line px-6 py-10">
-      <p className="font-medium text-ink">{title}</p>
+    <div className="rounded-card border border-dashed border-line bg-surface/40 px-6 py-10">
+      <p className="font-semibold text-ink">{title}</p>
       {children ? <div className="mt-1 max-w-[60ch] text-sm text-muted">{children}</div> : null}
       {action ? <div className="mt-5">{action}</div> : null}
     </div>
   );
 }
+

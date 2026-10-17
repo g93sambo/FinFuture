@@ -92,7 +92,8 @@ async def start_research(
 
     # 3. Quantitative Analyst task (depends on macro & financial)
     async def run_quant(input_data: Dict, dependency_results: Dict, context: Dict):
-        req_r = solve_required_return(req.starting_capital, req.target_capital or 100e6, req.horizon_years, req.annual_withdrawal)
+        target_cap = req.target_capital if (req.target_capital and req.target_capital > 0) else (req.starting_capital * (1.08 ** max(req.horizon_years, 1)))
+        req_r = solve_required_return(req.starting_capital, target_cap, req.horizon_years, req.annual_withdrawal)
         cf_table = generate_10year_cash_flow_table(req.starting_capital, req_r, req.horizon_years, req.annual_withdrawal)
         stress = run_explicit_stress_tests(req.starting_capital, req.annual_withdrawal)
         comparison = compare_three_institutional_portfolios(req.starting_capital, req.horizon_years, req.annual_withdrawal)
@@ -225,3 +226,62 @@ async def get_research_result(
         raise HTTPException(status_code=403, detail="Access forbidden: Tenant isolation mismatch.")
 
     return ResearchResponse(**res)
+
+
+@router.get("/{request_id}/download")
+async def download_research_report(
+    request_id: str,
+    user_id: str = Depends(get_current_user_id),
+):
+    """Download research report as a styled, print-ready document for PDF generation."""
+    res = _RESEARCH_RESULTS.get(request_id)
+    if not res:
+        raise HTTPException(status_code=404, detail="Research report not found.")
+    if res.get("user_id") != user_id:
+        raise HTTPException(status_code=403, detail="Access forbidden: Tenant isolation mismatch.")
+
+    markdown_text = res.get("markdown_report", "No report content generated.")
+    
+    # Styled HTML with print media stylesheets for crisp PDF export
+    html_content = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Institutional Wealth Advisory Report - {request_id[:8]}</title>
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: #111827;
+            line-height: 1.6;
+            margin: 40px auto;
+            max-width: 860px;
+            padding: 0 20px;
+        }}
+        h1 {{ font-size: 26px; border-bottom: 2px solid #2563eb; padding-bottom: 8px; margin-bottom: 20px; }}
+        h2 {{ font-size: 20px; border-bottom: 1px solid #e5e7eb; padding-bottom: 6px; margin-top: 30px; }}
+        table {{ width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 13px; }}
+        th, td {{ border: 1px solid #d1d5db; padding: 8px 12px; text-align: left; }}
+        th {{ background-color: #f3f4f6; font-weight: 600; }}
+        blockquote {{ border-left: 4px solid #2563eb; margin: 20px 0; padding: 10px 20px; background-color: #eff6ff; }}
+        @media print {{
+            body {{ margin: 10mm; max-width: 100%; font-size: 12pt; }}
+            h1 {{ font-size: 18pt; }}
+            h2 {{ font-size: 14pt; }}
+            table {{ font-size: 10pt; }}
+        }}
+    </style>
+</head>
+<body>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; border-bottom:1px solid #e5e7eb; padding-bottom:10px;">
+        <strong>FinFuture Wealth Advisory Platform</strong>
+        <span>Report ID: {request_id[:8]} · As of: {res.get('created_at', '')[:10]}</span>
+    </div>
+    <pre style="white-space: pre-wrap; font-family: inherit;">{markdown_text}</pre>
+</body>
+</html>
+"""
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(
+        content=html_content,
+        headers={"Content-Disposition": f"attachment; filename=FinFuture_Research_Report_{request_id[:8]}.html"},
+    )
