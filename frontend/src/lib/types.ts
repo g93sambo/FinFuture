@@ -134,6 +134,15 @@ export interface Trade {
   status: string;
   filled_price: number | null;
   alpaca_order_id: string | null;
+  bamboo_order_id?: string | null;
+  broker?: string;
+  currency?: string;
+  broker_order_id?: string;
+  clearing_ref?: string;
+  audit_hash?: string;
+  full_audit_hash?: string;
+  custody_account?: string;
+  settlement_cycle?: string;
   created_at: string | null;
 }
 

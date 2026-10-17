@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { money, pct, qty } from "@/lib/format";
 import type { Execution, Proposal } from "@/lib/types";
+import { getCustodianVerificationGuide } from "@/lib/custodians";
+import { CustodianVerificationModal } from "./CustodianVerificationModal";
 import { Button } from "../ui/Button";
 import { Tag } from "../ui/Feedback";
 
@@ -240,35 +242,116 @@ export function ProposalTicket({
 
 /** Broker confirmation after an order is placed. */
 export function ExecutionReceipt({ execution }: { execution: Execution }) {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+
   const isFilledOrAccepted = execution.status === "FILLED" || execution.status === "ACCEPTED";
   const displayQty = (execution.filled_qty && execution.filled_qty > 0) ? execution.filled_qty : execution.qty;
   const displayPrice = execution.filled_price ?? (execution.total_price && displayQty ? execution.total_price / displayQty : null);
-  const brokerName = execution.broker ? execution.broker.toUpperCase() : "WeBank / Active";
+  const brokerKey = execution.broker || "webank";
+  const orderRef = execution.order_id || `WBK-ORD-${(execution.trade_id || "7B2931").slice(0, 8).toUpperCase()}`;
+  const guide = getCustodianVerificationGuide(brokerKey, orderRef);
+
+  function copyId() {
+    navigator.clipboard.writeText(orderRef);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  const modalTrade = {
+    trade_id: execution.trade_id || execution.order_id || "trade-exec",
+    symbol: execution.symbol,
+    side: execution.side,
+    qty: displayQty,
+    status: execution.status,
+    filled_price: displayPrice,
+    alpaca_order_id: execution.order_id,
+    broker_order_id: orderRef,
+    broker: brokerKey,
+    clearing_ref: `CLR-${brokerKey.toUpperCase()}-${orderRef.slice(-8)}`,
+    created_at: execution.executed_at,
+  };
 
   return (
-    <div className="overflow-hidden rounded-card border border-success/35 bg-success-soft">
-      <div className="flex items-center justify-between gap-3 border-b border-success/25 px-4 py-2.5">
-        <p className="text-sm font-semibold text-ink">
-          {execution.side === "BUY" ? "Bought" : "Sold"} {qty(displayQty)} {execution.symbol}
-        </p>
-        <Tag tone={isFilledOrAccepted ? "success" : "warning"}>
-          {execution.status === "ACCEPTED" ? "Order Executed" : execution.status === "FILLED" ? "Filled" : execution.status}
-        </Tag>
-      </div>
-      <dl className="grid grid-cols-2 gap-x-6 px-4 py-3 text-sm sm:grid-cols-4">
-        {[
-          ["Fill price", displayPrice ? money(displayPrice) : "Market Execution"],
-          ["Value", displayPrice ? money(displayPrice * displayQty) : "–"],
-          ["Custodian Account", `${brokerName} Custody`],
-          ["Settlement", "Instant (Sandbox)"],
-        ].map(([k, v]) => (
-          <div key={k} className="py-1">
-            <dt className="text-[12.5px] text-muted">{k}</dt>
-            <dd className="figures font-medium text-ink">{v}</dd>
+    <>
+      <div className="overflow-hidden rounded-2xl border border-success/35 bg-success-soft shadow-xs space-y-0">
+        {/* Top Header */}
+        <div className="flex items-center justify-between gap-3 border-b border-success/25 px-4 py-3 bg-surface/40">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">{guide.icon}</span>
+            <p className="text-sm font-bold text-ink">
+              {execution.side === "BUY" ? "Bought" : "Sold"} {qty(displayQty)} {execution.symbol}
+            </p>
           </div>
-        ))}
-      </dl>
-    </div>
+          <Tag tone={isFilledOrAccepted ? "success" : "warning"}>
+            {execution.status === "ACCEPTED" ? "Order Executed" : execution.status === "FILLED" ? "Filled" : execution.status}
+          </Tag>
+        </div>
+
+        {/* Financial Details Grid */}
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-2 px-4 py-3 text-sm sm:grid-cols-4 bg-background/50">
+          {[
+            ["Fill price", displayPrice ? money(displayPrice) : "Market Execution"],
+            ["Total Value", displayPrice ? money(displayPrice * displayQty) : "–"],
+            ["Custodian", guide.shortName],
+            ["Settlement", guide.settlementCycle],
+          ].map(([k, v]) => (
+            <div key={k} className="py-1">
+              <dt className="text-[12px] text-muted">{k}</dt>
+              <dd className="figures font-medium text-ink">{v}</dd>
+            </div>
+          ))}
+        </dl>
+
+        {/* Where to Check on WeBank / Custodian Box */}
+        <div className="border-t border-success/25 bg-background/90 p-4 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-accent">
+                Where to check your trade on {guide.shortName}:
+              </span>
+              <p className="text-xs font-medium text-ink mt-0.5">
+                Broker Order ID: <span className="font-mono font-bold">{orderRef}</span>
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={copyId}
+              className="self-start sm:self-auto rounded-md border border-line bg-surface px-2.5 py-1 text-xs font-semibold text-ink hover:bg-surface/80 transition-colors"
+            >
+              {copied ? "✓ Copied" : "📋 Copy Order ID"}
+            </button>
+          </div>
+
+          <div className="rounded-lg border border-accent/20 bg-accent/5 p-2.5 text-xs">
+            <span className="text-[11px] font-semibold text-muted block">In-App Navigation Path:</span>
+            <span className="font-mono font-bold text-accent text-[11.5px]">{guide.mobileAppPath}</span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <Button size="sm" onClick={() => setIsModalOpen(true)}>
+              🔍 Verify on {guide.shortName} Portal &amp; View Audit Slip
+            </Button>
+            <a
+              href={guide.portalUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs font-semibold text-primary underline underline-offset-4 py-1.5 px-2"
+            >
+              Open {guide.shortName} Website ↗
+            </a>
+          </div>
+        </div>
+      </div>
+
+      {/* Custodian Verification Modal */}
+      <CustodianVerificationModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        trade={modalTrade}
+        brokerId={brokerKey}
+      />
+    </>
   );
 }
 

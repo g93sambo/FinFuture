@@ -28,7 +28,8 @@ import {
   type CuratedBasket,
 } from "@/lib/curatedInvestments";
 import { dateTime, humanize, money, qty } from "@/lib/format";
-import type { AgentEvent, Execution, Proposal, TradeBlockedDetail } from "@/lib/types";
+import type { AgentEvent, Execution, Proposal, Trade, TradeBlockedDetail } from "@/lib/types";
+import { CustodianVerificationModal } from "@/components/domain/CustodianVerificationModal";
 import { useRequest } from "@/lib/useRequest";
 
 type Side = "BUY" | "SELL";
@@ -55,6 +56,8 @@ function TradeDesk({ clientId }: { clientId: string }) {
 
   // Broker & Custody Gateway state
   const [isBrokerModalOpen, setIsBrokerModalOpen] = useState(false);
+  const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
+  const [verificationTrade, setVerificationTrade] = useState<Trade | null>(null);
   const [activeBroker, setActiveBroker] = useState<BrokerageInfo>(() => getStoredBroker());
   const [activeBenchmark, setActiveBenchmark] = useState<BenchmarkIndexInfo>(() => getStoredBenchmark());
 
@@ -187,6 +190,17 @@ function TradeDesk({ clientId }: { clientId: string }) {
               <span className="block text-[11px] font-medium uppercase tracking-wider text-muted">Benchmark Index</span>
               <span className="text-sm font-semibold text-ink">{activeBenchmark.name} ({activeBenchmark.symbol})</span>
             </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setVerificationTrade(null);
+                setIsVerifyModalOpen(true);
+              }}
+              className="font-medium shrink-0"
+            >
+              🔍 Verify Custody Ledger
+            </Button>
             <Button
               variant="secondary"
               size="sm"
@@ -508,6 +522,7 @@ function TradeDesk({ clientId }: { clientId: string }) {
                     <Th numeric>Fill Price</Th>
                     <Th numeric>Total Value</Th>
                     <Th>Status</Th>
+                    <Th>Custodian Verification</Th>
                   </tr>
                 </thead>
                 <tbody>
@@ -515,6 +530,8 @@ function TradeDesk({ clientId }: { clientId: string }) {
                     const price = t.filled_price ?? getAssetRefPrice(t.symbol);
                     const totalVal = price * t.qty;
                     const isAcceptedOrFilled = t.status === "FILLED" || t.status === "ACCEPTED";
+                    const orderRef = t.broker_order_id || t.alpaca_order_id || `WBK-ORD-${t.trade_id.slice(0, 8).toUpperCase()}`;
+                    const brokerKey = t.broker || "webank";
                     return (
                       <Tr key={t.trade_id}>
                         <Td className="whitespace-nowrap text-muted text-xs">{dateTime(t.created_at)}</Td>
@@ -532,6 +549,21 @@ function TradeDesk({ clientId }: { clientId: string }) {
                           <Tag tone={isAcceptedOrFilled ? "success" : "neutral"}>
                             {t.status === "ACCEPTED" ? "Executed" : humanize(t.status)}
                           </Tag>
+                        </Td>
+                        <Td>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-mono text-[11px] text-muted">{orderRef}</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setVerificationTrade(t);
+                                setIsVerifyModalOpen(true);
+                              }}
+                              className="inline-flex items-center gap-1 rounded bg-accent/10 hover:bg-accent/20 px-2.5 py-1 text-[11px] font-semibold text-accent transition-colors"
+                            >
+                              <span>🔍 Check on {brokerKey.toUpperCase()} ↗</span>
+                            </button>
+                          </div>
                         </Td>
                       </Tr>
                     );
@@ -551,6 +583,14 @@ function TradeDesk({ clientId }: { clientId: string }) {
           setActiveBroker(broker);
           setActiveBenchmark(benchmark);
         }}
+      />
+
+      {/* Custodian Verification & Execution Slip Modal */}
+      <CustodianVerificationModal
+        isOpen={isVerifyModalOpen}
+        onClose={() => setIsVerifyModalOpen(false)}
+        trade={verificationTrade}
+        brokerId={verificationTrade?.broker || activeBroker.id}
       />
     </div>
   );

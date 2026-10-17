@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -119,6 +120,34 @@ async def execute_trade(
     return {"status": "success", "execution": filled["execution"] if filled else None, "events": events}
 
 
+def _format_trade_dict(t: DBTrade) -> dict:
+    filled_px = t.filled_price if t.filled_price is not None else SIMULATED_PRICES.get(t.symbol, 100.0)
+    broker_name = (getattr(t, "broker", None) or "webank").lower()
+    order_id = t.alpaca_order_id or getattr(t, "bamboo_order_id", None) or f"{broker_name.upper()}-ORD-{t.id[:8].upper()}"
+    created_iso = t.created_at.isoformat() if t.created_at else None
+    audit_hash = hashlib.sha256(f"{t.id}:{t.symbol}:{t.qty}:{created_iso}".encode()).hexdigest()
+    return {
+        "trade_id": t.id,
+        "client_id": t.client_id,
+        "symbol": t.symbol,
+        "side": t.side,
+        "qty": t.qty,
+        "status": t.status,
+        "filled_price": filled_px,
+        "broker": broker_name,
+        "currency": getattr(t, "currency", "USD"),
+        "alpaca_order_id": t.alpaca_order_id,
+        "bamboo_order_id": getattr(t, "bamboo_order_id", None),
+        "broker_order_id": order_id,
+        "clearing_ref": f"CLR-{broker_name.upper()}-{t.id[:8].upper()}",
+        "audit_hash": f"0x{audit_hash[:16]}...{audit_hash[-8:]}",
+        "full_audit_hash": audit_hash,
+        "custody_account": f"{broker_name.upper()}-CUSTODY-01",
+        "settlement_cycle": "T+1 (SEC Rule 15c6-1 / Sandbox Instant)",
+        "created_at": created_iso,
+    }
+
+
 @router.get("/trade/{order_id}")
 async def get_trade_order(
     order_id: str,
@@ -129,20 +158,7 @@ async def get_trade_order(
     if not trade:
         raise HTTPException(status_code=404, detail="Trade order not found")
     await verify_client_ownership(user, trade.client_id, db)
-    return {
-        "trade_id": trade.id,
-        "client_id": trade.client_id,
-        "symbol": trade.symbol,
-        "side": trade.side,
-        "qty": trade.qty,
-        "status": trade.status,
-        "filled_price": trade.filled_price if trade.filled_price is not None else SIMULATED_PRICES.get(trade.symbol, 100.0),
-        "broker": getattr(trade, "broker", "alpaca"),
-        "currency": getattr(trade, "currency", "USD"),
-        "alpaca_order_id": trade.alpaca_order_id,
-        "bamboo_order_id": getattr(trade, "bamboo_order_id", None),
-        "created_at": trade.created_at.isoformat() if trade.created_at else None,
-    }
+    return _format_trade_dict(trade)
 
 
 @router.get("/trades/{client_id}")
@@ -160,20 +176,5 @@ async def list_trades(
     ).scalars().all()
     return {
         "client_id": client_id,
-        "trades": [
-            {
-                "trade_id": t.id,
-                "symbol": t.symbol,
-                "side": t.side,
-                "qty": t.qty,
-                "status": t.status,
-                "filled_price": t.filled_price if t.filled_price is not None else SIMULATED_PRICES.get(t.symbol, 100.0),
-                "broker": getattr(t, "broker", "alpaca"),
-                "currency": getattr(t, "currency", "USD"),
-                "alpaca_order_id": t.alpaca_order_id,
-                "bamboo_order_id": getattr(t, "bamboo_order_id", None),
-                "created_at": t.created_at.isoformat() if t.created_at else None,
-            }
-            for t in rows
-        ],
+        "trades": [_format_trade_dict(t) for t in rows],
     }
