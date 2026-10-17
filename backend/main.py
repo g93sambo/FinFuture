@@ -206,4 +206,4 @@ if __name__ == "__main__":
 
     port = int(os.getenv("PORT", "8000"))
     print(f"Starting Wealth Advisor API on http://127.0.0.1:{port}")
-    uvicorn.run("main:app", host="127.0.0.1", port=port, reload=True)
+    uvicorn.run("main:app", host="127.0.0.1", port=port, reload=True, timeout_graceful_shutdown=2)
