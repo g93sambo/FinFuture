@@ -37,15 +37,20 @@ async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
     existing = await db.execute(select(DBUser).where(DBUser.email == email))
     if existing.scalars().first():
         raise HTTPException(status_code=409, detail="Email already registered")
-    user = DBUser(email=email, hashed_password=get_password_hash(req.password))
-    db.add(user)
     try:
+        user = DBUser(email=email, hashed_password=get_password_hash(req.password))
+        db.add(user)
         await db.commit()
+        await db.refresh(user)
+        return UserResponse(id=user.id, email=user.email)
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=409, detail="Email already registered")
-    await db.refresh(user)
-    return UserResponse(id=user.id, email=user.email)
+    except Exception as exc:
+        await db.rollback()
+        import logging
+        logging.getLogger("wealth_advisor.api.auth").exception("Registration failed unexpectedly: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Registration error: {str(exc)}")
 
 
 class LoginRequest(BaseModel):
