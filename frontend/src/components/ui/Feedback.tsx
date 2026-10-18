@@ -13,7 +13,7 @@ const tagTones: Record<Tone, string> = {
 /** Square status label. Always carries words, never colour alone. */
 export function Tag({ tone = "neutral", children, className = "" }: { tone?: Tone; children: ReactNode; className?: string }) {
   return (
-    <span className={`inline-flex h-6 items-center border px-2 text-[12.5px] font-medium leading-none whitespace-nowrap ${tagTones[tone]} ${className}`}>
+    <span className={`inline-flex h-7 items-center border px-2.5 text-[0.9375rem] font-medium leading-none whitespace-nowrap ${tagTones[tone]} ${className}`}>
       {children}
     </span>
   );
@@ -151,7 +151,7 @@ export function Loading({ label = "Loading" }: { label?: string }) {
 
 export function Empty({ title, children, action }: { title: string; children?: ReactNode; action?: ReactNode }) {
   return (
-    <div className="border border-dashed border-line px-6 py-10">
+    <div className="rise rounded-card border border-primary/15 bg-primary-soft/50 px-6 py-10">
       <p className="font-medium text-ink">{title}</p>
       {children ? <div className="mt-1 max-w-[60ch] text-sm text-muted">{children}</div> : null}
       {action ? <div className="mt-5">{action}</div> : null}

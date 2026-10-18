@@ -20,7 +20,7 @@ export function RuleResults({ details }: { details: ComplianceDetails }) {
               <Tag tone="warning">Warning</Tag>
             )}
           </span>
-          <span className="col-start-2 col-end-4 text-[13px] text-muted">{r.details}</span>
+          <span className="col-start-2 col-end-4 text-[0.9375rem] text-muted">{r.details}</span>
         </li>
       ))}
     </ul>
@@ -60,7 +60,7 @@ export function ComplianceSummary({ passed, details, violations }: { passed?: bo
       </p>
       {!passed ? <Violations violations={failing} /> : null}
       {warn.length ? (
-        <ul className="space-y-1 text-[13px] text-warning">
+        <ul className="space-y-1 text-[0.9375rem] text-warning">
           {warn.map((w) => (
             <li key={w}>{w}</li>
           ))}
@@ -68,7 +68,7 @@ export function ComplianceSummary({ passed, details, violations }: { passed?: bo
       ) : null}
       {details?.rule_results?.length ? (
         <details className="group">
-          <summary className="cursor-pointer text-[13px] text-primary underline decoration-primary/30 underline-offset-4 select-none">
+          <summary className="cursor-pointer text-[0.9375rem] text-primary underline decoration-primary/30 underline-offset-4 select-none">
             Show every rule
           </summary>
           <div className="mt-3">

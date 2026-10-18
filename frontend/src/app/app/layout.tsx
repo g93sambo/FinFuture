@@ -28,7 +28,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <Sidebar />
       <MobileBar />
       <main id="main" className="min-w-0 flex-1 px-5 py-8 sm:px-8 lg:px-12 lg:py-10">
-        <div className="mx-auto max-w-[1180px]">
+        <div className="mx-auto max-w-[110rem]">
           {sessionError ? (
             <Notice tone="danger" title="Could not open an advisory session" className="mb-6">
               {sessionError}

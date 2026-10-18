@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { AuroraBackground } from "@/components/landing/AuroraBackground";
 import { useAuth } from "@/lib/auth";
 import { Wordmark } from "./Wordmark";
 
@@ -42,8 +43,8 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
     <nav aria-label="Main" className="space-y-7">
       {groups.map((g) => (
         <div key={g.heading}>
-          <p className="mb-2 px-3 text-[12.5px] text-on-primary/70">{g.heading}</p>
-          <ul className="space-y-px">
+          <p className="mb-2 px-3 text-[0.875rem] font-medium text-on-primary/75">{g.heading}</p>
+          <ul className="space-y-1">
             {g.items.map((it) => {
               const active = it.href === "/app" ? path === "/app" : path.startsWith(it.href);
               return (
@@ -55,8 +56,8 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
                     onTouchStart={() => router.prefetch(it.href)}
                     onClick={onNavigate}
                     aria-current={active ? "page" : undefined}
-                    className={`flex h-9 items-center px-3 text-[14.5px] select-none rounded-[1px] transition-all duration-140 ease-out active:scale-[0.98] ${
-                      active ? "bg-on-primary font-semibold text-primary shadow-xs" : "text-on-primary hover:bg-on-primary/10 active:bg-on-primary/15"
+                    className={`flex h-11 items-center px-3 text-[1.125rem] select-none rounded-button transition-all duration-140 ease-out active:scale-[0.98] ${
+                      active ? "bg-on-primary font-semibold text-primary shadow-[0_0_24px_color-mix(in_srgb,var(--on-primary)_35%,transparent)]" : "text-on-primary hover:bg-on-primary/10 active:bg-on-primary/15"
                     }`}
                   >
                     {it.label}
@@ -74,31 +75,28 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
 function AccountBlock() {
   const { user, logout } = useAuth();
   return (
-    <div className="border-t border-on-primary/20 pt-4 text-[13px]">
-      <p className="text-on-primary/70">Signed in as</p>
+    <div className="border-t border-on-primary/20 pt-3 text-[1rem]">
       <p className="truncate text-on-primary" title={user?.email}>
         {user?.email}
       </p>
-      <button onClick={logout} className="mt-3 text-on-primary underline decoration-on-primary/40 underline-offset-4 hover:decoration-on-primary transition-all duration-140 ease-out active:scale-95">
+      <button onClick={logout} className="mt-3 flex h-11 w-full items-center justify-center rounded-button border border-on-primary/60 text-[1rem] font-medium text-on-primary transition-all duration-140 ease-out hover:bg-on-primary hover:text-primary active:scale-[0.98]">
         Sign out
       </button>
-      <p className="mt-5 border border-on-primary/30 px-2 py-1.5 text-on-primary/85">
-        Paper trading account. No real money moves.
-      </p>
     </div>
   );
 }
 
 export function Sidebar() {
   return (
-    <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col justify-between overflow-y-auto bg-primary px-4 py-6 lg:flex">
-      <div>
-        <div className="mb-9 px-3">
-          <Wordmark href="/app" inverted />
-        </div>
+    <aside className="sticky top-0 isolate hidden h-screen w-72 shrink-0 flex-col overflow-hidden bg-primary lg:flex">
+      <AuroraBackground />
+      <div className="relative z-10 shrink-0 px-7 pt-6 pb-7">
+        <Wordmark href="/app" inverted />
+      </div>
+      <div className="relative z-10 min-h-0 flex-1 overflow-y-auto px-4 pb-3 [scrollbar-color:color-mix(in_srgb,var(--on-primary)_30%,transparent)_transparent] [scrollbar-width:thin]">
         <NavList />
       </div>
-      <div className="px-3">
+      <div className="relative z-10 shrink-0 px-7 pb-4">
         <AccountBlock />
       </div>
     </aside>
@@ -119,22 +117,28 @@ export function MobileBar() {
 
   return (
     <div className="lg:hidden">
-      <div className="flex h-14 items-center justify-between bg-primary px-4">
-        <Wordmark href="/app" inverted />
+      <div className="relative isolate flex h-16 items-center justify-between overflow-hidden bg-primary px-4">
+        <AuroraBackground />
+        <span className="relative z-10">
+          <Wordmark href="/app" inverted />
+        </span>
         <button
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
           aria-controls="mobile-nav"
-          className="h-9 border border-on-primary/40 px-3 text-sm text-on-primary transition-all duration-140 ease-out active:scale-95"
+          className="relative z-10 h-11 rounded-button border border-on-primary/40 px-4 text-[1rem] text-on-primary transition-all duration-140 ease-out active:scale-95"
         >
           {open ? "Close" : "Menu"}
         </button>
       </div>
       {open ? (
-        <div id="mobile-nav" className="fixed inset-x-0 top-14 bottom-0 z-40 overflow-y-auto bg-primary px-4 py-6">
+        <div id="mobile-nav" className="fixed inset-x-0 top-16 bottom-0 z-40 isolate overflow-y-auto bg-primary px-4 py-6 [scrollbar-color:color-mix(in_srgb,var(--on-primary)_30%,transparent)_transparent] [scrollbar-width:thin]">
+          <AuroraBackground />
+          <div className="relative z-10">
           <NavList onNavigate={() => setOpen(false)} />
           <div className="mt-8 px-3">
             <AccountBlock />
+          </div>
           </div>
         </div>
       ) : null}

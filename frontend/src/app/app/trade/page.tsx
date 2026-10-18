@@ -133,7 +133,7 @@ function TradeDesk({ clientId }: { clientId: string }) {
               <Button type="submit" pending={drafting} disabled={!symbolOk || !qtyOk || ticketState === "approving"}>
                 Draft proposal
               </Button>
-              <span className="text-[13px] text-muted">Drafting does not place anything.</span>
+              <span className="text-[0.9375rem] text-muted">Drafting does not place anything.</span>
             </div>
           </form>
         </Panel>
@@ -187,7 +187,7 @@ function TradeDesk({ clientId }: { clientId: string }) {
             </div>
           </Panel>
         ) : (
-          <div className="border border-dashed border-line px-6 py-10 text-sm text-muted">
+          <div className="rounded-card border border-primary/15 bg-primary-soft/50 px-6 py-10 text-sm text-muted">
             Your drafted order will appear here with its estimated cost and the weight it would take in your portfolio.
           </div>
         )}

@@ -44,7 +44,7 @@ export function ProposalTicket({
     ) : expired ? (
       <Tag tone="warning">Expired</Tag>
     ) : (
-      <span className="figures text-[13px] text-muted">Expires in {label}</span>
+      <span className="figures text-[0.9375rem] text-muted">Expires in {label}</span>
     );
 
   return (
@@ -63,7 +63,7 @@ export function ProposalTicket({
           ["Reference", proposal.proposal_id.slice(0, 8)],
         ].map(([k, v]) => (
           <div key={k} className="py-1">
-            <dt className="text-[13px] text-muted">{k}</dt>
+            <dt className="text-[0.9375rem] text-muted">{k}</dt>
             <dd className="figures text-ink">{v}</dd>
           </div>
         ))}
@@ -76,7 +76,7 @@ export function ProposalTicket({
           <Button size="sm" variant="secondary" onClick={onReject} disabled={state !== "open"}>
             Cancel
           </Button>
-          <span className="text-[13px] text-muted">Pre-trade compliance runs when you approve.</span>
+          <span className="text-[0.9375rem] text-muted">Pre-trade compliance runs when you approve.</span>
         </div>
       ) : null}
     </div>
@@ -102,7 +102,7 @@ export function ExecutionReceipt({ execution }: { execution: Execution }) {
           ["Order", (execution.order_id ?? "").replace(/^dry-run-/, "").slice(0, 8)],
         ].map(([k, v]) => (
           <div key={k} className="py-1">
-            <dt className="text-[13px] text-muted">{k}</dt>
+            <dt className="text-[0.9375rem] text-muted">{k}</dt>
             <dd className="figures text-ink">{v}</dd>
           </div>
         ))}

@@ -31,7 +31,7 @@ function RuleRow({ r }: { r: ComplianceRule }) {
         <p className="font-medium text-ink">{r.name}</p>
         {r.description ? <p className="mt-0.5 max-w-[70ch] text-sm text-ink">{r.description}</p> : null}
         {params.length ? (
-          <dl className="mt-2 grid max-w-[70ch] grid-cols-[minmax(10rem,auto)_1fr] gap-x-4 gap-y-0.5 text-[13px]">
+          <dl className="mt-2 grid max-w-[70ch] grid-cols-[minmax(10rem,auto)_1fr] gap-x-4 gap-y-0.5 text-[0.9375rem]">
             {params.map(([k, v]) => (
               <div key={k} className="contents">
                 <dt className="text-muted">{humanize(k)}</dt>

@@ -1,14 +1,11 @@
 import Link from "next/link";
 
-/** Text wordmark. A square glyph built from two rules, no illustration. */
-export function Wordmark({ href = "/", inverted = false }: { href?: string; inverted?: boolean }) {
+/** Text wordmark. `compact` hides "Advisory" below tablet width. */
+export function Wordmark({ href = "/", inverted = false, compact = false }: { href?: string; inverted?: boolean; compact?: boolean }) {
   return (
-    <Link href={href} className={`group inline-flex items-center gap-2.5 ${inverted ? "text-on-primary" : "text-primary"}`}>
-      <span aria-hidden className={`grid h-6 w-6 place-items-center border-2 ${inverted ? "border-on-primary" : "border-primary"}`}>
-        <span className={`block h-2.5 w-0.5 ${inverted ? "bg-on-primary" : "bg-primary"}`} />
-      </span>
-      <span className="text-[17px] font-semibold tracking-normal">
-        FinFuture<span className={`font-normal ${inverted ? "text-on-primary/75" : "text-muted"}`}> Advisory</span>
+    <Link href={href} className={`inline-flex shrink-0 items-center whitespace-nowrap ${inverted ? "text-on-primary" : "text-primary"}`}>
+      <span className="text-[1.3125rem] font-semibold tracking-normal">
+        FinFuture<span className={`font-normal ${compact ? "hidden sm:inline" : ""} ${inverted ? "text-on-primary/75" : "text-muted"}`}> Advisory</span>
       </span>
     </Link>
   );

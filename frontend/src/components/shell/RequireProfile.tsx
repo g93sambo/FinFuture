@@ -19,7 +19,7 @@ export function RequireProfile({ children }: { children: (clientId: string) => R
       action={<ButtonLink href="/app/advisor">Answer the profiling questions</ButtonLink>}
     >
       Recommendations, trades and reports are all tailored to your profile. The Advisor asks five short sets of questions
-      about you, your finances, your time horizon, your attitude to risk and your experience. It takes about three minutes.
+      about you, your finances, your time horizon, your attitude to risk and your experience. It only takes a few minutes.
     </Empty>
   );
 }

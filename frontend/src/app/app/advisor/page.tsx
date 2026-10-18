@@ -87,7 +87,7 @@ export default function AdvisorPage() {
                 ))}
                 {waiting ? (
                   <li className="grid gap-x-5 py-4 sm:grid-cols-[8.5rem_1fr]">
-                    <span className="text-[13px] font-semibold text-ink">Advisor</span>
+                    <span className="text-[0.9375rem] font-semibold text-ink">Advisor</span>
                     <span className="text-sm text-muted">Working on it…</span>
                   </li>
                 ) : null}
@@ -118,7 +118,7 @@ export default function AdvisorPage() {
               className="resize-none"
             />
             <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-              <p className="text-[12.5px] text-muted">Enter to send, Shift and Enter for a new line.</p>
+              <p className="text-[0.875rem] text-muted">Enter to send, Shift and Enter for a new line.</p>
               <Button type="submit" disabled={!ready || !draft.trim() || waiting}>
                 Send
               </Button>
@@ -140,7 +140,7 @@ export default function AdvisorPage() {
                 );
               })}
             </ol>
-            <p className="mt-5 border-t border-line pt-3 text-[13px] text-muted">{connectionText[connection]}</p>
+            <p className="mt-5 border-t border-line pt-3 text-[0.9375rem] text-muted">{connectionText[connection]}</p>
           </Panel>
 
           {profiling ? (
@@ -153,7 +153,7 @@ export default function AdvisorPage() {
                   </li>
                 ))}
               </ol>
-              <p className="mt-4 text-[13px] text-muted">
+              <p className="mt-4 text-[0.9375rem] text-muted">
                 Useful phrasing: &ldquo;My risk tolerance is 6 out of 10&rdquo;, &ldquo;My horizon is 12 years&rdquo;, &ldquo;Income is 90k, savings
                 40k&rdquo;.
               </p>

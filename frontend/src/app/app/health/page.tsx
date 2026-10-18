@@ -36,7 +36,7 @@ function ScoreScale({ score }: { score: number }) {
         ))}
         <span className="absolute -top-1.5 h-6 w-0.5 bg-ink" style={{ left: `calc(${Math.min(100, Math.max(0, score))}% - 1px)` }} />
       </div>
-      <div className="mt-1.5 flex text-[12px] text-muted">
+      <div className="mt-1.5 flex text-[0.875rem] text-muted">
         {bands.map(([name, a, b]) => (
           <span key={name} style={{ width: `${b - a}%` }}>
             {name}
@@ -68,14 +68,14 @@ function Report({ r, rerun, pending }: { r: HealthReport; rerun: () => void; pen
       <div className="grid gap-8 xl:grid-cols-12">
         <Panel title="Health score" className="xl:col-span-7">
           <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
-            <p className="figures text-[40px] leading-none text-ink">{fixed(r.health_score, 0)}</p>
+            <p className="figures text-[3.5rem] leading-none font-bold text-primary">{fixed(r.health_score, 0)}</p>
             <p className="text-muted">out of 100</p>
             <Tag tone={gradeTone[r.health_grade]}>{humanize(r.health_grade)}</Tag>
           </div>
           <div className="mt-6">
             <ScoreScale score={r.health_score} />
           </div>
-          <p className="mt-6 max-w-[68ch] text-[15px] text-ink">{n.executive_summary}</p>
+          <p className="mt-6 max-w-[68ch] text-[1rem] text-ink">{n.executive_summary}</p>
         </Panel>
 
         <Panel title="How the score is built" className="xl:col-span-5">
@@ -103,7 +103,7 @@ function Report({ r, rerun, pending }: { r: HealthReport; rerun: () => void; pen
                 <div>
                   <p className="font-medium text-ink">{a.title}</p>
                   <p className="mt-0.5 text-sm text-ink">{a.message}</p>
-                  <p className="mt-1 text-[13px] text-muted">{a.action_recommended}</p>
+                  <p className="mt-1 text-[0.9375rem] text-muted">{a.action_recommended}</p>
                 </div>
               </li>
             ))}
@@ -183,7 +183,7 @@ function Report({ r, rerun, pending }: { r: HealthReport; rerun: () => void; pen
             </Tr>
           </tbody>
         </Table>
-        <p className="px-5 py-3 text-[13px] text-muted">
+        <p className="px-5 py-3 text-[0.9375rem] text-muted">
           Returns and volatilities are long-run assumptions per fund, not forecasts. {n.benchmark_comparison_narrative}
         </p>
       </Panel>
@@ -225,7 +225,7 @@ function Report({ r, rerun, pending }: { r: HealthReport; rerun: () => void; pen
                 ))}
               </tbody>
             </Table>
-            <p className="px-5 py-3 text-[13px] text-muted">
+            <p className="px-5 py-3 text-[0.9375rem] text-muted">
               Cash {money(plan.cash_before)} before, about {money(plan.estimated_cash_after)} after. Turnover {pct(plan.portfolio_turnover)}.
             </p>
           </>
@@ -233,12 +233,12 @@ function Report({ r, rerun, pending }: { r: HealthReport; rerun: () => void; pen
       </Panel>
 
       <Panel title="Recommendations">
-        <ol className="list-inside list-decimal space-y-1.5 text-[15px] text-ink marker:text-muted">
+        <ol className="list-inside list-decimal space-y-1.5 text-[1rem] text-ink marker:text-muted">
           {n.actionable_recommendations.map((a) => (
             <li key={a}>{a}</li>
           ))}
         </ol>
-        <p className="mt-4 border-t border-line pt-3 text-[12.5px] text-muted">{n.regulatory_disclosure}</p>
+        <p className="mt-4 border-t border-line pt-3 text-[0.875rem] text-muted">{n.regulatory_disclosure}</p>
       </Panel>
     </div>
   );

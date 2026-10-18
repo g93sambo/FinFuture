@@ -28,7 +28,7 @@ export function BulletBars({ rows, max, title }: { rows: BulletRow[]; max?: numb
     <figure>
       <figcaption className="sr-only">{title}</figcaption>
       {hasTarget ? (
-        <div className="mb-3 flex items-center gap-5 text-[13px] text-muted" aria-hidden>
+        <div className="mb-3 flex items-center gap-5 text-[0.9375rem] text-muted" aria-hidden>
           <span className="flex items-center gap-2">
             <span className="inline-block h-2.5 w-4 bg-primary" /> Current
           </span>
@@ -54,7 +54,7 @@ export function BulletBars({ rows, max, title }: { rows: BulletRow[]; max?: numb
                 <span className="absolute -inset-y-1 w-0.5 bg-ink" style={{ left: `calc(${w(r.target)} - 1px)` }} />
               ) : null}
             </span>
-            <span className="figures text-right text-[13px] text-ink">
+            <span className="figures text-right text-[0.9375rem] text-ink">
               {r.valueText ?? `${(r.value * 100).toFixed(1)}%`}
               {r.target !== undefined ? <span className="block text-muted sm:inline"> / {(r.target * 100).toFixed(1)}%</span> : null}
             </span>

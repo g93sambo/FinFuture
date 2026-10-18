@@ -84,8 +84,8 @@ function Audit({ clientId }: { clientId: string }) {
                     value: <Tag tone={anchor.status === "confirmed" ? "success" : anchor.status === "dry_run" ? "warning" : "neutral"}>{anchor.status === "dry_run" ? "Simulated" : humanize(anchor.status)}</Tag>,
                   },
                   { label: "Entries", value: anchor.entries_count },
-                  { label: "Merkle root", value: <span className="text-[13px] break-all">{anchor.merkle_root}</span> },
-                  { label: "Transaction", value: <span className="text-[13px] break-all">{anchor.tx_hash}</span> },
+                  { label: "Merkle root", value: <span className="text-[0.9375rem] break-all">{anchor.merkle_root}</span> },
+                  { label: "Transaction", value: <span className="text-[0.9375rem] break-all">{anchor.tx_hash}</span> },
                   { label: "Block", value: anchor.block_number ?? "Pending" },
                   { label: "Chain ID", value: anchor.chain_id },
                 ]}
@@ -146,7 +146,7 @@ function Audit({ clientId }: { clientId: string }) {
                     <Td className="font-medium">{humanize(e.event_type)}</Td>
                     <Td>{actorLabel(e.actor)}</Td>
                     <Td>{e.status ? <Tag tone={statusTone[e.status] ?? "neutral"}>{humanize(e.status)}</Tag> : "–"}</Td>
-                    <Td className="figures text-[13px] text-muted">{shortHash(e.entry_hash)}</Td>
+                    <Td className="figures text-[0.9375rem] text-muted">{shortHash(e.entry_hash)}</Td>
                     <Td className="text-right">
                       <button
                         onClick={() => setOpen(open === e.entry_id ? null : e.entry_id)}
@@ -160,7 +160,7 @@ function Audit({ clientId }: { clientId: string }) {
                   {open === e.entry_id ? (
                     <tr>
                       <td colSpan={6} className="border-b border-line bg-surface px-5 py-4">
-                        <dl className="figures grid gap-x-6 gap-y-1 text-[12.5px] md:grid-cols-[8rem_1fr]">
+                        <dl className="figures grid gap-x-6 gap-y-1 text-[0.875rem] md:grid-cols-[8rem_1fr]">
                           <dt className="font-sans text-muted">Entry</dt>
                           <dd className="break-all">{e.entry_id}</dd>
                           <dt className="font-sans text-muted">Previous hash</dt>
@@ -170,7 +170,7 @@ function Audit({ clientId }: { clientId: string }) {
                           <dt className="font-sans text-muted">Signature</dt>
                           <dd className="break-all">{e.signature}</dd>
                         </dl>
-                        <pre className="figures mt-3 max-h-80 overflow-auto border border-line bg-background p-3 text-[12px] leading-relaxed text-ink">
+                        <pre className="figures mt-3 max-h-80 overflow-auto border border-line bg-background p-3 text-[0.875rem] leading-relaxed text-ink">
                           {JSON.stringify(e.details, null, 2)}
                         </pre>
                       </td>

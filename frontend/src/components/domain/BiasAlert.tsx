@@ -28,10 +28,10 @@ export function BiasAlert({
       <div className="flex flex-wrap items-center gap-2">
         <p className="text-sm font-semibold text-warning">{names[biasType ?? ""] ?? humanize(biasType)}</p>
         {severity ? <Tag tone="warning">{humanize(severity)} signal</Tag> : null}
-        {typeof confidence === "number" ? <span className="figures text-[13px] text-muted">confidence {Math.round(confidence * 100)}%</span> : null}
+        {typeof confidence === "number" ? <span className="figures text-[0.9375rem] text-muted">confidence {Math.round(confidence * 100)}%</span> : null}
       </div>
       {text ? <p className="mt-1.5 max-w-[68ch] text-sm text-ink">{text}</p> : null}
-      {coolOff ? <p className="mt-2 text-[13px] font-medium text-ink">Suggested: wait 24 hours before acting on this.</p> : null}
+      {coolOff ? <p className="mt-2 text-[0.9375rem] font-medium text-ink">Suggested: wait 24 hours before acting on this.</p> : null}
     </div>
   );
 }

@@ -8,16 +8,15 @@ import { Empty, ErrorNotice, Skeleton, TableSkeleton, Tag } from "@/components/u
 import { Ledger, PageHeader, Panel } from "@/components/ui/Layout";
 import { Table, Td, Th, Tr } from "@/components/ui/Table";
 import { api } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
 import { dateTime, fixed, humanize, money, pct, qty } from "@/lib/format";
 import { useRequest } from "@/lib/useRequest";
 
 function OverviewSkeleton() {
   return (
     <div className="space-y-8 animate-fadeIn" aria-busy="true" aria-label="Loading portfolio">
-      <div className="mb-10 grid grid-cols-2 border-y border-ink md:grid-cols-4">
+      <div className="mb-10 grid grid-cols-2 gap-4 md:grid-cols-4">
         {[1, 2, 3, 4].map((i) => (
-          <div key={i} className={`px-0 py-4 md:px-5 ${i > 1 ? "md:border-l md:border-line" : ""}`}>
+          <div key={i} className="rounded-feature bg-surface p-5">
             <Skeleton height="14px" width="80px" />
             <div className="mt-2">
               <Skeleton height="26px" width="120px" />
@@ -72,16 +71,20 @@ function Overview({ clientId }: { clientId: string }) {
 
   return (
     <>
-      <dl className="mb-10 grid grid-cols-2 border-y border-ink md:grid-cols-4">
+      <dl className="mb-10 grid grid-cols-2 gap-4 md:grid-cols-4">
         {[
           ["Account value", money(pf.total_value)],
           ["Invested", money(pf.invested_value)],
           ["Cash", money(pf.cash)],
           ["Holdings", String(pf.positions.length)],
         ].map(([k, v], i) => (
-          <div key={k} className={`px-0 py-4 md:px-5 ${i % 2 ? "pl-5" : ""} ${i > 0 ? "md:border-l md:border-line" : "md:pl-0"} ${i >= 2 ? "border-t border-line md:border-t-0" : ""}`}>
-            <dt className="text-sm text-muted">{k}</dt>
-            <dd className="figures mt-1 text-[22px] text-ink">{v}</dd>
+          <div
+            key={k}
+            className={`panel rise rounded-feature p-5 ${i === 0 ? "bg-primary text-on-primary" : "bg-primary-soft text-primary"}`}
+            style={{ "--d": i } as React.CSSProperties}
+          >
+            <dt className="text-[0.9375rem] font-medium opacity-80">{k}</dt>
+            <dd className="figures mt-2 text-[1.75rem] leading-none font-bold">{v}</dd>
           </div>
         ))}
       </dl>
@@ -184,11 +187,11 @@ function Overview({ clientId }: { clientId: string }) {
                       <span className="font-medium text-ink">
                         {t.side === "BUY" ? "Buy" : "Sell"} {qty(t.qty)} {t.symbol}
                       </span>
-                      <span className="block text-[13px] text-muted">{dateTime(t.created_at)}</span>
+                      <span className="block text-[0.9375rem] text-muted">{dateTime(t.created_at)}</span>
                     </span>
                     <span className="figures text-right text-ink">
                       {money(t.filled_price)}
-                      <span className="block text-[13px] text-muted">{humanize(t.status)}</span>
+                      <span className="block text-[0.9375rem] text-muted">{humanize(t.status)}</span>
                     </span>
                   </li>
                 ))}
@@ -208,7 +211,7 @@ function Overview({ clientId }: { clientId: string }) {
                   <Link href={href} className="font-medium text-primary underline decoration-primary/30 underline-offset-4 hover:decoration-primary">
                     {label}
                   </Link>
-                  <p className="text-[13px] text-muted">{note}</p>
+                  <p className="text-[0.9375rem] text-muted">{note}</p>
                 </li>
               ))}
             </ul>
@@ -220,10 +223,9 @@ function Overview({ clientId }: { clientId: string }) {
 }
 
 export default function OverviewPage() {
-  const { user } = useAuth();
   return (
     <>
-      <PageHeader title="Overview" lede={user ? `Paper account for ${user.email}.` : undefined} />
+      <PageHeader title="Overview" lede="Here's where your money stands today." />
       <RequireProfile>{(id) => <Overview clientId={id} />}</RequireProfile>
     </>
   );

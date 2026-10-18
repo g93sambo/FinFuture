@@ -100,27 +100,27 @@ export function LineChart({
         {geo.yTicks.map((t) => (
           <g key={`y${t}`}>
             <line x1={PAD.left} x2={W - PAD.right} y1={geo.sy(t)} y2={geo.sy(t)} className="stroke-chart-grid" strokeWidth={1} />
-            <text x={PAD.left - 8} y={geo.sy(t)} dy="0.32em" textAnchor="end" className="fill-muted figures text-[11px]">
+            <text x={PAD.left - 8} y={geo.sy(t)} dy="0.32em" textAnchor="end" className="fill-muted figures text-[0.8125rem]">
               {formatY(t)}
             </text>
           </g>
         ))}
         {categoricalX
           ? points.map((p, i) => (
-              <text key={p.label} x={geo.coords[i].cx} y={H - PAD.bottom + 18} textAnchor="middle" className="fill-muted figures text-[11px]">
+              <text key={p.label} x={geo.coords[i].cx} y={H - PAD.bottom + 18} textAnchor="middle" className="fill-muted figures text-[0.8125rem]">
                 {p.label}
               </text>
             ))
           : geo.xTicks.map((t) => (
-              <text key={`x${t}`} x={geo.sx(t)} y={H - PAD.bottom + 18} textAnchor="middle" className="fill-muted figures text-[11px]">
+              <text key={`x${t}`} x={geo.sx(t)} y={H - PAD.bottom + 18} textAnchor="middle" className="fill-muted figures text-[0.8125rem]">
                 {formatX(t)}
               </text>
             ))}
         <line x1={PAD.left} x2={W - PAD.right} y1={PAD.top + ih} y2={PAD.top + ih} className="stroke-ink/40" strokeWidth={1} />
-        <text x={PAD.left + iw / 2} y={H - 4} textAnchor="middle" className="fill-muted text-[11px]">
+        <text x={PAD.left + iw / 2} y={H - 4} textAnchor="middle" className="fill-muted text-[0.8125rem]">
           {xLabel}
         </text>
-        <text transform={`translate(12 ${PAD.top + ih / 2}) rotate(-90)`} textAnchor="middle" className="fill-muted text-[11px]">
+        <text transform={`translate(12 ${PAD.top + ih / 2}) rotate(-90)`} textAnchor="middle" className="fill-muted text-[0.8125rem]">
           {yLabel}
         </text>
 
@@ -139,7 +139,7 @@ export function LineChart({
               strokeWidth={2}
             />
             {highlightLabel ? (
-              <text x={geo.coords[highlight].cx + 10} y={geo.coords[highlight].cy - 10} className="fill-ink text-[11px] font-medium">
+              <text x={geo.coords[highlight].cx + 10} y={geo.coords[highlight].cy - 10} className="fill-ink text-[0.8125rem] font-medium">
                 {highlightLabel}
               </text>
             ) : null}
@@ -165,7 +165,7 @@ export function LineChart({
       </svg>
       {hp && hc ? (
         <div
-          className="pointer-events-none absolute z-10 border border-ink bg-background px-2.5 py-1.5 text-[12.5px] text-ink"
+          className="pointer-events-none absolute z-10 border border-ink bg-background px-2.5 py-1.5 text-[0.875rem] text-ink"
           style={{
             left: `${(hc.cx / W) * 100}%`,
             top: `${(hc.cy / H) * 100}%`,

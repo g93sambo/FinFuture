@@ -97,7 +97,7 @@ function QuoteBlock({
           <div className={`transition-opacity duration-140 ${pending ? "opacity-60" : "opacity-100"}`}>
             <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b border-ink pb-3">
               <p className="text-lg font-semibold text-ink">{quote.symbol}</p>
-              <p className="figures text-[26px] text-ink">{money(quote.price)}</p>
+              <p className="figures text-[1.875rem] text-ink">{money(quote.price)}</p>
               {quote.change_pct !== null ? (
                 <p className={`figures text-sm ${quote.change_pct > 0 ? "text-success" : quote.change_pct < 0 ? "text-danger" : "text-muted"}`}>
                   {quote.change_pct > 0 ? "+" : ""}
@@ -115,7 +115,7 @@ function QuoteBlock({
                 { label: "Volume", value: big(quote.volume) },
               ]}
             />
-            <p className="mt-3 flex flex-wrap items-center gap-2 text-[13px] text-muted">
+            <p className="mt-3 flex flex-wrap items-center gap-2 text-[0.9375rem] text-muted">
               <Tag tone={quote.source === "fixture" ? "warning" : "neutral"}>{sourceLabel(quote.source)}</Tag>
               as of {dateTime(quote.timestamp)}
             </p>
@@ -200,7 +200,7 @@ export default function MarketsPage() {
                       key={p.id}
                       type="button"
                       onClick={() => setPeriod(p.id)}
-                      className={`px-2 py-0.5 text-[12px] font-medium transition-all duration-140 ease-out active:scale-95 ${
+                      className={`px-2 py-0.5 text-[0.875rem] font-medium transition-all duration-140 ease-out active:scale-95 ${
                         period === p.id ? "bg-primary text-on-primary" : "text-muted hover:text-ink hover:bg-black/5"
                       }`}
                     >
@@ -212,7 +212,7 @@ export default function MarketsPage() {
             }
           >
             {historyLoading && !historyData ? (
-              <div className="h-[220px] flex items-center justify-center border border-dashed border-line bg-surface/30">
+              <div className="h-[15rem] flex items-center justify-center rounded-card border border-primary/15 bg-primary-soft/50">
                 <Loading label={`Loading ${activeSymbol} price history`} />
               </div>
             ) : null}
@@ -234,7 +234,7 @@ export default function MarketsPage() {
 
           {loading && !data ? (
             <Panel title="US Treasury yield curve (Sovereign benchmark)">
-              <div className="h-[220px] flex items-center justify-center border border-dashed border-line bg-surface/30">
+              <div className="h-[15rem] flex items-center justify-center rounded-card border border-primary/15 bg-primary-soft/50">
                 <Loading label="Loading the yield curve" />
               </div>
             </Panel>
@@ -267,7 +267,7 @@ export default function MarketsPage() {
                   <p className="text-sm text-muted">No curve data available.</p>
                 )}
                 <details className="mt-4">
-                  <summary className="cursor-pointer text-[13px] text-primary underline decoration-primary/30 underline-offset-4">Show as a table</summary>
+                  <summary className="cursor-pointer text-[0.9375rem] text-primary underline decoration-primary/30 underline-offset-4">Show as a table</summary>
                   <Table caption="Treasury yields" className="mt-3">
                     <thead>
                       <tr>
@@ -297,7 +297,7 @@ export default function MarketsPage() {
                     .filter(([k]) => k in macroLabels)
                     .map(([k, v]) => ({ label: macroLabels[k], value: points(v) }))}
                 />
-                <p className="mt-3 text-[13px] text-muted">
+                <p className="mt-3 text-[0.9375rem] text-muted">
                   From FRED when a key is configured, otherwise a recorded snapshot. CPI from FRED is the index level rather than a rate.
                 </p>
               </Panel>

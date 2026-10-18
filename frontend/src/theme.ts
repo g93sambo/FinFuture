@@ -60,10 +60,18 @@ export const theme = {
     chartTrack: "#EBF0ED", // empty part of a bar / bullet chart
     chartGrid: "#E2E8E5", // gridlines inside charts
     focus: "#2D6A4F", // keyboard focus ring
+
+    // Animated "aurora" background (landing page). Shades of the primary green.
+    // Highlight is kept at 50% opacity or less so white text stays above 4.5:1.
+    auroraDeep: "#06241A",
+    auroraMid: "#1B5E43",
+    auroraHighlight: "#40916C",
   },
   radius: {
-    card: "0px",
+    card: "14px", // dashboard panels
     control: "2px",
+    button: "10px", // every button: raise for rounder, lower for squarer
+    feature: "14px", // landing-page feature bubbles
   },
   motion: {
     durInstant: "80ms",

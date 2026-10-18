@@ -4,7 +4,7 @@ import type { ComponentProps, ReactNode } from "react";
 export function Table({ children, caption, className = "" }: { children: ReactNode; caption?: string; className?: string }) {
   return (
     <div className={`overflow-x-auto ${className}`}>
-      <table className="w-full border-collapse text-left text-sm">
+      <table className="w-full border-collapse text-left text-[1rem]">
         {caption ? <caption className="sr-only">{caption}</caption> : null}
         {children}
       </table>
@@ -16,7 +16,7 @@ export function Th({ numeric, className = "", ...rest }: ComponentProps<"th"> & 
   return (
     <th
       scope="col"
-      className={`border-b border-ink/70 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap text-muted first:pl-5 last:pr-5 ${numeric ? "text-right" : ""} ${className}`}
+      className={`border-b border-ink/70 px-4 py-3 text-[0.9375rem] font-medium whitespace-nowrap text-muted first:pl-5 last:pr-5 ${numeric ? "text-right" : ""} ${className}`}
       {...rest}
     />
   );

@@ -67,7 +67,7 @@ function ProductDetail({ p }: { p: ComparedProduct }) {
           <p className="text-muted">None flagged.</p>
         )}
       </div>
-      <dl className="figures grid grid-cols-2 gap-x-4 gap-y-1 text-[13px]">
+      <dl className="figures grid grid-cols-2 gap-x-4 gap-y-1 text-[0.9375rem]">
         <dt className="font-sans text-muted">Expense ratio</dt>
         <dd className="text-right">{pct(r.expense_ratio, 2)}</dd>
         <dt className="font-sans text-muted">Tracking error</dt>
@@ -93,7 +93,7 @@ function Results({ res }: { res: CompareResponse }) {
       {winner ? (
         <div className="border-l-2 border-primary pl-5">
           <p className="text-sm text-muted">Best fit for your profile</p>
-          <p className="mt-1 text-[22px] font-semibold text-ink">
+          <p className="mt-1 text-[1.5rem] font-semibold text-ink">
             {winner.symbol} <span className="font-normal text-muted">· {winner.name}</span>
           </p>
           <p className="figures mt-1 text-sm text-ink">Composite score {fixed(winner.composite_score)} out of 10</p>
@@ -128,7 +128,7 @@ function Results({ res }: { res: CompareResponse }) {
                     </Td>
                     <Td>
                       <span className="font-semibold">{p.symbol}</span>
-                      <span className="block max-w-[26ch] truncate text-[13px] text-muted" title={p.name}>
+                      <span className="block max-w-[26ch] truncate text-[0.9375rem] text-muted" title={p.name}>
                         {p.name}
                       </span>
                     </Td>
@@ -180,8 +180,8 @@ function Results({ res }: { res: CompareResponse }) {
       ) : null}
 
       <Panel title="Summary">
-        <p className="max-w-[72ch] whitespace-pre-line text-[15px] text-ink">{res.rationale}</p>
-        <p className="mt-4 text-[13px] text-muted">
+        <p className="max-w-[72ch] whitespace-pre-line text-[1rem] text-ink">{res.rationale}</p>
+        <p className="mt-4 text-[0.9375rem] text-muted">
           Method: {res.report?.methodology}. Your risk tier for products is {res.report?.client_risk_tier} of 5.
         </p>
       </Panel>
@@ -241,7 +241,7 @@ function Compare({ clientId }: { clientId: string }) {
         >
           {(p) => <Input {...p} value={input} onChange={(e) => setInput(e.target.value)} autoCapitalize="characters" spellCheck={false} />}
         </Field>
-        <Button type="submit" pending={pending} disabled={tooFew || tooMany} className="lg:mb-[26px]">
+        <Button type="submit" pending={pending} disabled={tooFew || tooMany} className="lg:mb-[1.75rem]">
           Compare
         </Button>
       </form>

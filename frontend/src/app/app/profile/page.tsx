@@ -24,7 +24,7 @@ function Profile({ clientId }: { clientId: string }) {
       <div className="space-y-8 xl:col-span-7">
         <Panel title="Suitability">
           <p className="text-sm text-muted">Tier assigned from your answers. Each step up allows more equity and more volatility.</p>
-          <ol className="mt-4 grid grid-cols-5 border border-line text-center text-[12.5px]">
+          <ol className="mt-4 grid grid-cols-5 border border-line text-center text-[0.875rem]">
             {tierOrder.map((t, i) => (
               <li
                 key={t}
@@ -85,7 +85,7 @@ function Profile({ clientId }: { clientId: string }) {
               { label: "Panic sell", sublabel: "Likelihood of selling after a 20% fall", value: p.panic_sell_likelihood ?? 0, valueText: pct(p.panic_sell_likelihood, 0) },
             ]}
           />
-          <p className="mt-4 text-[13px] text-muted">
+          <p className="mt-4 text-[0.9375rem] text-muted">
             Emotional risk combines your stated reaction to a fall, how often you check, detected biases and financial stress. Panic-sell
             likelihood is a logistic estimate for a 20% drawdown. Both rise when the Advisor detects a bias in conversation.
           </p>
@@ -113,14 +113,14 @@ function Profile({ clientId }: { clientId: string }) {
             ]}
           />
           {!p.kyc_verified ? (
-            <p className="mt-3 text-[13px] text-danger">Orders are refused until KYC is verified.</p>
+            <p className="mt-3 text-[0.9375rem] text-danger">Orders are refused until KYC is verified.</p>
           ) : null}
         </Panel>
 
         <Panel title="Record">
           <Ledger
             rows={[
-              { label: "Client reference", value: <span className="text-[13px]">{p.client_id}</span> },
+              { label: "Client reference", value: <span className="text-[0.9375rem]">{p.client_id}</span> },
               { label: "Created", value: dateTime(p.created_at) },
               { label: "Last updated", value: dateTime(p.updated_at) },
             ]}
