@@ -61,14 +61,29 @@ export class ApiError extends Error {
     this.detail = detail;
   }
   static describe(status: number, detail: unknown): string {
-    if (typeof detail === "string") return detail;
+    if (typeof detail === "string") {
+      if (detail.includes("password cannot be longer than 72 bytes")) {
+        return "Password cannot be longer than 72 characters. Please use a shorter passphrase.";
+      }
+      if (detail.toLowerCase().includes("incorrect email or password")) {
+        return "Incorrect email or password. Please double-check your credentials.";
+      }
+      if (detail.toLowerCase().includes("user already exists")) {
+        return "An account with this email already exists. Please sign in instead.";
+      }
+      return detail;
+    }
     if (Array.isArray(detail)) {
       // FastAPI validation errors
       return detail.map((d: { msg?: string; loc?: unknown[] }) => `${(d.loc ?? []).slice(1).join(".")} ${d.msg ?? ""}`.trim()).join("; ");
     }
     if (detail && typeof detail === "object" && "reason" in detail) return String((detail as { reason: unknown }).reason);
-    if (status === 0) return "The advisory service could not be reached. Check that the backend is running.";
-    return `Request failed (${status})`;
+    if (status === 0) return "Unable to connect to the advisory service. Our servers may be warming up—please wait a moment and try again.";
+    if (status === 401) return "Your session has expired. Please sign in to continue.";
+    if (status === 403) return "You do not have permission to perform this action.";
+    if (status === 404) return "The requested record was not found.";
+    if (status >= 500) return "Our advisory servers experienced a brief hiccup. Please retry in a few moments.";
+    return `Service request could not be completed (${status}). Please try again.`;
   }
 }
 

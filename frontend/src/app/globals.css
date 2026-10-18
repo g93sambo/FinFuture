@@ -21,6 +21,8 @@
   --color-accent-hover: var(--accent-hover);
   --color-accent-soft: var(--accent-soft);
   --color-on-accent: var(--on-accent);
+  --color-white: #ffffff;
+  --color-black: #000000;
 
   --color-background: var(--background);
   --color-surface: var(--surface);

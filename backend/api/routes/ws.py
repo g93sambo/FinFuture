@@ -109,6 +109,14 @@ async def _handle_connection(websocket: WebSocket, session_id: Optional[str], to
     async with AsyncSessionLocal() as db:
         user = await _auth(token, db)
         if user is None:
+            await websocket.accept()
+            await websocket.send_json({
+                "event": "error",
+                "structured_event": "error",
+                "agent": "Orchestrator",
+                "text": "Authentication required. Please sign in again.",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Invalid or missing token")
             return
 
@@ -117,7 +125,15 @@ async def _handle_connection(websocket: WebSocket, session_id: Optional[str], to
         orch = websocket.app.state.container.orchestrator
 
         # Resolve or create session
-        if not session_id:
+        session = None
+        if session_id:
+            try:
+                session = await orch.load_session(session_id, user.id)
+            except Exception:
+                logger.warning("Session %s not found for user %s; starting fresh session", session_id, user.id)
+                session = None
+
+        if not session:
             existing = (
                 await db.execute(
                     select(DBClientProfile).where(DBClientProfile.user_id == user.id).order_by(DBClientProfile.created_at.desc())
@@ -126,12 +142,6 @@ async def _handle_connection(websocket: WebSocket, session_id: Optional[str], to
             started = await orch.start_session(user.id, client_id=existing.client_id if existing else None)
             session_id = started["session"]["session_id"]
             session = started["session"]
-        else:
-            try:
-                session = await orch.load_session(session_id, user.id)
-            except HTTPException as exc:
-                await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason=str(exc.detail))
-                return
 
         await websocket.accept()
         await ws_manager.connect(websocket, user.id, session_id, session.get("client_id"))

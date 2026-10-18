@@ -17,6 +17,7 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [fullName, setFullName] = useState("");
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
@@ -32,6 +33,9 @@ export default function RegisterPage() {
     setPending(true);
     setError(null);
     try {
+      if (fullName.trim() && typeof window !== "undefined") {
+        localStorage.setItem("finfuture.user_name", fullName.trim());
+      }
       await register(email.trim(), password);
       router.replace("/onboarding");
     } catch (err) {
@@ -56,6 +60,9 @@ export default function RegisterPage() {
     >
       <form onSubmit={submit} className="max-w-[36rem] space-y-5" noValidate>
         {error ? <Notice tone="danger">{error}</Notice> : null}
+        <Field label="Your Name (Optional)" hint="How your AI wealth advisor should address you.">
+          {(p) => <Input {...p} type="text" placeholder="e.g. Hillary" value={fullName} onChange={(e) => setFullName(e.target.value)} />}
+        </Field>
         <Field label="Email">
           {(p) => <Input {...p} type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />}
         </Field>

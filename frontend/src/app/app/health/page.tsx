@@ -244,14 +244,14 @@ function Report({
         </Panel>
       </div>
 
-      <Panel title={`Against ${bc.benchmark_name}`} flush>
+      <Panel title={`Against ${bc.benchmark_name}`} flush className="max-w-4xl">
         <Table caption="Portfolio against benchmark">
           <thead>
             <tr>
-              <Th>Measure</Th>
-              <Th numeric>Your portfolio</Th>
-              <Th numeric>60/40</Th>
-              <Th numeric>Difference</Th>
+              <Th className="w-2/5">Measure</Th>
+              <Th numeric className="w-1/5">Your portfolio</Th>
+              <Th numeric className="w-1/5">60/40</Th>
+              <Th numeric className="w-1/5">Difference</Th>
             </tr>
           </thead>
           <tbody>

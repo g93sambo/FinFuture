@@ -141,6 +141,13 @@ export default function OnboardingPage() {
   const [error, setError] = useState<string | null>(null);
 
   // Form state
+  const [preferredName, setPreferredName] = useState(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("finfuture.user_name");
+      if (stored) return stored;
+    }
+    return "";
+  });
   const [age, setAge] = useState<number>(32);
   const [employmentStatus, setEmploymentStatus] = useState("employed");
   const [dependents, setDependents] = useState(0);
@@ -310,6 +317,9 @@ export default function OnboardingPage() {
     try {
       setStoredBroker(selectedBrokerId);
       setStoredBenchmark(selectedBenchmarkSymbol);
+      if (preferredName.trim() && typeof window !== "undefined") {
+        localStorage.setItem("finfuture.user_name", preferredName.trim());
+      }
       const profile = await api.submitOnboarding(payload);
       setClientId(profile.client_id);
       await refreshSession();
@@ -393,6 +403,23 @@ export default function OnboardingPage() {
                   </div>
 
                   <div className="grid gap-5 sm:grid-cols-2">
+                    <Field label="Your Name or Preferred Name" hint="How your AI Wealth Advisor will greet and address you.">
+                      {(p) => (
+                        <Input
+                          {...p}
+                          type="text"
+                          value={preferredName}
+                          placeholder="e.g. Hillary"
+                          onChange={(e) => {
+                            setPreferredName(e.target.value);
+                            if (typeof window !== "undefined") {
+                              localStorage.setItem("finfuture.user_name", e.target.value);
+                            }
+                          }}
+                        />
+                      )}
+                    </Field>
+
                     <Field label="Your Age" hint="Clients must be 18 or older.">
                       {(p) => (
                         <Input
@@ -400,13 +427,16 @@ export default function OnboardingPage() {
                           type="number"
                           min={18}
                           max={110}
-                          value={age}
-                          onChange={(e) => setAge(parseInt(e.target.value) || 0)}
+                          value={age === 0 ? "" : age}
+                          placeholder="32"
+                          onChange={(e) => setAge(e.target.value === "" ? 0 : parseInt(e.target.value) || 0)}
                           required
                         />
                       )}
                     </Field>
+                  </div>
 
+                  <div className="grid gap-5 sm:grid-cols-2">
                     <Field label="Number of Dependents" hint="Children or dependents relying on your income.">
                       {() => (
                         <div className="flex gap-2 pt-0.5">
@@ -490,8 +520,9 @@ export default function OnboardingPage() {
                           type="number"
                           step={1000}
                           min={0}
-                          value={annualIncome}
-                          onChange={(e) => setAnnualIncome(Math.max(0, parseFloat(e.target.value) || 0))}
+                          value={annualIncome === 0 ? "" : annualIncome}
+                          placeholder="120000"
+                          onChange={(e) => setAnnualIncome(e.target.value === "" ? 0 : Math.max(0, parseFloat(e.target.value) || 0))}
                           required
                         />
                       )}
@@ -504,8 +535,9 @@ export default function OnboardingPage() {
                           type="number"
                           step={1000}
                           min={0}
-                          value={liquidAssets}
-                          onChange={(e) => setLiquidAssets(Math.max(0, parseFloat(e.target.value) || 0))}
+                          value={liquidAssets === 0 ? "" : liquidAssets}
+                          placeholder="50000"
+                          onChange={(e) => setLiquidAssets(e.target.value === "" ? 0 : Math.max(0, parseFloat(e.target.value) || 0))}
                           required
                         />
                       )}
@@ -518,8 +550,9 @@ export default function OnboardingPage() {
                           type="number"
                           step={100}
                           min={0}
-                          value={monthlyExpenses}
-                          onChange={(e) => setMonthlyExpenses(Math.max(0, parseFloat(e.target.value) || 0))}
+                          value={monthlyExpenses === 0 ? "" : monthlyExpenses}
+                          placeholder="4000"
+                          onChange={(e) => setMonthlyExpenses(e.target.value === "" ? 0 : Math.max(0, parseFloat(e.target.value) || 0))}
                           required
                         />
                       )}
@@ -532,8 +565,9 @@ export default function OnboardingPage() {
                           type="number"
                           step={500}
                           min={0}
-                          value={existingDebts}
-                          onChange={(e) => setExistingDebts(Math.max(0, parseFloat(e.target.value) || 0))}
+                          value={existingDebts === 0 ? "" : existingDebts}
+                          placeholder="10000"
+                          onChange={(e) => setExistingDebts(e.target.value === "" ? 0 : Math.max(0, parseFloat(e.target.value) || 0))}
                           required
                         />
                       )}
@@ -608,7 +642,12 @@ export default function OnboardingPage() {
                       <label htmlFor="horizon-slider" className="text-sm font-medium text-ink">
                         Investment Horizon
                       </label>
-                      <span className="figures text-base font-bold text-accent">{investmentHorizonYears} years</span>
+                      <span className="figures text-base font-bold text-accent">
+                        {investmentHorizonYears} {investmentHorizonYears === 1 ? "year" : "years"}
+                        <span className="ml-1.5 text-xs font-normal text-muted">
+                          ({investmentHorizonYears <= 3 ? "Short" : investmentHorizonYears <= 10 ? "Medium" : investmentHorizonYears <= 20 ? "Long" : "Generational"})
+                        </span>
+                      </span>
                     </div>
                     <input
                       id="horizon-slider"
@@ -618,13 +657,13 @@ export default function OnboardingPage() {
                       step={1}
                       value={investmentHorizonYears}
                       onChange={(e) => setInvestmentHorizonYears(parseInt(e.target.value))}
-                      className="mt-3 w-full accent-accent"
+                      className="mt-3 w-full accent-accent cursor-pointer"
                     />
-                    <div className="mt-2 flex justify-between text-[11px] text-muted">
-                      <span>1 year (Short)</span>
-                      <span>5 years (Medium)</span>
-                      <span>15 years (Long)</span>
-                      <span>30+ years (Generational)</span>
+                    <div className="mt-2 flex justify-between text-[11px] font-medium text-muted">
+                      <span>1 yr (Min)</span>
+                      <span>10 yrs</span>
+                      <span>20 yrs</span>
+                      <span>35 yrs (Max)</span>
                     </div>
                   </div>
 
@@ -634,7 +673,12 @@ export default function OnboardingPage() {
                       <label htmlFor="return-slider" className="text-sm font-medium text-ink">
                         Target Annual Return
                       </label>
-                      <span className="figures text-base font-bold text-accent">{fixed(targetReturn, 1)}% per year</span>
+                      <span className="figures text-base font-bold text-accent">
+                        {fixed(targetReturn, 1)}% / yr
+                        <span className="ml-1.5 text-xs font-normal text-muted">
+                          ({targetReturn <= 4 ? "Preserve" : targetReturn <= 8 ? "Market Avg" : targetReturn <= 12 ? "Growth" : "Alpha"})
+                        </span>
+                      </span>
                     </div>
                     <input
                       id="return-slider"
@@ -644,13 +688,13 @@ export default function OnboardingPage() {
                       step={0.5}
                       value={targetReturn}
                       onChange={(e) => setTargetReturn(parseFloat(e.target.value))}
-                      className="mt-3 w-full accent-accent"
+                      className="mt-3 w-full accent-accent cursor-pointer"
                     />
-                    <div className="mt-2 flex justify-between text-[11px] text-muted">
-                      <span>3% (Inflation beat)</span>
+                    <div className="mt-2 flex justify-between text-[11px] font-medium text-muted">
+                      <span>3% (Min)</span>
                       <span>7% (Market avg)</span>
-                      <span>11% (Growth tilt)</span>
-                      <span>15% (Aggressive alpha)</span>
+                      <span>11% (Growth)</span>
+                      <span>15% (Max)</span>
                     </div>
                   </div>
 

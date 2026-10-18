@@ -229,8 +229,8 @@ function TradeDesk({ clientId }: { clientId: string }) {
                 <button
                   type="button"
                   onClick={() => setInvestMode("quick")}
-                  className={`rounded px-2.5 py-1 font-medium transition-colors ${
-                    investMode === "quick" ? "bg-accent text-white" : "text-muted hover:text-ink"
+                  className={`rounded-md px-3 py-1 font-semibold transition-colors ${
+                    investMode === "quick" ? "bg-accent text-on-accent shadow-xs" : "text-muted hover:text-ink"
                   }`}
                 >
                   🌟 Quick Invest
@@ -238,8 +238,8 @@ function TradeDesk({ clientId }: { clientId: string }) {
                 <button
                   type="button"
                   onClick={() => setInvestMode("custom")}
-                  className={`rounded px-2.5 py-1 font-medium transition-colors ${
-                    investMode === "custom" ? "bg-accent text-white" : "text-muted hover:text-ink"
+                  className={`rounded-md px-3 py-1 font-semibold transition-colors ${
+                    investMode === "custom" ? "bg-accent text-on-accent shadow-xs" : "text-muted hover:text-ink"
                   }`}
                 >
                   🔍 Custom Ticker
@@ -336,7 +336,7 @@ function TradeDesk({ clientId }: { clientId: string }) {
                           onClick={() => handleSelectDollar(amt)}
                           className={`rounded-lg border py-2 text-center text-xs font-semibold transition-all ${
                             isSelected
-                              ? "border-accent bg-accent text-white shadow-xs"
+                              ? "border-accent bg-accent text-on-accent shadow-xs"
                               : "border-line bg-surface/50 text-ink hover:bg-surface hover:border-line-strong"
                           }`}
                         >

@@ -64,7 +64,7 @@ export function ConnectBrokerModal({ isOpen, onClose, onConnect }: ConnectBroker
       role="dialog"
       aria-modal="true"
       aria-labelledby="connect-broker-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/70 backdrop-blur-md animate-fadeIn"
     >
       <div className="relative flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-line bg-background shadow-2xl">
         {/* Modal Header */}
@@ -99,7 +99,7 @@ export function ConnectBrokerModal({ isOpen, onClose, onConnect }: ConnectBroker
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {isSuccess ? (
             <div className="rounded-xl border border-success/30 bg-success-soft p-5 text-center space-y-2">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-success text-white font-bold text-lg">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-success text-on-primary font-bold text-lg">
                 ✓
               </div>
               <h3 className="text-base font-bold text-ink">Account Connected Successfully!</h3>
@@ -150,9 +150,17 @@ export function ConnectBrokerModal({ isOpen, onClose, onConnect }: ConnectBroker
                         : "border-line bg-surface/30 hover:border-line-hover hover:bg-surface/60"
                     }`}
                   >
-                    {b.isRecommended ? (
-                      <span className="absolute -top-2.5 right-3 rounded-full bg-accent px-2 py-0.5 text-[10px] font-bold text-on-primary shadow-xs">
-                        Official WeBank
+                    {b.id === "alpaca" ? (
+                      <span className="absolute -top-2.5 right-3 rounded-full bg-accent px-2 py-0.5 text-[10px] font-bold text-on-accent shadow-xs">
+                        Official Execution Broker
+                      </span>
+                    ) : b.id === "webank" ? (
+                      <span className="absolute -top-2.5 right-3 rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold text-on-primary shadow-xs">
+                        Official WeBank Partner
+                      </span>
+                    ) : b.isRecommended ? (
+                      <span className="absolute -top-2.5 right-3 rounded-full bg-accent px-2 py-0.5 text-[10px] font-bold text-on-accent shadow-xs">
+                        Recommended
                       </span>
                     ) : null}
 
@@ -163,7 +171,7 @@ export function ConnectBrokerModal({ isOpen, onClose, onConnect }: ConnectBroker
                       </div>
                       <div
                         className={`h-4 w-4 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${
-                          isSelected ? "border-accent bg-accent text-white" : "border-muted/50"
+                          isSelected ? "border-accent bg-accent text-on-accent" : "border-muted/50"
                         }`}
                       >
                         {isSelected ? <span className="text-[10px] leading-none">✓</span> : null}
@@ -310,7 +318,7 @@ export function ConnectBrokerModal({ isOpen, onClose, onConnect }: ConnectBroker
         </div>
 
         {/* Modal Footer */}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line bg-surface p-4 sm:px-6">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line bg-surface/90 backdrop-blur-md p-4 sm:px-6">
           <div className="flex items-center gap-2 text-xs text-muted">
             <span>Selected:</span>
             <strong className="text-ink">{selectedBroker.name}</strong>

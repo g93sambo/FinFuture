@@ -104,7 +104,7 @@ export function EditProfileModal({ isOpen, onClose, profile, onSaved }: EditProf
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4 backdrop-blur-xs">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-ink/70 p-4 backdrop-blur-md">
       <div className="relative my-8 w-full max-w-3xl rounded-2xl border border-line bg-background shadow-2xl">
         <div className="flex items-center justify-between border-b border-line px-6 py-4">
           <div>
@@ -138,8 +138,9 @@ export function EditProfileModal({ isOpen, onClose, profile, onSaved }: EditProf
                   type="number"
                   min={18}
                   max={100}
-                  value={age}
-                  onChange={(e) => setAge(Number(e.target.value))}
+                  value={age === 0 ? "" : age}
+                  placeholder="30"
+                  onChange={(e) => setAge(e.target.value === "" ? 0 : Number(e.target.value))}
                   required
                 />
               </div>
@@ -163,8 +164,9 @@ export function EditProfileModal({ isOpen, onClose, profile, onSaved }: EditProf
                   type="number"
                   min={0}
                   max={20}
-                  value={dependents}
-                  onChange={(e) => setDependents(Number(e.target.value))}
+                  value={dependents === 0 ? "" : dependents}
+                  placeholder="0"
+                  onChange={(e) => setDependents(e.target.value === "" ? 0 : Number(e.target.value))}
                 />
               </div>
 
@@ -193,8 +195,9 @@ export function EditProfileModal({ isOpen, onClose, profile, onSaved }: EditProf
                   type="number"
                   min={0}
                   step={1000}
-                  value={annualIncome}
-                  onChange={(e) => setAnnualIncome(Number(e.target.value))}
+                  value={annualIncome === 0 ? "" : annualIncome}
+                  placeholder="0"
+                  onChange={(e) => setAnnualIncome(e.target.value === "" ? 0 : Number(e.target.value))}
                   required
                 />
               </div>
@@ -205,8 +208,9 @@ export function EditProfileModal({ isOpen, onClose, profile, onSaved }: EditProf
                   type="number"
                   min={0}
                   step={1000}
-                  value={liquidAssets}
-                  onChange={(e) => setLiquidAssets(Number(e.target.value))}
+                  value={liquidAssets === 0 ? "" : liquidAssets}
+                  placeholder="0"
+                  onChange={(e) => setLiquidAssets(e.target.value === "" ? 0 : Number(e.target.value))}
                   required
                 />
               </div>
@@ -217,8 +221,9 @@ export function EditProfileModal({ isOpen, onClose, profile, onSaved }: EditProf
                   type="number"
                   min={0}
                   step={100}
-                  value={monthlyExpenses}
-                  onChange={(e) => setMonthlyExpenses(Number(e.target.value))}
+                  value={monthlyExpenses === 0 ? "" : monthlyExpenses}
+                  placeholder="0"
+                  onChange={(e) => setMonthlyExpenses(e.target.value === "" ? 0 : Number(e.target.value))}
                   required
                 />
               </div>
@@ -229,8 +234,9 @@ export function EditProfileModal({ isOpen, onClose, profile, onSaved }: EditProf
                   type="number"
                   min={0}
                   step={500}
-                  value={existingDebts}
-                  onChange={(e) => setExistingDebts(Number(e.target.value))}
+                  value={existingDebts === 0 ? "" : existingDebts}
+                  placeholder="0"
+                  onChange={(e) => setExistingDebts(e.target.value === "" ? 0 : Number(e.target.value))}
                 />
               </div>
             </div>
@@ -257,8 +263,9 @@ export function EditProfileModal({ isOpen, onClose, profile, onSaved }: EditProf
                   type="number"
                   min={1}
                   max={50}
-                  value={horizonYears}
-                  onChange={(e) => setHorizonYears(Number(e.target.value))}
+                  value={horizonYears === 0 ? "" : horizonYears}
+                  placeholder="10"
+                  onChange={(e) => setHorizonYears(e.target.value === "" ? 0 : Number(e.target.value))}
                   required
                 />
               </div>
@@ -270,8 +277,9 @@ export function EditProfileModal({ isOpen, onClose, profile, onSaved }: EditProf
                   min={1}
                   max={40}
                   step={0.5}
-                  value={targetReturn}
-                  onChange={(e) => setTargetReturn(Number(e.target.value))}
+                  value={targetReturn === 0 ? "" : targetReturn}
+                  placeholder="7"
+                  onChange={(e) => setTargetReturn(e.target.value === "" ? 0 : Number(e.target.value))}
                   required
                 />
               </div>

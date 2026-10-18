@@ -56,7 +56,7 @@ export function CustodianVerificationModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="custodian-verify-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/70 backdrop-blur-md animate-fadeIn"
     >
       <div className="relative flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-line bg-background shadow-2xl">
         {/* Header */}
@@ -215,7 +215,7 @@ export function CustodianVerificationModal({
                 href={guide.portalUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-5 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-accent/90 transition-colors"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-5 py-2.5 text-xs font-bold text-on-accent shadow-xs hover:bg-accent/90 transition-colors"
               >
                 <span>Open {guide.shortName} Portal ↗</span>
               </a>
@@ -264,7 +264,7 @@ export function CustodianVerificationModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between border-t border-line bg-surface/50 px-5 py-3.5">
+        <div className="flex items-center justify-between border-t border-line bg-surface/90 backdrop-blur-md px-5 py-3.5">
           <span className="text-[11px] text-muted">
             All trades are non-discretionary and cryptographically verifiable.
           </span>

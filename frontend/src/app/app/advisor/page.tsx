@@ -122,9 +122,18 @@ export default function AdvisorPage() {
     stop: () => void;
   } | null>(null);
 
-  const userName = user?.email ? user.email.split("@")[0] : "Investor";
-  const capitalizedUserName = userName.charAt(0).toUpperCase() + userName.slice(1);
-  const greeting = `${getTimeOfDayGreeting()}, ${capitalizedUserName}! How can I assist you?`;
+  const [preferredName, setPreferredName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const stored = window.localStorage.getItem("finfuture.user_name");
+      if (stored) setPreferredName(stored);
+    }
+  }, []);
+
+  const rawName = preferredName || (user?.email ? user.email.split("@")[0].replace(/[0-9]+$/, "").replace(/[._-]/g, " ") : "Investor");
+  const displayName = rawName.split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+  const greeting = `${getTimeOfDayGreeting()}, ${displayName}! How can I assist you?`;
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
