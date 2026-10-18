@@ -188,7 +188,7 @@ async def rename_chat_session(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat session not found")
 
     sess.title = req.title.strip()
-    sess.updated_at = datetime.now(timezone.utc)
+    sess.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
     await db.commit()
 
     # Also update cache if active

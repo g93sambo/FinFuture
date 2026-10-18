@@ -4,15 +4,16 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agents.orchestrator import AgentContainer
 from api.deps import get_container
 from core.security import get_current_user, verify_client_ownership
 from db.database import get_db
-from db.models import DBUser
+from db.models import DBClientProfile, DBUser
 
 router = APIRouter(prefix="/api/v1", tags=["portfolio"])
 
@@ -171,4 +172,52 @@ async def recommend_allocation(
     await verify_client_ownership(user, req.client_id, db)
     events = await c.orchestrator.recommend_allocation(db, req.client_id)
     return {"client_id": req.client_id, "events": events}
+
+
+class AllocationOptimizeRequest(BaseModel):
+    client_id: Optional[str] = None
+    target_return: Optional[float] = None
+    risk_tolerance: Optional[float] = None
+
+
+@router.post("/allocation/optimize")
+async def optimize_allocation(
+    req: Optional[AllocationOptimizeRequest] = None,
+    user: DBUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    c: AgentContainer = Depends(get_container),
+):
+    """Prompt alias for /allocation/recommend."""
+    cid = req.client_id if req and req.client_id else None
+    if not cid:
+        profile = (
+            await db.execute(
+                select(DBClientProfile).where(DBClientProfile.user_id == user.id).order_by(DBClientProfile.created_at.desc())
+            )
+        ).scalars().first()
+        if not profile:
+            raise HTTPException(status_code=404, detail="Client profile not found. Complete onboarding first.")
+        cid = profile.client_id
+    await verify_client_ownership(user, cid, db)
+    events = await c.orchestrator.recommend_allocation(db, cid)
+    return {"status": "ok", "client_id": cid, "events": events}
+
+
+@router.get("/allocation/current")
+async def get_current_allocation(
+    user: DBUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    c: AgentContainer = Depends(get_container),
+):
+    """Prompt alias for /portfolio/{client_id}."""
+    profile = (
+        await db.execute(
+            select(DBClientProfile).where(DBClientProfile.user_id == user.id).order_by(DBClientProfile.created_at.desc())
+        )
+    ).scalars().first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Client profile not found. Complete onboarding first.")
+    pf = await c.portfolio.get_portfolio(db, profile.client_id, persist_snapshot=True)
+    return {k: v for k, v in pf.items() if k not in ("prices", "position_qty")}
+
 

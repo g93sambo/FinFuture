@@ -477,6 +477,15 @@ class ExecutionModule:
         # Database Persistence (`trades` table / DBTrade)
         # ---------------------------------------------------------------------
         trade_id = str(uuid.uuid4())
+        # Ensure naive UTC datetimes for PostgreSQL TIMESTAMP WITHOUT TIME ZONE columns
+        ts_utc_db = ts_utc.astimezone(timezone.utc).replace(tzinfo=None) if ts_utc else None
+        executed_at_db = (
+            executed_at.astimezone(timezone.utc).replace(tzinfo=None)
+            if (isinstance(executed_at, datetime) and executed_at.tzinfo)
+            else (executed_at if isinstance(executed_at, datetime) else now_utc.replace(tzinfo=None))
+        )
+        now_utc_db = now_utc.astimezone(timezone.utc).replace(tzinfo=None) if now_utc else datetime.utcnow()
+
         db_trade = DBTrade(
             id=trade_id,
             client_id=client_id,
@@ -502,13 +511,17 @@ class ExecutionModule:
                 "total_price": total_price,
                 "validation_gates": ["REG-003", "REG-004", "KYC", "30S_LOCK"],
             },
-            user_approved_at=ts_utc,
-            filled_at=executed_at,
-            created_at=now_utc,
+            user_approved_at=ts_utc_db,
+            filled_at=executed_at_db,
+            created_at=now_utc_db,
         )
-        db.add(db_trade)
-        await db.commit()
-        await db.refresh(db_trade)
+        try:
+            db.add(db_trade)
+            await db.commit()
+            await db.refresh(db_trade)
+        except Exception:
+            await db.rollback()
+            raise
 
         # ---------------------------------------------------------------------
         # Cryptographic Audit Logging (TRADE_EXECUTED)

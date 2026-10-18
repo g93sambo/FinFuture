@@ -319,6 +319,7 @@ class OrchestratorAgent:
                 )
                 await db.commit()
             except Exception as e:
+                await db.rollback()
                 logger.warning("Failed to persist new session to db: %s", e)
 
         return {"session": session, "message": greeting}
@@ -435,32 +436,36 @@ class OrchestratorAgent:
 
         # Persist session and user message in DBChatSession / DBChatMessage
         async def _persist_user_msg(target_db: AsyncSession):
-            from sqlalchemy import select
-            from db.models import DBChatSession, DBChatMessage
-            sess_row = (await target_db.execute(select(DBChatSession).where(DBChatSession.id == session_id))).scalars().first()
-            if not sess_row:
-                sess_row = DBChatSession(
-                    id=session_id,
-                    user_id=user_id,
-                    title=session.get("title") or (message[:45] + "…" if len(message) > 45 else (message or "Multimodal Query")),
-                    stage=session.get("stage") or "ADVICE_GENERATION",
-                )
-                target_db.add(sess_row)
-            elif sess_row.title in ("New Advisory Conversation", "New Chat", "") and message.strip():
-                sess_row.title = (message[:45] + "…") if len(message) > 45 else message
+            try:
+                from sqlalchemy import select
+                from db.models import DBChatSession, DBChatMessage
+                sess_row = (await target_db.execute(select(DBChatSession).where(DBChatSession.id == session_id))).scalars().first()
+                if not sess_row:
+                    sess_row = DBChatSession(
+                        id=session_id,
+                        user_id=user_id,
+                        title=session.get("title") or (message[:45] + "…" if len(message) > 45 else (message or "Multimodal Query")),
+                        stage=session.get("stage") or "ADVICE_GENERATION",
+                    )
+                    target_db.add(sess_row)
+                elif sess_row.title in ("New Advisory Conversation", "New Chat", "") and message.strip():
+                    sess_row.title = (message[:45] + "…") if len(message) > 45 else message
 
-            sess_row.updated_at = datetime.now(timezone.utc)
-            target_db.add(
-                DBChatMessage(
-                    session_id=session_id,
-                    sender="user",
-                    agent="User",
-                    text=message,
-                    attachments=attachments or [],
-                    events=[],
+                sess_row.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                target_db.add(
+                    DBChatMessage(
+                        session_id=session_id,
+                        sender="user",
+                        agent="User",
+                        text=message,
+                        attachments=attachments or [],
+                        events=[],
+                    )
                 )
-            )
-            await target_db.commit()
+                await target_db.commit()
+            except Exception:
+                await target_db.rollback()
+                raise
 
         try:
             if db is not None:
@@ -512,26 +517,30 @@ class OrchestratorAgent:
 
         # Persist agent response in DBChatMessage
         async def _persist_agent_resp(target_db: AsyncSession):
-            from sqlalchemy import select
-            from db.models import DBChatMessage, DBChatSession
-            last_agent_text = next((e.get("text") for e in reversed(events) if e.get("text") and e.get("event") != "user_message"), "")
-            last_agent_name = next((e.get("agent") for e in reversed(events) if e.get("agent") and e.get("agent") != "User"), "WealthAdvisor")
-            agent_events = [e for e in events if e.get("event") != "user_message"]
-            if last_agent_text or agent_events:
-                target_db.add(
-                    DBChatMessage(
-                        session_id=session_id,
-                        sender="agent",
-                        agent=last_agent_name,
-                        text=last_agent_text,
-                        events=agent_events,
+            try:
+                from sqlalchemy import select
+                from db.models import DBChatMessage, DBChatSession
+                last_agent_text = next((e.get("text") for e in reversed(events) if e.get("text") and e.get("event") != "user_message"), "")
+                last_agent_name = next((e.get("agent") for e in reversed(events) if e.get("agent") and e.get("agent") != "User"), "WealthAdvisor")
+                agent_events = [e for e in events if e.get("event") != "user_message"]
+                if last_agent_text or agent_events:
+                    target_db.add(
+                        DBChatMessage(
+                            session_id=session_id,
+                            sender="agent",
+                            agent=last_agent_name,
+                            text=last_agent_text,
+                            events=agent_events,
+                        )
                     )
-                )
-                sess_row = (await target_db.execute(select(DBChatSession).where(DBChatSession.id == session_id))).scalars().first()
-                if sess_row:
-                    sess_row.updated_at = datetime.now(timezone.utc)
-                    sess_row.stage = session.get("stage", sess_row.stage)
-                await target_db.commit()
+                    sess_row = (await target_db.execute(select(DBChatSession).where(DBChatSession.id == session_id))).scalars().first()
+                    if sess_row:
+                        sess_row.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                        sess_row.stage = session.get("stage", sess_row.stage)
+                    await target_db.commit()
+            except Exception:
+                await target_db.rollback()
+                raise
 
         try:
             if db is not None:

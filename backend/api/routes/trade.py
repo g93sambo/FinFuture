@@ -15,7 +15,7 @@ from agents.orchestrator import AgentContainer, TradeBlocked
 from api.deps import get_container
 from core.security import get_current_user, verify_client_ownership
 from db.database import get_db
-from db.models import DBTrade, DBUser
+from db.models import DBClientProfile, DBTrade, DBUser
 
 router = APIRouter(prefix="/api/v1", tags=["trade"])
 
@@ -178,3 +178,31 @@ async def list_trades(
         "client_id": client_id,
         "trades": [_format_trade_dict(t) for t in rows],
     }
+
+
+@router.get("/trade/orders")
+async def list_trade_orders(
+    limit: int = Query(50, ge=1, le=500),
+    user: DBUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Prompt alias for /trades/{client_id}."""
+    profile = (
+        await db.execute(
+            select(DBClientProfile).where(DBClientProfile.user_id == user.id).order_by(DBClientProfile.created_at.desc())
+        )
+    ).scalars().first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Client profile not found. Complete onboarding first.")
+    rows = (
+        await db.execute(
+            select(DBTrade).where(DBTrade.client_id == profile.client_id).order_by(desc(DBTrade.created_at)).limit(limit)
+        )
+    ).scalars().all()
+    formatted = [_format_trade_dict(t) for t in rows]
+    return {
+        "client_id": profile.client_id,
+        "orders": formatted,
+        "trades": formatted,
+    }
+

@@ -115,6 +115,16 @@ async def check_input_endpoint(
     }
 
 
+@router.post("/compliance/check")
+async def check_compliance_alias(
+    req: CheckInputRequest,
+    user: DBUser = Depends(get_current_user),
+    c: AgentContainer = Depends(get_container),
+):
+    """Prompt alias for /compliance/check-input."""
+    return await check_input_endpoint(req, user=user, c=c)
+
+
 @router.post("/compliance/circuit-breaker/simulate")
 async def simulate_circuit_breaker_incident(
     user: DBUser = Depends(get_current_user),

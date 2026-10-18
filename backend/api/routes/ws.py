@@ -109,14 +109,6 @@ async def _handle_connection(websocket: WebSocket, session_id: Optional[str], to
     async with AsyncSessionLocal() as db:
         user = await _auth(token, db)
         if user is None:
-            await websocket.accept()
-            await websocket.send_json({
-                "event": "error",
-                "structured_event": "error",
-                "agent": "Orchestrator",
-                "text": "Authentication required. Please sign in again.",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            })
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Invalid or missing token")
             return
 
@@ -129,6 +121,12 @@ async def _handle_connection(websocket: WebSocket, session_id: Optional[str], to
         if session_id:
             try:
                 session = await orch.load_session(session_id, user.id, db=db)
+            except HTTPException as exc:
+                if exc.status_code == 403:
+                    await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Forbidden: session ownership mismatch")
+                    return
+                logger.warning("Session %s not found for user %s; starting fresh session", session_id, user.id)
+                session = None
             except Exception:
                 logger.warning("Session %s not found for user %s; starting fresh session", session_id, user.id)
                 session = None
@@ -168,20 +166,21 @@ async def _handle_connection(websocket: WebSocket, session_id: Optional[str], to
 
             while True:
                 raw = await websocket.receive_text()
-                text, action, proposal_id = raw, "message", None
+                text, action, proposal_id, obj = raw, "message", None, None
                 try:
-                    obj = json.loads(raw)
-                    if isinstance(obj, dict):
+                    parsed = json.loads(raw)
+                    if isinstance(parsed, dict):
+                        obj = parsed
                         action = obj.get("type", "message")
                         text = obj.get("text") or obj.get("message") or ""
                         proposal_id = obj.get("proposal_id")
                 except (json.JSONDecodeError, TypeError):
-                    pass
+                    obj = None
 
                 try:
                     if action in ("approve", "reject"):
                         if not proposal_id or str(proposal_id).lower() in ("undefined", "null", ""):
-                            sess = await orch.load_session(session_id, user.id)
+                            sess = await orch.load_session(session_id, user.id, db=db)
                             proposal_id = sess.get("pending_proposal_id")
                         if action == "approve" and proposal_id:
                             events = await orch.handle_trade_approval(db, user.id, str(proposal_id), approved=True, session_id=session_id)

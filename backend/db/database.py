@@ -53,6 +53,19 @@ async def init_db():
                 for col_name, col_type in new_cols:
                     if col_name not in existing:
                         sync_conn.execute(text(f"ALTER TABLE client_profiles ADD COLUMN {col_name} {col_type}"))
+
+                # Check columns in trades
+                result_trades = sync_conn.execute(text("PRAGMA table_info(trades)"))
+                existing_trades = {row[1] for row in result_trades.fetchall()}
+                trade_cols = [
+                    ("broker", "TEXT DEFAULT 'alpaca'"),
+                    ("currency", "TEXT DEFAULT 'USD'"),
+                    ("alpaca_order_id", "TEXT"),
+                    ("bamboo_order_id", "TEXT"),
+                ]
+                for col_name, col_type in trade_cols:
+                    if col_name not in existing_trades:
+                        sync_conn.execute(text(f"ALTER TABLE trades ADD COLUMN {col_name} {col_type}"))
             except Exception:
                 pass
 
@@ -60,6 +73,13 @@ async def init_db():
             from sqlalchemy import text
             try:
                 sync_conn.execute(text("ALTER TABLE audit_log ALTER COLUMN timestamp TYPE TIMESTAMP WITH TIME ZONE"))
+            except Exception:
+                pass
+            try:
+                sync_conn.execute(text("ALTER TABLE trades ADD COLUMN IF NOT EXISTS broker VARCHAR DEFAULT 'alpaca'"))
+                sync_conn.execute(text("ALTER TABLE trades ADD COLUMN IF NOT EXISTS currency VARCHAR DEFAULT 'USD'"))
+                sync_conn.execute(text("ALTER TABLE trades ADD COLUMN IF NOT EXISTS alpaca_order_id VARCHAR"))
+                sync_conn.execute(text("ALTER TABLE trades ADD COLUMN IF NOT EXISTS bamboo_order_id VARCHAR"))
             except Exception:
                 pass
 
