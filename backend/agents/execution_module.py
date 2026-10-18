@@ -479,11 +479,15 @@ class ExecutionModule:
         trade_id = str(uuid.uuid4())
         # Ensure naive UTC datetimes for PostgreSQL TIMESTAMP WITHOUT TIME ZONE columns
         ts_utc_db = ts_utc.astimezone(timezone.utc).replace(tzinfo=None) if ts_utc else None
-        executed_at_db = (
-            executed_at.astimezone(timezone.utc).replace(tzinfo=None)
-            if (isinstance(executed_at, datetime) and executed_at.tzinfo)
-            else (executed_at if isinstance(executed_at, datetime) else now_utc.replace(tzinfo=None))
-        )
+        # Duck-typed (not isinstance(..., datetime)) so this stays correct when `datetime` is patched.
+        if hasattr(executed_at, "astimezone"):
+            executed_at_db = (
+                executed_at.astimezone(timezone.utc).replace(tzinfo=None)
+                if getattr(executed_at, "tzinfo", None)
+                else executed_at
+            )
+        else:
+            executed_at_db = now_utc.replace(tzinfo=None)
         now_utc_db = now_utc.astimezone(timezone.utc).replace(tzinfo=None) if now_utc else datetime.utcnow()
 
         db_trade = DBTrade(

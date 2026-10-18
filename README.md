@@ -50,8 +50,8 @@ Every agent action and user request is governed by an explicit **5-tier permissi
 | :--- | :--- | :--- | :--- |
 | **`TIER_1_READ_ONLY`** | `GREEN` | **Read-Only Data** | Zero state mutation; market quotes, FRED macro series, SEC EDGAR filings, portfolio & audit reads. |
 | **`TIER_2_ADVISE`** | `GREEN` | **Advise & Simulate** | Risk profiling (`RiskProfiler`), ETF/Bond comparison (`ProductComparator`), Black-Litterman/CVaR & Student-$t$ Monte Carlo (`AllocationEngine`), 3-reviewer verification loop. Cannot stage or submit orders. |
-| **`TIER_3_PROPOSE_TRADE`** | `YELLOW` | **Propose Trade** | Stages an unsigned `TradeProposal` with a 15-minute TTL. Enforces Anomaly Circuit Breaker (`PERM-CIRCUIT-BREAKER`) and the 86-symbol whitelist (`PERM-WHITELIST`) at proposal creation. Cannot call broker APIs. |
-| **`TIER_4_EXECUTE_WITH_APPROVAL`** | `RED` | **Execute with Human Approval Under Limits** | Requires `user_approved=True` (`REG-003`) + 12-rule compliance pass + **Per-Trade Cap (`$100,000.00` / `AML-001`)** + **Rolling 24h Daily Cap (`$250,000.00` / `PERM-CAP-DAILY`)** + **86-Symbol Whitelist (`PERM-WHITELIST`)** + **Step-Up 6-Digit MFA OTP & Attestation (`PERM-STEP-UP-MFA`)** for orders $> \$1,000$ or $> 5\%$ NAV + **30s Idempotency Lock**. |
+| **`TIER_3_PROPOSE_TRADE`** | `YELLOW` | **Propose Trade** | Stages an unsigned `TradeProposal` with a 15-minute TTL. Enforces Anomaly Circuit Breaker (`PERM-CIRCUIT-BREAKER`) and the 134-symbol whitelist (`PERM-WHITELIST`) at proposal creation. Cannot call broker APIs. |
+| **`TIER_4_EXECUTE_WITH_APPROVAL`** | `RED` | **Execute with Human Approval Under Limits** | Requires `user_approved=True` (`REG-003`) + 12-rule compliance pass + **Per-Trade Cap (`$100,000.00` / `AML-001`)** + **Rolling 24h Daily Cap (`$250,000.00` / `PERM-CAP-DAILY`)** + **134-symbol Whitelist (`PERM-WHITELIST`)** + **Step-Up 6-Digit MFA OTP & Attestation (`PERM-STEP-UP-MFA`)** for orders $> \$1,000$ or $> 5\%$ NAV + **30s Idempotency Lock**. |
 | **`TIER_5_AUTONOMOUS_DISABLED`** | `DISABLED` | **Autonomous Execution (Hard-Disabled)** | Explicitly disabled at startup (`core/config.py:guard_autonomous_execution_disabled`), API layer (`api/routes/trade.py`), and compliance firewall (`PERM-TIER-5`). The agent can never trade without live per-order human approval. |
 
 ---
@@ -84,7 +84,7 @@ FinFuture enforces strict data minimization and anonymization across external bo
 4. **Institutional Quantitative Engine (`backend/services/financial_engineering.py`, `backend/agents/allocation_engine.py`)**:
    - Black-Litterman posterior return blending, 95% CVaR optimization, 10,000-path Student-$t$ ($\nu=5$) Monte Carlo simulation, numerical hurdle-rate bisection solver, and multi-factor macro stress testing.
 
-5. **Tamper-Evident Audit Trail & Dual-Ledger Anchoring (`backend/services/audit_trail.py`, `backend/services/anchoring.py`)**:
+5. **Tamper-Evident Audit Trail & Dual-Ledger Anchoring (`backend/services/audit_logger.py`, `backend/services/anchoring.py`)**:
    - Append-only SHA-256 hash chain + HMAC-SHA256 entry signatures + RFC 6962 binary Merkle tree root anchored simultaneously to **Ethereum Sepolia (`chain_id=11155111`)** and the **WeBank FISCO BCOS v3.6 Consortium Blockchain (`group0` PBFT + WeEvent topic `com.webank.finfuture.audit.anchor`)** with per-entry inclusion proofs (`GET /api/v1/audit/{client_id}/merkle-proof/{entry_id}`).
 
 ---
@@ -117,8 +117,8 @@ Copy `backend/.env.example` to `backend/.env`. All secrets are read from environ
 | :--- | :--- | :--- |
 | `OPENAI_API_KEY` | OpenAI / Gemini-compatible API key for LLM synthesis | Optional (deterministic fallback active) |
 | `OPENAI_MODEL` | Model identifier used by all agents | `gpt-4o` |
-| `JWT_SECRET_KEY` | Secret key for signing JWT access tokens (must be overridden in production) | Dev key |
-| `AUDIT_HMAC_SECRET` | Secret key for HMAC-SHA256 audit log signatures (must be overridden in production) | Dev key |
+| `SECRET_KEY` | Secret key for signing JWT access tokens (must be overridden in production) | Dev key |
+| `AUDIT_SECRET_KEY` | Secret key for HMAC-SHA256 audit log signatures (must be overridden in production) | Dev key |
 | `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` | Alpaca Paper Trading credentials (`paper-api.alpaca.markets`) | Dry-run paper fill fallback |
 | `SEPOLIA_RPC_URL` / `SEPOLIA_PRIVATE_KEY` | Ethereum Sepolia RPC URL & wallet key (`chain_id=11155111`, Mainnet hard-blocked) | Deterministic `dry_run` Merkle anchor |
 | `FISCO_BCOS_RPC_URL` / `WEEVENT_BROKER_URL` | Optional WeBank FISCO BCOS v3 JSON-RPC & WeEvent broker endpoint (`group0`) | Deterministic PBFT + WeEvent consortium receipt |

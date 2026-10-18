@@ -26,6 +26,7 @@ from fastapi import HTTPException
 from agents.orchestrator import (
     OrchestratorAgent,
     SessionStage,
+    TradeBlocked,
     _normalize_stage,
     extract_quote_symbol,
     build_container,
@@ -263,9 +264,12 @@ async def test_double_approval_rejection(container, registered_user, client_prof
     events1 = await orch.process_user_message(sid, user_id, cid, "approve", db_session)
     assert any(e.get("event") == "trade_filled" for e in events1)
 
-    # Direct second approval attempt on executed proposal ID
-    events2 = await orch.handle_trade_approval(db_session, user_id, pid, approved=True)
-    assert any("already been confirmed" in e.get("text", "").lower() for e in events2)
+    # Direct second approval attempt on executed proposal ID is rejected as a duplicate
+    # (TradeBlocked -> HTTP 409 on REST, error event on WebSocket) and must not re-execute.
+    with pytest.raises(TradeBlocked) as excinfo:
+        await orch.handle_trade_approval(db_session, user_id, pid, approved=True)
+    assert excinfo.value.error_type == "DuplicateTradeError"
+    assert "already been confirmed" in excinfo.value.reason.lower()
 
 
 # ===========================================================================
