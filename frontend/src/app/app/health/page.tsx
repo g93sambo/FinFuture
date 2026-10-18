@@ -44,6 +44,16 @@ const shockScenarios = [
   },
 ] as const;
 
+function formatExecutiveSummary(text: string): string {
+  if (!text) return "";
+  return text
+    .replace(/^\s*(\*\*|###?|##)?\s*Executive Summary\s*(\*\*)?:?\s*/i, "")
+    .replace(/for\s+client\s+[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, "for your portfolio")
+    .replace(/client\s+[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, "your portfolio")
+    .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, "your portfolio")
+    .trim();
+}
+
 function ScoreScale({ score }: { score: number }) {
   const bands = [
     ["Critical", 0, 30],
@@ -181,7 +191,7 @@ function Report({
           <div className="mt-6">
             <ScoreScale score={r.health_score} />
           </div>
-          <p className="mt-6 max-w-[68ch] text-[1rem] text-ink">{n.executive_summary}</p>
+          <p className="mt-6 max-w-[68ch] text-[1rem] leading-relaxed text-ink">{formatExecutiveSummary(n.executive_summary)}</p>
         </Panel>
 
         <Panel title="How the score is built" className="xl:col-span-5">

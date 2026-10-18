@@ -903,7 +903,7 @@ class RiskProfilerAgent:
             response_text = (
                 f"Profile synthesis complete! Based on your responses, your suitability tier is "
                 f"'{suitability_cat}' with an emotional risk score of {emotional_score}/100 and "
-                f"panic sell likelihood of {panic_prob:.1%}. Your Client ID is {draft['client_id']}."
+                f"panic sell likelihood of {panic_prob:.1%}. Your profile has been securely saved."
             )
 
             return {

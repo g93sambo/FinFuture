@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { BulletBars } from "@/components/charts/BulletBars";
 import { RequireProfile } from "@/components/shell/RequireProfile";
 import { Button, ButtonLink } from "@/components/ui/Button";
@@ -75,11 +76,14 @@ function Profile({ clientId }: { clientId: string }) {
             <strong className="text-ink capitalize">{humanize(p.primary_goal)}</strong>
           </p>
         </div>
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
           <Button onClick={() => setIsEditing(true)}>Edit Profile</Button>
-          <ButtonLink href="/onboarding" variant="secondary" size="sm">
-            Retake Full Questionnaire
-          </ButtonLink>
+          <Link
+            href="/onboarding"
+            className="text-xs text-muted hover:text-primary transition-colors underline-offset-4 hover:underline"
+          >
+            Retake questionnaire
+          </Link>
         </div>
       </div>
 

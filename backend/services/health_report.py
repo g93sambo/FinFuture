@@ -8,6 +8,7 @@ dual-mode narrative generator adhering strictly to REG-001 and REG-002.
 
 from __future__ import annotations
 
+import re
 import math
 import logging
 from enum import Enum
@@ -825,22 +826,26 @@ class HealthReportService:
             try:
                 client = AsyncOpenAI(api_key=self.openai_api_key)
                 prompt = (
-                    f"Generate a professional wealth advisory portfolio health report narrative for client {client_id}.\n"
-                    f"Client Profile: {profile_summary}\n"
+                    "Generate a professional wealth advisory portfolio health report narrative for the investor.\n"
+                    f"Investor Profile: {profile_summary}\n"
                     f"Health Score: {health_score}/100\n"
                     f"Max Drift: {drift_result.max_drift:.1%}, Drifted Assets: {drift_result.drifted_assets}\n"
                     f"Concentration: Top holding {concentration.max_position_symbol} at {concentration.max_position_weight:.1%}\n"
                     f"Benchmark 60/40 Return: {benchmark.benchmark_annualized_return:.1%}, Portfolio: {benchmark.portfolio_annualized_return:.1%}\n"
                     f"Active Alerts: {[a.title for a in alerts]}\n"
                     f"Trade Orders: {[o.side + ' ' + o.symbol for o in rebalance_plan.orders]}\n"
-                    f"MANDATORY REGULATORY CONSTRAINT: You must NEVER use words like 'guaranteed', 'risk-free', or 'no risk'. "
-                    f"Include standard investment disclaimers.\n"
-                    f"Provide sections: Executive Summary, Drift Diagnosis, Risk and Concentration, Benchmark Comparison, Actionable Recommendations."
+                    "STYLE AND PRIVACY RULES:\n"
+                    "- Address the investor directly (e.g. 'Your portfolio health score is...').\n"
+                    "- NEVER include internal IDs, database UUIDs, or client identifiers.\n"
+                    "- NEVER output raw markdown section headings like '**Executive Summary**' or '### Executive Summary'.\n"
+                    "- Keep the executive summary to 2 concise, polished sentences without preamble.\n"
+                    "MANDATORY REGULATORY CONSTRAINT: You must NEVER use words like 'guaranteed', 'risk-free', or 'no risk'. "
+                    "Include standard investment disclaimers.\n"
                 )
                 response = await client.chat.completions.create(
                     model=self.openai_model,
                     messages=[
-                        {"role": "system", "content": "You are a fiduciary institutional wealth advisory compliance and diagnostics analyst."},
+                        {"role": "system", "content": "You are a fiduciary institutional wealth advisory compliance and diagnostics analyst. Speak directly to the client about 'your portfolio'."},
                         {"role": "user", "content": prompt},
                     ],
                     max_tokens=800,
@@ -850,8 +855,12 @@ class HealthReportService:
                 # Filter against REG-001
                 prohibited = ["guaranteed", "risk-free", "risk free", "can't lose", "no risk"]
                 if not any(p in raw_text.lower() for p in prohibited):
+                    # Sanitize raw_text: strip markdown headers and internal UUIDs
+                    cleaned_text = re.sub(r"^\s*(\*\*|###?|##)?\s*Executive Summary\s*(\*\*)?:?\s*", "", raw_text, flags=re.IGNORECASE).strip()
+                    cleaned_text = re.sub(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", "your portfolio", cleaned_text, flags=re.IGNORECASE)
+                    cleaned_text = cleaned_text.replace("for client your portfolio", "for your portfolio").replace("for client", "for your portfolio")
                     return PortfolioNarrative(
-                        executive_summary=raw_text[:300].strip(),
+                        executive_summary=cleaned_text[:300].strip(),
                         drift_diagnosis=f"Portfolio drift evaluated. Max drift is {drift_result.max_drift:.1%}.",
                         risk_and_concentration_diagnosis=f"Top holding {concentration.max_position_symbol} is {concentration.max_position_weight:.1%}.",
                         benchmark_comparison_narrative=f"Expected return {benchmark.portfolio_annualized_return:.1%} vs 60/40 benchmark {benchmark.benchmark_annualized_return:.1%}.",
