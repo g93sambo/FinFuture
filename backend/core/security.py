@@ -41,35 +41,25 @@ oauth2_scheme = OAuth2PasswordBearer(
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
     Verifies a plaintext password against an existing bcrypt hash.
-    
-    Args:
-        plain_password: The plaintext password entered by the user.
-        hashed_password: The bcrypt hash stored in the database.
-        
-    Returns:
-        bool: True if password matches hash, False otherwise.
+    Safely truncates to 72 bytes to conform with bcrypt limitations.
     """
     if not plain_password or not hashed_password:
         return False
-    return pwd_context.verify(plain_password, hashed_password)
+    # Bcrypt max length is 72 bytes
+    truncated = plain_password.encode("utf-8")[:72].decode("utf-8", errors="ignore")
+    return pwd_context.verify(truncated, hashed_password)
 
 
 def get_password_hash(password: str) -> str:
     """
     Generates a salted bcrypt hash for a plaintext password.
-    
-    Args:
-        password: The plaintext password to hash.
-        
-    Returns:
-        str: Salted bcrypt hash string.
-        
-    Raises:
-        ValueError: If password is empty.
+    Safely truncates to 72 bytes to satisfy bcrypt specifications.
     """
     if not password:
         raise ValueError("Password cannot be empty")
-    return pwd_context.hash(password)
+    # Bcrypt max length is 72 bytes
+    truncated = password.encode("utf-8")[:72].decode("utf-8", errors="ignore")
+    return pwd_context.hash(truncated)
 
 
 # =============================================================================
