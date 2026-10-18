@@ -119,11 +119,12 @@ class AuditLogger:
             entry_hash = compute_entry_hash(prev_hash, client_id, event_type, canon_details, canon_ts)
             sig = compute_hmac_signature(entry_hash, secret)
 
-            # 4. Construct DBAuditLog instance
+            # 4. Construct DBAuditLog instance (ensure naive UTC for PostgreSQL timestamp without time zone)
+            db_timestamp = now.replace(tzinfo=None)
             entry_kwargs = {
                 "client_id": client_id,
                 "event_type": event_type,
-                "timestamp": now,
+                "timestamp": db_timestamp,
                 "entry_hash": entry_hash,
             }
 
