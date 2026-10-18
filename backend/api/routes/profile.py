@@ -151,33 +151,42 @@ async def submit_onboarding_profile(
         "profiling_session_transcript": "Completed via structured onboarding questionnaire",
     }
 
-    saved_profile = await c.profiler.save_profile(db, client_id, profile_data)
+    try:
+        saved_profile = await c.profiler.save_profile(db, client_id, profile_data)
 
-    # Log immutable audit entry
-    await c.audit.log_audit_entry(
-        db=db,
-        client_id=client_id,
-        event_type="PROFILE_COMPLETED" if not existing_profile else "PROFILE_UPDATED",
-        actor="USER:onboarding_form",
-        details={
-            "suitability_category": suitability_cat,
-            "risk_tolerance_score": ext["risk_tolerance_score"],
-            "kyc_verified": kyc_ok,
-            "aml_flag": aml_flag,
-            "method": "structured_onboarding",
-        },
-        session_id=req.session_id,
-    )
+        # Log immutable audit entry
+        await c.audit.log_audit_entry(
+            db=db,
+            client_id=client_id,
+            event_type="PROFILE_COMPLETED" if not existing_profile else "PROFILE_UPDATED",
+            actor="USER:onboarding_form",
+            details={
+                "suitability_category": suitability_cat,
+                "risk_tolerance_score": ext["risk_tolerance_score"],
+                "kyc_verified": kyc_ok,
+                "aml_flag": aml_flag,
+                "method": "structured_onboarding",
+            },
+            session_id=req.session_id,
+        )
 
-    # Update active session in redis if session_id is provided
-    if req.session_id:
-        session = await c.cache.get_json(f"session:{req.session_id}")
-        if session and session.get("user_id") == user.id:
-            session["client_id"] = client_id
-            session["stage"] = "ADVICE_GENERATION"
-            await c.cache.set_json(f"session:{req.session_id}", session, expire=SESSION_TTL_SECONDS)
+        # Update active session in redis if session_id is provided
+        if req.session_id:
+            session = await c.cache.get_json(f"session:{req.session_id}")
+            if session and session.get("user_id") == user.id:
+                session["client_id"] = client_id
+                session["stage"] = "ADVICE_GENERATION"
+                await c.cache.set_json(f"session:{req.session_id}", session, expire=SESSION_TTL_SECONDS)
 
-    return _profile_dict(saved_profile)
+        return _profile_dict(saved_profile)
+    except Exception as exc:
+        await db.rollback()
+        import logging
+        logging.getLogger("wealth_advisor.api.profile").exception("Onboarding submission failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Onboarding error: {str(exc)}",
+        )
 
 
 class UpdateProfileRequest(BaseModel):
