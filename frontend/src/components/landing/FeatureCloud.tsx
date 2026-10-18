@@ -99,7 +99,7 @@ export function FeatureCloud() {
         ref={cloudRef}
         onPointerMove={onPointerMove}
         onPointerLeave={onPointerLeave}
-        className="flex flex-wrap items-center justify-center gap-x-6 gap-y-6 py-4"
+        className="flex flex-wrap items-center justify-center gap-x-6 gap-y-9 py-4 lg:gap-y-6"
         role="list"
         aria-label="What FinFuture does for you"
       >

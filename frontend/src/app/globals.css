@@ -50,6 +50,7 @@
 
   --font-sans: var(--font-body), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-figures), ui-monospace, monospace;
+  --font-display: var(--font-poppins), var(--font-body), ui-sans-serif, sans-serif;
 }
 
 /*
@@ -579,4 +580,19 @@ button:active:not(:disabled),
 input::-ms-reveal,
 input::-ms-clear {
   display: none;
+}
+
+/* Bold text is set in Poppins; regular text stays in IBM Plex Sans. */
+.font-bold,
+.font-semibold,
+strong,
+b,
+.rule-tape__track,
+.auth-ghost,
+tspan[font-weight="700"] {
+  font-family: var(--font-poppins), var(--font-body), ui-sans-serif, sans-serif;
+}
+/* Regular-weight text inside a bold block (e.g. "Advisory" in the wordmark) stays in the body font. */
+.font-normal {
+  font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
 }
