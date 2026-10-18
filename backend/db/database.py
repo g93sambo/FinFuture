@@ -56,5 +56,14 @@ async def init_db():
             except Exception:
                 pass
 
+        def _migrate_postgres(sync_conn):
+            from sqlalchemy import text
+            try:
+                sync_conn.execute(text("ALTER TABLE audit_log ALTER COLUMN timestamp TYPE TIMESTAMP WITH TIME ZONE"))
+            except Exception:
+                pass
+
         if DATABASE_URL.startswith("sqlite"):
             await conn.run_sync(_migrate_columns)
+        elif "postgres" in DATABASE_URL:
+            await conn.run_sync(_migrate_postgres)

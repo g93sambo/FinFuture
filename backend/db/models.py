@@ -5,7 +5,7 @@ SQLAlchemy ORM models with append-only tamper-resistance invariants.
 """
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import (
     Column,
     String,
@@ -222,7 +222,7 @@ class DBAuditLog(Base):
     event_type = Column(String, nullable=False, index=True)
     actor = Column(String, nullable=False)  # USER / SYSTEM / AGENT:xxx
     details = Column(JSON, nullable=False, default=dict)
-    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
 
     prev_hash = Column(String, nullable=True)
     entry_hash = Column(String, nullable=False)
