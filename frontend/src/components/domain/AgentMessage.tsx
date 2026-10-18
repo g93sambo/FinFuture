@@ -92,7 +92,7 @@ function Body({ text }: { text?: string }) {
         const dataRows = tableLines.slice(2).map(parseRow);
         blocks.push(
           <div key={`tbl-${i}`} className="my-3 overflow-x-auto rounded-xl border border-line bg-surface">
-            <table className="w-full border-collapse text-left text-[13px]">
+            <table className="w-full border-collapse text-left text-[0.9375rem]">
               <thead>
                 <tr className="border-b border-line bg-surface-muted">
                   {headers.map((h, hi) => (
@@ -123,7 +123,7 @@ function Body({ text }: { text?: string }) {
     // Headings
     if (line.startsWith("### ")) {
       blocks.push(
-        <h4 key={i} className="mt-4 mb-1.5 text-[15px] font-bold tracking-tight text-ink">
+        <h4 key={i} className="mt-4 mb-1.5 text-[1rem] font-semibold text-ink">
           {renderInlineFormatting(line.slice(4))}
         </h4>
       );
@@ -132,7 +132,7 @@ function Body({ text }: { text?: string }) {
     }
     if (line.startsWith("## ")) {
       blocks.push(
-        <h3 key={i} className="mt-5 mb-2 text-[16px] font-bold tracking-tight text-ink">
+        <h3 key={i} className="mt-5 mb-1.5 text-[1.0625rem] font-semibold text-ink">
           {renderInlineFormatting(line.slice(3))}
         </h3>
       );
@@ -141,7 +141,7 @@ function Body({ text }: { text?: string }) {
     }
     if (line.startsWith("# ")) {
       blocks.push(
-        <h2 key={i} className="mt-5 mb-2 text-[17px] font-bold tracking-tight text-ink">
+        <h2 key={i} className="mt-5 mb-2 text-[1.125rem] font-semibold text-ink">
           {renderInlineFormatting(line.slice(2))}
         </h2>
       );
@@ -182,7 +182,7 @@ function Body({ text }: { text?: string }) {
 
     // Standard paragraph line
     blocks.push(
-      <p key={i} className="max-w-[82ch] whitespace-pre-line text-[14px] leading-relaxed text-ink/90">
+      <p key={i} className="max-w-[82ch] whitespace-pre-line text-[1.0625rem] leading-relaxed text-ink/90">
         {renderInlineFormatting(lines[i])}
       </p>
     );
@@ -193,7 +193,7 @@ function Body({ text }: { text?: string }) {
     <div className="space-y-2">
       {blocks}
       {hadDisclosure ? (
-        <p className="mt-2 max-w-[72ch] text-[12px] text-muted">
+        <p className="mt-2 max-w-[72ch] text-[0.875rem] text-muted">
           Investing involves risk, including possible loss of principal. Past performance is no guarantee of future results.
         </p>
       ) : null}
@@ -251,7 +251,7 @@ function EventBody({
         return (
           <div className="space-y-3">
             <p className="flex flex-wrap items-baseline gap-3 text-sm">
-              <span className="figures text-[22px] text-ink">{fixed(r.health_score, 0)}</span>
+              <span className="figures text-[1.5rem] text-ink">{fixed(r.health_score, 0)}</span>
               <span className="text-muted">out of 100</span>
               <Tag tone={r.health_score >= 70 ? "success" : r.health_score >= 50 ? "warning" : "danger"}>{r.health_grade.toLowerCase()}</Tag>
             </p>
@@ -300,7 +300,7 @@ function EventBody({
                   .map(([s, w]) => ({ label: s, value: w }))}
               />
               {ev.metrics ? (
-                <p className="figures text-[13px] text-muted">
+                <p className="figures text-[0.9375rem] text-muted">
                   Annualised volatility {pct(ev.metrics.annualized_volatility)} · Sharpe {fixed(ev.metrics.sharpe_ratio)} · CVaR (95%){" "}
                   {pct(ev.metrics.cvar_95, 2)}
                 </p>

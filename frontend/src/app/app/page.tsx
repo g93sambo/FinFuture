@@ -5,10 +5,10 @@ import { useEffect, useMemo, useState } from "react";
 import { RequireProfile } from "@/components/shell/RequireProfile";
 import { ButtonLink } from "@/components/ui/Button";
 import { ErrorNotice, Skeleton, Tag } from "@/components/ui/Feedback";
-import { Panel } from "@/components/ui/Layout";
+import { PageHeader, Panel } from "@/components/ui/Layout";
 import { Table } from "@/components/ui/Table";
 import { api } from "@/lib/api";
-import { dateTime, fixed, money, pct, qty, humanize } from "@/lib/format";
+import { dateTime, fixed, humanize, money, pct, qty } from "@/lib/format";
 import type { ClientProfile, Portfolio, Position } from "@/lib/types";
 import { useRequest } from "@/lib/useRequest";
 import { ConnectBrokerModal } from "@/components/domain/ConnectBrokerModal";
@@ -407,14 +407,15 @@ function AssetAllocationCard({
 
 function OverviewSkeleton() {
   return (
-    <div className="space-y-8 animate-fadeIn" aria-busy="true" aria-label="Loading dashboard">
-      <div className="flex items-center justify-between">
-        <Skeleton height="32px" width="220px" />
-        <Skeleton height="36px" width="140px" />
-      </div>
-      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="space-y-8 animate-fadeIn" aria-busy="true" aria-label="Loading portfolio">
+      <div className="mb-10 grid grid-cols-2 gap-4 md:grid-cols-4">
         {[1, 2, 3, 4].map((i) => (
-          <Skeleton key={i} height="88px" width="100%" />
+          <div key={i} className="rounded-feature bg-surface p-5">
+            <Skeleton height="14px" width="80px" />
+            <div className="mt-2">
+              <Skeleton height="26px" width="120px" />
+            </div>
+          </div>
         ))}
       </div>
       <div className="grid gap-8 lg:grid-cols-12">
@@ -1008,6 +1009,24 @@ function Overview({ clientId }: { clientId: string }) {
               </ul>
             )}
           </Panel>
+
+          <Panel title="Next steps">
+            <ul className="space-y-3 text-sm">
+              {[
+                ["/app/health", "Run a health review", "Drift, concentration and a 60/40 comparison."],
+                ["/app/allocation", "Get an allocation", "Optimised for your profile, with reasons."],
+                ["/app/compare", "Compare funds", "Six-factor scores for any tickers you choose."],
+                ["/app/audit", "Verify your audit trail", "Recompute every hash and signature."],
+              ].map(([href, label, note]) => (
+                <li key={href}>
+                  <Link href={href} className="font-medium text-primary underline decoration-primary/30 underline-offset-4 hover:decoration-primary">
+                    {label}
+                  </Link>
+                  <p className="text-[0.9375rem] text-muted">{note}</p>
+                </li>
+              ))}
+            </ul>
+          </Panel>
         </div>
       </div>
     </div>
@@ -1015,5 +1034,10 @@ function Overview({ clientId }: { clientId: string }) {
 }
 
 export default function OverviewPage() {
-  return <RequireProfile>{(id) => <Overview clientId={id} />}</RequireProfile>;
+  return (
+    <>
+      <PageHeader title="Overview" lede="Here's where your money stands today." />
+      <RequireProfile>{(id) => <Overview clientId={id} />}</RequireProfile>
+    </>
+  );
 }

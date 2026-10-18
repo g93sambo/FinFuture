@@ -70,3 +70,6 @@ Thumbs.db
 
 # Internal Agent Run Workspaces
 .agents/
+.venv/
+node_modules/
+.next/

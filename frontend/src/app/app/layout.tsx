@@ -24,11 +24,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-screen flex-col lg:flex-row">
       <Sidebar />
       <MobileBar />
-      <main id="main" className="min-w-0 flex-1 px-5 py-7 sm:px-8 lg:px-10 lg:py-8">
-        <div className="mx-auto max-w-[1320px]">
+      <main id="main" className="min-w-0 flex-1 px-5 py-8 sm:px-8 lg:px-12 lg:py-10">
+        <div className="mx-auto max-w-[110rem]">
           {sessionError ? (
             <Notice tone="danger" title="Could not open an advisory session" className="mb-6">
               {sessionError}

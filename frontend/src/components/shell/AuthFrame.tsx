@@ -1,24 +1,50 @@
 import type { ReactNode } from "react";
-import { Wordmark } from "./Wordmark";
+import { RevealOnScroll } from "@/components/landing/Reveal";
+import { AuthShowcase } from "./AuthShowcase";
 
-/** Shared frame for sign-in and registration. Form on the left, context on the right. */
-export function AuthFrame({ title, lede, children, aside }: { title: string; lede: ReactNode; children: ReactNode; aside: ReactNode }) {
+/**
+ * Shared frame for sign-in and registration.
+ * Large screens: moving green showcase on the left half, white form half on the right.
+ * Small screens: the showcase becomes a band above the form.
+ * Entrance animations use the same data-reveal system as the homepage.
+ */
+export function AuthFrame({
+  title,
+  lede,
+  children,
+  points,
+  pointsTitle,
+}: {
+  title: string;
+  lede: ReactNode;
+  children: ReactNode;
+  points: string[];
+  pointsTitle: string;
+}) {
   return (
-    <div className="flex min-h-screen flex-col bg-surface/40">
-      <header className="border-b border-line bg-background">
-        <div className="mx-auto flex h-16 max-w-[1280px] items-center px-5 sm:px-8">
-          <Wordmark />
+    <div className="grid min-h-screen lg:grid-cols-2">
+      <RevealOnScroll />
+      <AuthShowcase points={points} pointsTitle={pointsTitle} />
+
+      <main className="relative isolate flex overflow-hidden px-6 py-12 sm:px-10 lg:px-16 lg:py-16">
+        <span className="auth-ghost" data-reveal="drift" style={{ "--d": 4 } as React.CSSProperties} aria-hidden>
+          FinFuture
+        </span>
+        <div className="relative z-10 m-auto w-full max-w-[34rem]">
+          <h1 className="text-[2.75rem] leading-tight font-bold text-ink sm:text-[3.25rem]">
+            {title.split(" ").map((w, i) => (
+              <span key={i} data-reveal="tilt" className="mr-[0.25em] inline-block" style={{ "--d": 2 + i } as React.CSSProperties}>
+                {w}
+              </span>
+            ))}
+          </h1>
+          <p data-reveal="up" className="mt-3 text-[1.1875rem] text-muted" style={{ "--d": 4 } as React.CSSProperties}>
+            {lede}
+          </p>
+          <div data-reveal="fields" className="mt-9">
+            {children}
+          </div>
         </div>
-      </header>
-      <main className="mx-auto grid w-full max-w-[1280px] flex-1 items-start gap-12 px-5 py-12 sm:px-8 lg:grid-cols-12 lg:py-16">
-        <div className="rounded-card border border-line bg-background p-7 shadow-[0_4px_20px_rgba(15,41,34,0.04)] lg:col-span-6">
-          <h1 className="text-[26px] leading-tight font-bold tracking-tight text-ink">{title}</h1>
-          <p className="mt-1.5 text-sm text-muted">{lede}</p>
-          <div className="mt-7">{children}</div>
-        </div>
-        <aside className="rounded-card border border-line bg-background p-6 shadow-[0_2px_12px_rgba(15,41,34,0.03)] lg:col-span-5 lg:col-start-8">
-          {aside}
-        </aside>
       </main>
     </div>
   );

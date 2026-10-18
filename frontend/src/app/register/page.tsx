@@ -7,6 +7,7 @@ import { AuthFrame } from "@/components/shell/AuthFrame";
 import { Button } from "@/components/ui/Button";
 import { Notice } from "@/components/ui/Feedback";
 import { Field, Input } from "@/components/ui/Field";
+import { PasswordInput } from "@/components/ui/PasswordInput";
 import { useAuth } from "@/lib/auth";
 
 export default function RegisterPage() {
@@ -42,40 +43,30 @@ export default function RegisterPage() {
 
   return (
     <AuthFrame
-      title="Open an account"
-      lede="A paper-trading account with $100,000 of simulated cash."
-      aside={
-        <div className="text-sm">
-          <p className="font-semibold text-ink">What happens next?</p>
-          <ol className="mt-3 divide-y divide-line border-y border-line text-muted">
-            {[
-              "Create your account credentials",
-              "Set your financial profile and risk appetite via interactive options and sliders",
-              "Receive your automated suitability tier and panic sell likelihood assessment",
-              "Get tailored portfolio allocations, fund comparisons, and paper trading",
-            ].map((t, i) => (
-              <li key={t} className="grid grid-cols-[1.75rem_1fr] py-2.5">
-                <span className="figures">{i + 1}</span>
-                <span>{t}</span>
-              </li>
-            ))}
-          </ol>
-        </div>
-      }
+      title="Open your account"
+      lede="Tell us where you are today. It only takes a few minutes."
+      pointsTitle="Have these handy"
+      points={[
+        "Your age, job and who depends on you",
+        "Roughly what you earn, save, spend and owe",
+        "How long you plan to invest, and why",
+        "How you'd feel if your money dropped 20%",
+        "Your investing experience so far",
+      ]}
     >
-      <form onSubmit={submit} className="max-w-[400px] space-y-5" noValidate>
+      <form onSubmit={submit} className="max-w-[36rem] space-y-5" noValidate>
         {error ? <Notice tone="danger">{error}</Notice> : null}
         <Field label="Email">
           {(p) => <Input {...p} type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />}
         </Field>
         <Field label="Password" hint="8 to 72 characters." error={pwError}>
           {(p) => (
-            <Input {...p} type="password" autoComplete="new-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+            <PasswordInput {...p} autoComplete="new-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
           )}
         </Field>
         <Field label="Confirm password" error={confirmError}>
           {(p) => (
-            <Input {...p} type="password" autoComplete="new-password" required value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+            <PasswordInput {...p} autoComplete="new-password" required value={confirm} onChange={(e) => setConfirm(e.target.value)} />
           )}
         </Field>
         <div className="flex items-center gap-5 pt-2">

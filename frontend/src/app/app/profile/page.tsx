@@ -7,7 +7,7 @@ import { Button, ButtonLink } from "@/components/ui/Button";
 import { ErrorNotice, Loading, Notice, Tag } from "@/components/ui/Feedback";
 import { Ledger, PageHeader, Panel } from "@/components/ui/Layout";
 import { api } from "@/lib/api";
-import { fixed, humanize, money, pct } from "@/lib/format";
+import { dateTime, fixed, humanize, money, pct } from "@/lib/format";
 import { useRequest } from "@/lib/useRequest";
 import { EditProfileModal } from "./EditProfileModal";
 
@@ -304,6 +304,16 @@ function Profile({ clientId }: { clientId: string }) {
             {!p.kyc_verified ? (
               <p className="mt-3 text-[13px] text-danger">Orders are refused until KYC is verified.</p>
             ) : null}
+          </Panel>
+
+          <Panel title="Record">
+            <Ledger
+              rows={[
+                { label: "Client reference", value: <span className="text-[0.9375rem]">{p.client_id}</span> },
+                { label: "Created", value: dateTime(p.created_at) },
+                { label: "Last updated", value: dateTime(p.updated_at) },
+              ]}
+            />
           </Panel>
         </div>
       </div>

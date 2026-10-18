@@ -60,7 +60,7 @@ export function ProposalTicket({
     ) : expired ? (
       <Tag tone="warning">Expired</Tag>
     ) : (
-      <span className="figures text-[13px] text-muted">Expires in {label}</span>
+      <span className="figures text-[0.9375rem] text-muted">Expires in {label}</span>
     );
 
   function handlePrimaryApprove() {
@@ -104,7 +104,7 @@ export function ProposalTicket({
           ["Order type", "Market (Day)"],
         ].map(([k, v]) => (
           <div key={k} className="py-1">
-            <dt className="text-[12.5px] text-muted">{k}</dt>
+            <dt className="text-[0.9375rem] text-muted">{k}</dt>
             <dd className="figures font-medium text-ink">{v}</dd>
           </div>
         ))}
@@ -229,7 +229,7 @@ export function ProposalTicket({
           <Button size="sm" variant="secondary" onClick={onReject} disabled={state !== "open"}>
             Cancel
           </Button>
-          <span className="text-[12.5px] text-muted">
+          <span className="text-[0.9375rem] text-muted">
             {exceedsConcentration
               ? "Client-directed waiver will be cryptographically logged to the WeBank Merkle audit trail."
               : "Suitability and portfolio limits are checked automatically before execution."}

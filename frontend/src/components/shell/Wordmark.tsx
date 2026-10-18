@@ -1,7 +1,7 @@
 import Link from "next/link";
 
-/** Equify brand wordmark with rounded dark-green emblem. */
-export function Wordmark({ href = "/", inverted = false }: { href?: string; inverted?: boolean }) {
+/** Equify brand wordmark with rounded emblem. `compact` hides subtitle if needed. */
+export function Wordmark({ href = "/", inverted = false }: { href?: string; inverted?: boolean; compact?: boolean }) {
   return (
     <Link href={href} className={`group inline-flex items-center gap-2.5 ${inverted ? "text-on-primary" : "text-ink"}`}>
       <span

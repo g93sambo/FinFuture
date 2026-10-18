@@ -193,7 +193,7 @@ function Allocation({ clientId }: { clientId: string }) {
                 </div>
               </div>
             ) : (
-              <div className="max-w-[70ch] space-y-3 text-[15px] whitespace-pre-line text-ink">{explanation}</div>
+              <div className="max-w-[70ch] space-y-3 text-[1rem] whitespace-pre-line text-ink">{explanation}</div>
             )}
           </Panel>
 
@@ -215,7 +215,7 @@ function Allocation({ clientId }: { clientId: string }) {
                 highlight={nearest}
                 highlightLabel="Closest to yours"
               />
-              <p className="mt-3 text-[13px] text-muted">
+              <p className="mt-3 text-[0.9375rem] text-muted">
                 Each point is the highest-return portfolio for its level of volatility. The square marks the frontier point nearest your
                 recommended portfolio&rsquo;s volatility of {pct(annVol)}.
               </p>
@@ -240,7 +240,7 @@ function Allocation({ clientId }: { clientId: string }) {
                 { label: "Max drawdown (history)", value: pct(m.max_drawdown, 1) },
               ]}
             />
-            <p className="mt-3 text-[12.5px] text-muted">
+            <p className="mt-3 text-[0.875rem] text-muted">
               Estimates from historical prices. Investing involves risk, including possible loss of principal. Past performance is no
               guarantee of future results.
             </p>
@@ -266,7 +266,7 @@ function Allocation({ clientId }: { clientId: string }) {
                   ))}
                 </tbody>
               </Table>
-              <p className="px-5 py-3 text-[13px] text-muted">
+              <p className="px-5 py-3 text-[0.9375rem] text-muted">
                 Shares of portfolio risk (Euler decomposition), or SHAP contributions to the latest day&rsquo;s return when SHAP is available.
               </p>
             </Panel>

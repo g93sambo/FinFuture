@@ -164,7 +164,7 @@ function ProductDetail({ p }: { p: ComparedProduct }) {
           <p className="text-muted">None flagged.</p>
         )}
       </div>
-      <dl className="figures grid grid-cols-2 gap-x-4 gap-y-1 text-[13px]">
+      <dl className="figures grid grid-cols-2 gap-x-4 gap-y-1 text-[0.9375rem]">
         <dt className="font-sans text-muted">Expense ratio</dt>
         <dd className="text-right">{pct(r.expense_ratio, 2)}</dd>
         <dt className="font-sans text-muted">Tracking error</dt>
@@ -219,7 +219,7 @@ function Results({
             <div className="flex items-center gap-2">
               <p className="text-sm text-muted">Best fit for your profile</p>
             </div>
-            <p className="mt-1 text-[22px] font-semibold text-ink">
+            <p className="mt-1 text-[1.5rem] font-semibold text-ink">
               {winner.symbol} <span className="font-normal text-muted">· {winner.name}</span>
             </p>
             <p className="figures mt-1 text-sm text-ink">Composite score {fixed(winner.composite_score)} out of 10</p>
@@ -331,7 +331,7 @@ function Results({
                     </Td>
                     <Td>
                       <span className="font-semibold">{p.symbol}</span>
-                      <span className="block max-w-[26ch] truncate text-[13px] text-muted" title={p.name}>
+                      <span className="block max-w-[26ch] truncate text-[0.9375rem] text-muted" title={p.name}>
                         {p.name}
                       </span>
                     </Td>
@@ -383,8 +383,8 @@ function Results({
       ) : null}
 
       <Panel title="Fiduciary Summary">
-        <p className="max-w-[72ch] whitespace-pre-line text-[15px] text-ink leading-relaxed">{sanitizedRationale}</p>
-        <p className="mt-4 text-[13px] text-muted">
+        <p className="max-w-[72ch] whitespace-pre-line text-[1rem] text-ink leading-relaxed">{sanitizedRationale}</p>
+        <p className="mt-4 text-[0.9375rem] text-muted">
           Method: {res.report?.methodology}. Your risk tier for products is {clientTier} of 5.
         </p>
       </Panel>

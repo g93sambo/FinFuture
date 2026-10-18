@@ -5,7 +5,7 @@ type Variant = "primary" | "secondary" | "quiet" | "danger";
 type Size = "sm" | "md";
 
 const base =
-  "inline-flex items-center justify-center gap-2 rounded-control font-medium whitespace-nowrap transition-all duration-140 ease-out select-none touch-manipulation active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100";
+  "inline-flex items-center justify-center gap-2 rounded-button font-medium whitespace-nowrap transition-all duration-140 ease-out select-none touch-manipulation active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100";
 
 const variants: Record<Variant, string> = {
   primary: "bg-primary text-on-primary hover:bg-primary-hover active:bg-primary-hover shadow-xs",
@@ -15,12 +15,12 @@ const variants: Record<Variant, string> = {
 };
 
 const sizes: Record<Size, string> = {
-  sm: "h-8 px-3.5 text-[12.5px]",
-  md: "h-10 px-4 text-[13.5px]",
+  sm: "h-10 px-4 text-[1rem]",
+  md: "h-12 px-6 text-[1.0625rem]",
 };
 
 export function buttonClass(variant: Variant = "primary", size: Size = "md", extra = "") {
-  const sizing = variant === "quiet" ? "text-sm" : sizes[size];
+  const sizing = variant === "quiet" ? "text-[1.0625rem]" : sizes[size];
   return `${base} ${variants[variant]} ${sizing} ${extra}`.trim();
 }
 

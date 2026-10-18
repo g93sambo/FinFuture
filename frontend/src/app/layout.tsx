@@ -16,6 +16,16 @@ const body = localFont({
   display: "swap",
 });
 
+// Poppins for everything set in bold (headings, key numbers, emphasis).
+const display = localFont({
+  src: [
+    { path: "../../node_modules/@fontsource/poppins/files/poppins-latin-600-normal.woff2", weight: "600", style: "normal" },
+    { path: "../../node_modules/@fontsource/poppins/files/poppins-latin-700-normal.woff2", weight: "700", style: "normal" },
+  ],
+  variable: "--font-poppins",
+  display: "swap",
+});
+
 const figures = localFont({
   src: [
     { path: "../../node_modules/@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-400-normal.woff2", weight: "400", style: "normal" },
@@ -36,7 +46,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${body.variable} ${figures.variable}`}>
+    <html lang="en" className={`${body.variable} ${display.variable} ${figures.variable}`}>
       <head>
         <style dangerouslySetInnerHTML={{ __html: themeToCss() }} />
       </head>

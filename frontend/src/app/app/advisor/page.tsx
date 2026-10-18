@@ -540,7 +540,6 @@ export default function AdvisorPage() {
                     onSelectOption={(opt) => send(opt)}
                   />
                 ))}
-
                 {waiting && (
                   <li className="flex items-center gap-2.5 my-4 animate-fade-in pl-1">
                     <span className="h-2 w-2 rounded-full bg-accent animate-ping" />
