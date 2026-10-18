@@ -84,99 +84,106 @@ async def submit_onboarding_profile(
     panic sell likelihood, and KYC/AML checks without conversational chat.
     Creates or updates DBClientProfile and updates the user's active session.
     """
-    existing_stmt = (
-        select(DBClientProfile)
-        .where(DBClientProfile.user_id == user.id)
-        .order_by(DBClientProfile.created_at.desc())
-    )
-    existing_res = await db.execute(existing_stmt)
-    existing_profile = existing_res.scalars().first()
-
-    client_id = existing_profile.client_id if existing_profile else str(uuid.uuid4())
-    ext = req.model_dump()
-
-    # Net worth calculation fallback
-    if ext.get("net_worth") is None:
-        ext["net_worth"] = max(
-            0.0,
-            ext["liquid_assets"] + (ext["annual_income"] * 0.5) - ext["existing_debts"]
-        )
-
-    # Detect behavioral biases from structured answers
-    biases: List[str] = []
-    if ext.get("drawdown_reaction") in ("sell_all", "sell_some") and ext.get("loss_capacity") == "low":
-        biases.append("loss_aversion")
-    if ext.get("risk_tolerance_score", 5.0) >= 8.0 and ext.get("investment_experience") in ("none", "novice"):
-        biases.append("overconfidence")
-    if ext.get("monitoring_frequency") == "daily":
-        biases.append("myopic_loss_aversion")
-    ext["detected_biases"] = biases
-
-    # Quantitative scoring engines from RiskProfilerAgent
-    composite_score, suitability_cat = c.profiler.calculate_suitability_score(ext)
-    emotional_score = c.profiler.calculate_emotional_risk_score(ext)
-    panic_prob = c.profiler.calculate_panic_sell_likelihood(ext, emotional_score, composite_score)
-    kyc_ok, aml_flag = c.profiler.evaluate_compliance_kyc_aml(ext)
-
-    profile_data = {
-        "client_id": client_id,
-        "user_id": user.id,
-        "age": ext["age"],
-        "employment_status": ext["employment_status"],
-        "dependents": ext["dependents"],
-        "annual_income": ext["annual_income"],
-        "net_worth": ext["net_worth"],
-        "liquid_assets": ext["liquid_assets"],
-        "monthly_expenses": ext["monthly_expenses"],
-        "existing_debts": ext["existing_debts"],
-        "investment_experience": ext["investment_experience"],
-        "risk_tolerance_score": ext["risk_tolerance_score"],
-        "investment_horizon_years": ext["investment_horizon_years"],
-        "liquidity_needs": ext["liquidity_needs"],
-        "loss_capacity": ext["loss_capacity"],
-        "primary_goal": ext["primary_goal"],
-        "target_return": ext["target_return"],
-        "specific_goals": ext["specific_goals"],
-        "suitability_category": suitability_cat,
-        "detected_biases": biases,
-        "emotional_risk_score": emotional_score,
-        "panic_sell_likelihood": panic_prob,
-        "kyc_verified": kyc_ok,
-        "aml_flag": aml_flag,
-        "source_of_funds": ext.get("source_of_funds", "salary"),
-        "drawdown_reaction": ext.get("drawdown_reaction", "hold"),
-        "monitoring_frequency": ext.get("monitoring_frequency", "monthly"),
-        "pep_status": bool(ext.get("pep_status", False)),
-        "high_risk_jurisdiction": bool(ext.get("high_risk_jurisdiction", False)),
-        "profiling_session_transcript": "Completed via structured onboarding questionnaire",
-    }
-
     try:
+        existing_stmt = (
+            select(DBClientProfile)
+            .where(DBClientProfile.user_id == user.id)
+            .order_by(DBClientProfile.created_at.desc())
+        )
+        existing_res = await db.execute(existing_stmt)
+        existing_profile = existing_res.scalars().first()
+
+        client_id = existing_profile.client_id if existing_profile else str(uuid.uuid4())
+        ext = req.model_dump()
+
+        # Net worth calculation fallback
+        if ext.get("net_worth") is None:
+            ext["net_worth"] = max(
+                0.0,
+                ext["liquid_assets"] + (ext["annual_income"] * 0.5) - ext["existing_debts"]
+            )
+
+        # Detect behavioral biases from structured answers
+        biases: List[str] = []
+        if ext.get("drawdown_reaction") in ("sell_all", "sell_some") and ext.get("loss_capacity") == "low":
+            biases.append("loss_aversion")
+        if ext.get("risk_tolerance_score", 5.0) >= 8.0 and ext.get("investment_experience") in ("none", "novice"):
+            biases.append("overconfidence")
+        if ext.get("monitoring_frequency") == "daily":
+            biases.append("myopic_loss_aversion")
+        ext["detected_biases"] = biases
+
+        # Quantitative scoring engines from RiskProfilerAgent
+        composite_score, suitability_cat = c.profiler.calculate_suitability_score(ext)
+        emotional_score = c.profiler.calculate_emotional_risk_score(ext)
+        panic_prob = c.profiler.calculate_panic_sell_likelihood(ext, emotional_score, composite_score)
+        kyc_ok, aml_flag = c.profiler.evaluate_compliance_kyc_aml(ext)
+
+        profile_data = {
+            "client_id": client_id,
+            "user_id": user.id,
+            "age": ext["age"],
+            "employment_status": ext["employment_status"],
+            "dependents": ext["dependents"],
+            "annual_income": ext["annual_income"],
+            "net_worth": ext["net_worth"],
+            "liquid_assets": ext["liquid_assets"],
+            "monthly_expenses": ext["monthly_expenses"],
+            "existing_debts": ext["existing_debts"],
+            "investment_experience": ext["investment_experience"],
+            "risk_tolerance_score": ext["risk_tolerance_score"],
+            "investment_horizon_years": ext["investment_horizon_years"],
+            "liquidity_needs": ext["liquidity_needs"],
+            "loss_capacity": ext["loss_capacity"],
+            "primary_goal": ext["primary_goal"],
+            "target_return": ext["target_return"],
+            "specific_goals": ext["specific_goals"],
+            "suitability_category": suitability_cat,
+            "detected_biases": biases,
+            "emotional_risk_score": emotional_score,
+            "panic_sell_likelihood": panic_prob,
+            "kyc_verified": kyc_ok,
+            "aml_flag": aml_flag,
+            "source_of_funds": ext.get("source_of_funds", "salary"),
+            "drawdown_reaction": ext.get("drawdown_reaction", "hold"),
+            "monitoring_frequency": ext.get("monitoring_frequency", "monthly"),
+            "pep_status": bool(ext.get("pep_status", False)),
+            "high_risk_jurisdiction": bool(ext.get("high_risk_jurisdiction", False)),
+            "profiling_session_transcript": "Completed via structured onboarding questionnaire",
+        }
+
         saved_profile = await c.profiler.save_profile(db, client_id, profile_data)
 
         # Log immutable audit entry
-        await c.audit.log_audit_entry(
-            db=db,
-            client_id=client_id,
-            event_type="PROFILE_COMPLETED" if not existing_profile else "PROFILE_UPDATED",
-            actor="USER:onboarding_form",
-            details={
-                "suitability_category": suitability_cat,
-                "risk_tolerance_score": ext["risk_tolerance_score"],
-                "kyc_verified": kyc_ok,
-                "aml_flag": aml_flag,
-                "method": "structured_onboarding",
-            },
-            session_id=req.session_id,
-        )
+        try:
+            await c.audit.log_audit_entry(
+                db=db,
+                client_id=client_id,
+                event_type="PROFILE_COMPLETED" if not existing_profile else "PROFILE_UPDATED",
+                actor="USER:onboarding_form",
+                details={
+                    "suitability_category": suitability_cat,
+                    "risk_tolerance_score": ext["risk_tolerance_score"],
+                    "kyc_verified": kyc_ok,
+                    "aml_flag": aml_flag,
+                    "method": "structured_onboarding",
+                },
+                session_id=req.session_id,
+            )
+        except Exception as audit_err:
+            import logging
+            logging.getLogger("wealth_advisor.api.profile").warning("Audit entry warning: %s", audit_err)
 
         # Update active session in redis if session_id is provided
         if req.session_id:
-            session = await c.cache.get_json(f"session:{req.session_id}")
-            if session and session.get("user_id") == user.id:
-                session["client_id"] = client_id
-                session["stage"] = "ADVICE_GENERATION"
-                await c.cache.set_json(f"session:{req.session_id}", session, expire=SESSION_TTL_SECONDS)
+            try:
+                session = await c.cache.get_json(f"session:{req.session_id}")
+                if session and session.get("user_id") == user.id:
+                    session["client_id"] = client_id
+                    session["stage"] = "ADVICE_GENERATION"
+                    await c.cache.set_json(f"session:{req.session_id}", session, expire=SESSION_TTL_SECONDS)
+            except Exception:
+                pass
 
         return _profile_dict(saved_profile)
     except Exception as exc:
