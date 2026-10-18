@@ -151,9 +151,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Configure CORS to accept localhost, Vercel deployments, and explicitly configured origins
+raw_origins = settings.allowed_cors_origins
+has_wildcard = "*" in raw_origins
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.allowed_cors_origins,
+    allow_origins=[] if has_wildcard else raw_origins,
+    allow_origin_regex=r"https://.*\.vercel\.app|http://localhost:\d+|http://127\.0\.0\.1:\d+",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
