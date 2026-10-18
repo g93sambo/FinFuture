@@ -26,6 +26,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException
+from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agents.allocation_engine import AllocationEngine
@@ -43,7 +44,7 @@ from agents.market_data import MarketDataAgent
 from agents.product_comparison import ProductComparisonAgent
 from agents.risk_profiler import STATE_DEMOGRAPHICS, STATE_PROMPTS, RiskProfilerAgent
 from core.config import settings
-from db.models import DBClientProfile
+from db.models import DBClientProfile, DBAuditLog
 from services.audit_logger import AuditLogger, get_audit_logger
 from services.cache import CacheService, get_cache_service, key_session
 from services.health_report import HealthReportService
@@ -1756,6 +1757,24 @@ class OrchestratorAgent:
         proposal = await self.c.cache.get_json(f"proposal:{proposal_id}")
         if not proposal:
             executed = await self.c.cache.get_json(f"executed_proposal:{proposal_id}")
+            if not executed:
+                # Persistent DB check: query audit logs for TRADE_EXECUTED with this proposal_id
+                try:
+                    stmt_exec = (
+                        select(DBAuditLog)
+                        .where(DBAuditLog.event_type == "TRADE_EXECUTED")
+                        .order_by(desc(DBAuditLog.timestamp))
+                        .limit(100)
+                    )
+                    recent_execs = (await db.execute(stmt_exec)).scalars().all()
+                    for log in recent_execs:
+                        d = log.details or {}
+                        if isinstance(d, dict) and d.get("proposal_id") == str(proposal_id):
+                            executed = d
+                            break
+                except Exception as exc:
+                    logger.debug("DB audit fallback for duplicate execution check: %s", exc)
+
             if executed:
                 raise TradeBlocked(
                     [],
@@ -1763,6 +1782,29 @@ class OrchestratorAgent:
                     reason=f"Duplicate submit rejected: Order for {executed.get('symbol', 'this asset')} has already been confirmed and processed.",
                     error_type="DuplicateTradeError",
                 )
+
+            # Persistent DB check: recover active proposal if server was restarted within 15m window
+            try:
+                stmt_prop = (
+                    select(DBAuditLog)
+                    .where(DBAuditLog.event_type == "TRADE_PROPOSED")
+                    .order_by(desc(DBAuditLog.timestamp))
+                    .limit(50)
+                )
+                recent_props = (await db.execute(stmt_prop)).scalars().all()
+                for log in recent_props:
+                    d = log.details or {}
+                    if isinstance(d, dict) and d.get("proposal_id") == str(proposal_id):
+                        ts = log.timestamp
+                        if ts.tzinfo is None:
+                            ts = ts.replace(tzinfo=timezone.utc)
+                        if (datetime.now(timezone.utc) - ts).total_seconds() <= PROPOSAL_TTL_SECONDS:
+                            proposal = d
+                        break
+            except Exception as exc:
+                logger.debug("DB audit fallback for proposal recovery: %s", exc)
+
+        if not proposal:
             raise HTTPException(status_code=404, detail="Trade proposal not found or expired (15 minute window)")
         client_id = proposal["client_id"]
 

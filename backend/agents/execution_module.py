@@ -353,6 +353,26 @@ class ExecutionModule:
         # Gate 4: 30-Second Double-Submit Lock
         lock_key = key_trade_lock(client_id)
         lock_acquired = await self.cache_service.acquire_lock(lock_key, timeout_seconds=TTL_TRADE_LOCK)
+        if lock_acquired and db is not None:
+            # Durable secondary check: verify no identical trade was committed in DB within 30s
+            try:
+                cutoff_30s = (now_utc - timedelta(seconds=TTL_TRADE_LOCK)).replace(tzinfo=None)
+                stmt_recent = (
+                    select(DBTrade)
+                    .where(
+                        DBTrade.client_id == client_id,
+                        DBTrade.symbol == symbol_clean,
+                        DBTrade.side == side_clean,
+                        DBTrade.created_at >= cutoff_30s,
+                    )
+                    .limit(1)
+                )
+                recent_trade = (await db.execute(stmt_recent)).scalars().first()
+                if recent_trade is not None:
+                    lock_acquired = False
+            except Exception as exc:
+                logger.debug("Database duplicate check fallback: %s", exc)
+
         if not lock_acquired:
             await self._log_block(
                 db=db,
