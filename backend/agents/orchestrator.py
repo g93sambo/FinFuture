@@ -122,6 +122,10 @@ MACRO_RE = re.compile(
     r"\b(macro|yield curve|treasury rates|interest rates|inflation|gdp|unemployment)\b",
     re.IGNORECASE,
 )
+NAV_HELP_RE = re.compile(
+    r"\b(how\s+to\s+use|how\s+do\s+i\s+use|how\s+does\s+(this|the)\s+app\s+work|where\s+do\s+i\s+find|navigate|navigation|sitemap|app\s+guide|tour|help\s+me\s+use|what\s+page|pages\s+in\s+this\s+app)\b",
+    re.IGNORECASE,
+)
 TICKER_RE = re.compile(r"\b[A-Za-z]{2,5}\b")
 STOPWORDS_TICKER = {
     "ETF", "ETFS", "AND", "VS", "THE", "BOND", "BONDS", "FOR", "BUY", "SELL",
@@ -1314,6 +1318,8 @@ class OrchestratorAgent:
             events += await self._quote(db, client_id, sym)
         elif is_direct_command and MACRO_RE.search(text):
             events += await self._macro(db, client_id)
+        elif is_direct_command and NAV_HELP_RE.search(text):
+            events += await self._nav_guide(db, client_id)
         else:
             history = session.get("history", [])
             # 1. Run agentic tool-calling turn connected to application services
@@ -1361,7 +1367,10 @@ class OrchestratorAgent:
                         return events
 
             # 3. Direct deterministic regex fallback when LLM is offline/unconfigured
-            if (sym := extract_quote_symbol(text)):
+            if NAV_HELP_RE.search(text):
+                events += await self._nav_guide(db, client_id)
+                return events
+            elif (sym := extract_quote_symbol(text)):
                 events += await self._quote(db, client_id, sym)
                 return events
             elif MACRO_RE.search(text):
@@ -1415,6 +1424,26 @@ class OrchestratorAgent:
         except Exception as exc:  # noqa: BLE001
             logger.warning("Macro data lookup failed: %s", exc)
             return [await self._say("Macroeconomic and Treasury data is currently unavailable.", db, client_id, agent="MarketData")]
+
+    async def _nav_guide(self, db: AsyncSession, client_id: Optional[str]) -> List[Dict[str, Any]]:
+        text = (
+            "Here is your quick guide to navigating FinFuture and finding what you need:\n\n"
+            "### 📈 Advice\n"
+            "• **Overview** (`/app`): Your high-level wealth dashboard with total portfolio value, cash, and performance summary.\n"
+            "• **Advisor** (`/app/advisor`): Chat with me anytime to analyze stocks, check economic indicators, stress-test your portfolio, or propose trades.\n"
+            "• **Allocation** (`/app/allocation`): View your personalized target asset allocation, Black-Litterman model weights, and risk/return forecasts.\n"
+            "• **Compare funds** (`/app/compare`): Side-by-side ETF and bond comparison tool (expense ratios, 1Y/3Y/5Y returns, volatility, Sharpe ratios).\n\n"
+            "### 💼 Portfolio\n"
+            "• **Trade** (`/app/trade`): Submit paper trade orders. Remember, all trades require your explicit approval within a 15-minute confirmation window.\n"
+            "• **Health review** (`/app/health`): Your Portfolio Health Score (0–100), asset drift analysis, and the Time-Machine simulator to test macro shocks.\n"
+            "• **Markets** (`/app/markets`): Real-time stock/ETF quotes, price charts, and US Treasury yield curves.\n\n"
+            "### 📋 Records & Fiduciary Governance\n"
+            "• **Risk profile** (`/app/profile`): View or edit your investor suitability category, psychological risk scores, and scenario calibration probes.\n"
+            "• **Audit trail** (`/app/audit`): View the cryptographic, HMAC-signed audit log verifying that no records have been tampered with.\n"
+            "• **Compliance rules** (`/app/compliance`): Inspect the active regulatory rule catalog enforcing suitability, diversification, and trading limits.\n\n"
+            "Feel free to ask me to show quotes (e.g. 'quote SPY'), compare tickers ('compare SPY QQQ'), run a health review ('how is my portfolio?'), or propose an order ('buy 10 BND') anytime!"
+        )
+        return [await self._say(text, db, client_id, agent="WealthAdvisor")]
 
     # ------------------------------------------------------------------ #
     # Rebalance Flow
@@ -1586,6 +1615,14 @@ class OrchestratorAgent:
                                 "If Score >= 70 and no fatal dealbreakers exist, verdict is YES — INVEST (with exact allocation e.g. 3-5%). "
                                 "If Score < 70 or any fatal dealbreaker is triggered (e.g. massive unhedged FX debt, lack of audited public prospectus, or feedstock friction), verdict is NO — DO NOT INVEST with TARGET ALLOCATION: 0.0%. "
                                 "NEVER suggest a 'HOLD / NEUTRAL' with a 2-3% satellite allocation when an asset fails the hurdle! In institutional finance, if an opportunity fails the hurdle, you pass completely (0.0%). "
+                                "When users ask how to use the app, where to find specific information, or how to navigate FinFuture: "
+                                "Explain the platform's sections clearly: "
+                                "1. ADVICE: Overview (/app - net worth and portfolio dashboard), Advisor (/app/advisor - conversational strategy and proposals), "
+                                "Allocation (/app/allocation - Black-Litterman model weights), Compare funds (/app/compare - ETF and bond comparison). "
+                                "2. PORTFOLIO: Trade (/app/trade - non-discretionary paper trading with 15m approvals), "
+                                "Health review (/app/health - health score 0-100 and Time-Machine stress test), Markets (/app/markets - quotes and Treasury curves). "
+                                "3. RECORDS: Risk profile (/app/profile - suitability tier and scenario calibration), "
+                                "Audit trail (/app/audit - cryptographic tamper-evident HMAC logs), Compliance rules (/app/compliance - active rule catalog). "
                                 "Never promise risk-free returns; provide balanced, evidence-based commentary."
                             ),
                         },

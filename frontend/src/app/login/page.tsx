@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import { AuthFrame } from "@/components/shell/AuthFrame";
 import { Button } from "@/components/ui/Button";
 import { Notice } from "@/components/ui/Feedback";
@@ -10,17 +10,21 @@ import { Field, Input } from "@/components/ui/Field";
 import { PasswordInput } from "@/components/ui/PasswordInput";
 import { useAuth } from "@/lib/auth";
 
-export default function LoginPage() {
+function LoginForm() {
   const { login, status } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const nextParam = searchParams?.get("next");
+  const targetDestination = nextParam && nextParam.startsWith("/app") ? nextParam : "/app";
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
-    if (status === "authenticated") router.replace("/app");
-  }, [status, router]);
+    if (status === "authenticated") router.replace(targetDestination);
+  }, [status, router, targetDestination]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -28,7 +32,7 @@ export default function LoginPage() {
     setError(null);
     try {
       await login(email.trim(), password);
-      router.replace("/app");
+      router.replace(targetDestination);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -36,6 +40,33 @@ export default function LoginPage() {
     }
   }
 
+  return (
+    <form onSubmit={submit} className="max-w-[36rem] space-y-5" noValidate>
+      {error ? <Notice tone="danger">{error}</Notice> : null}
+      <Field label="Email">
+        {(p) => <Input {...p} type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />}
+      </Field>
+      <Field label="Password">
+        {(p) => (
+          <PasswordInput {...p} autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+        )}
+      </Field>
+      <div className="flex items-center gap-5 pt-2">
+        <Button type="submit" pending={pending} disabled={!email || !password}>
+          Sign in
+        </Button>
+        <Link
+          href={nextParam ? `/register?next=${encodeURIComponent(nextParam)}` : "/register"}
+          className="text-sm text-primary underline decoration-primary/30 underline-offset-4 hover:decoration-primary"
+        >
+          Create an account
+        </Link>
+      </div>
+    </form>
+  );
+}
+
+export default function LoginPage() {
   return (
     <AuthFrame
       title="Welcome back"
@@ -47,25 +78,9 @@ export default function LoginPage() {
         "Didn't finish your profile? We'll pick up where you left off.",
       ]}
     >
-      <form onSubmit={submit} className="max-w-[36rem] space-y-5" noValidate>
-        {error ? <Notice tone="danger">{error}</Notice> : null}
-        <Field label="Email">
-          {(p) => <Input {...p} type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />}
-        </Field>
-        <Field label="Password">
-          {(p) => (
-            <PasswordInput {...p} autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
-          )}
-        </Field>
-        <div className="flex items-center gap-5 pt-2">
-          <Button type="submit" pending={pending} disabled={!email || !password}>
-            Sign in
-          </Button>
-          <Link href="/register" className="text-sm text-primary underline decoration-primary/30 underline-offset-4 hover:decoration-primary">
-            Create an account
-          </Link>
-        </div>
-      </form>
+      <Suspense fallback={<div className="h-48 flex items-center justify-center text-muted text-sm">Loading sign-in...</div>}>
+        <LoginForm />
+      </Suspense>
     </AuthFrame>
   );
 }

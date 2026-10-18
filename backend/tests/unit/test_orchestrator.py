@@ -520,3 +520,28 @@ async def test_api_routes_direct_coverage(container):
             resp = ws.receive_json()
             assert "event" in resp
 
+
+@pytest.mark.asyncio
+async def test_navigation_help_routing(container, registered_user, client_profile, db_session):
+    """Verify that asking how to use the app or navigate returns the full platform guide."""
+    orch: OrchestratorAgent = container.orchestrator
+    user_id = registered_user.id
+    cid = client_profile.client_id
+
+    s = await orch.start_session(user_id, client_id=cid)
+    sid = s["session"]["session_id"]
+
+    for query in [
+        "How do I use this app?",
+        "Where do I find what information and all that",
+        "Can you help me navigate the app?",
+    ]:
+        events = await orch.process_user_message(sid, user_id, cid, query, db_session)
+        advisor_event = next(e for e in events if e.get("agent") == "WealthAdvisor")
+        text = advisor_event.get("text", "")
+        assert "Advice" in text
+        assert "Overview" in text
+        assert "Health review" in text
+        assert "Audit trail" in text
+
+

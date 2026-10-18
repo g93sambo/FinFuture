@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { MobileBar, Sidebar } from "@/components/shell/Sidebar";
 import { Loading, Notice } from "@/components/ui/Feedback";
@@ -9,11 +9,15 @@ import { useAuth } from "@/lib/auth";
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { status, ensureSession, sessionError } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
-    if (status === "anonymous") router.replace("/login");
+    if (status === "anonymous") {
+      const target = pathname && pathname !== "/app" ? `?next=${encodeURIComponent(pathname)}` : "";
+      router.replace(`/login${target}`);
+    }
     if (status === "authenticated") void ensureSession();
-  }, [status, router, ensureSession]);
+  }, [status, router, ensureSession, pathname]);
 
   if (status !== "authenticated") {
     return (

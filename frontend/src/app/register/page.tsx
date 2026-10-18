@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import { AuthFrame } from "@/components/shell/AuthFrame";
 import { Button } from "@/components/ui/Button";
 import { Notice } from "@/components/ui/Feedback";
@@ -10,9 +10,12 @@ import { Field, Input } from "@/components/ui/Field";
 import { PasswordInput } from "@/components/ui/PasswordInput";
 import { useAuth } from "@/lib/auth";
 
-export default function RegisterPage() {
+function RegisterForm() {
   const { register, status } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const nextParam = searchParams?.get("next");
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -46,6 +49,41 @@ export default function RegisterPage() {
   }
 
   return (
+    <form onSubmit={submit} className="max-w-[36rem] space-y-5" noValidate>
+      {error ? <Notice tone="danger">{error}</Notice> : null}
+      <Field label="Your Name (Optional)" hint="How your AI wealth advisor should address you.">
+        {(p) => <Input {...p} type="text" placeholder="e.g. Hillary" value={fullName} onChange={(e) => setFullName(e.target.value)} />}
+      </Field>
+      <Field label="Email">
+        {(p) => <Input {...p} type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />}
+      </Field>
+      <Field label="Password" hint="8 to 72 characters." error={pwError}>
+        {(p) => (
+          <PasswordInput {...p} autoComplete="new-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+        )}
+      </Field>
+      <Field label="Confirm password" error={confirmError}>
+        {(p) => (
+          <PasswordInput {...p} autoComplete="new-password" required value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+        )}
+      </Field>
+      <div className="flex items-center gap-5 pt-2">
+        <Button type="submit" pending={pending} disabled={!email || !password || !confirm || !!pwError || !!confirmError}>
+          Create account
+        </Button>
+        <Link
+          href={nextParam ? `/login?next=${encodeURIComponent(nextParam)}` : "/login"}
+          className="text-sm text-primary underline decoration-primary/30 underline-offset-4 hover:decoration-primary"
+        >
+          Sign in instead
+        </Link>
+      </div>
+    </form>
+  );
+}
+
+export default function RegisterPage() {
+  return (
     <AuthFrame
       title="Open your account"
       lede="Tell us where you are today. It only takes a few minutes."
@@ -58,33 +96,9 @@ export default function RegisterPage() {
         "Your investing experience so far",
       ]}
     >
-      <form onSubmit={submit} className="max-w-[36rem] space-y-5" noValidate>
-        {error ? <Notice tone="danger">{error}</Notice> : null}
-        <Field label="Your Name (Optional)" hint="How your AI wealth advisor should address you.">
-          {(p) => <Input {...p} type="text" placeholder="e.g. Hillary" value={fullName} onChange={(e) => setFullName(e.target.value)} />}
-        </Field>
-        <Field label="Email">
-          {(p) => <Input {...p} type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />}
-        </Field>
-        <Field label="Password" hint="8 to 72 characters." error={pwError}>
-          {(p) => (
-            <PasswordInput {...p} autoComplete="new-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
-          )}
-        </Field>
-        <Field label="Confirm password" error={confirmError}>
-          {(p) => (
-            <PasswordInput {...p} autoComplete="new-password" required value={confirm} onChange={(e) => setConfirm(e.target.value)} />
-          )}
-        </Field>
-        <div className="flex items-center gap-5 pt-2">
-          <Button type="submit" pending={pending} disabled={!email || !password || !confirm || !!pwError || !!confirmError}>
-            Create account
-          </Button>
-          <Link href="/login" className="text-sm text-primary underline decoration-primary/30 underline-offset-4 hover:decoration-primary">
-            Sign in instead
-          </Link>
-        </div>
-      </form>
+      <Suspense fallback={<div className="h-48 flex items-center justify-center text-muted text-sm">Loading...</div>}>
+        <RegisterForm />
+      </Suspense>
     </AuthFrame>
   );
 }
