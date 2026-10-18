@@ -39,36 +39,49 @@ export function AuthShowcase({ points, pointsTitle, words = DEFAULT_WORDS }: { p
       <AuroraBackground />
       <div className="auth-spotlight" aria-hidden />
 
-      <div className="relative z-10">
+      <div data-reveal="down" className="relative z-10">
         <Wordmark inverted />
       </div>
 
       <div className="relative z-10 mt-8 lg:my-auto lg:py-8">
-        <div>
         <p className="text-[2.5rem] leading-[1.02] font-medium sm:text-[3.25rem] lg:text-[3rem] xl:text-[3.75rem]">
-          Your money,
+          <span data-reveal="tilt" className="mr-[0.25em] inline-block" style={{ "--d": 1 } as React.CSSProperties}>
+            Your
+          </span>
+          <span data-reveal="tilt" className="inline-block" style={{ "--d": 2 } as React.CSSProperties}>
+            money,
+          </span>
           <br />
-          <span key={index} className="auth-word font-bold">
-            {words[index]}
+          <span data-reveal="pop" className="inline-block" style={{ "--d": 3.5 } as React.CSSProperties}>
+            <span key={index} className="auth-word font-bold">
+              {words[index]}
+            </span>
           </span>
         </p>
-      </div>
 
-      <div className="mt-8 lg:mt-10">
-        <p className="text-[0.9375rem] font-semibold tracking-wide text-on-primary/75 uppercase">{pointsTitle}</p>
-        <ul className="-mx-6 mt-4 flex snap-x snap-mandatory scroll-px-6 gap-4 overflow-x-auto px-6 pb-2 [scrollbar-width:none] sm:-mx-10 sm:scroll-px-10 sm:px-10 lg:mx-0 lg:block lg:space-y-5 lg:overflow-visible lg:px-0 lg:pb-0">
-          {points.map((p, i) => (
-            <li
-              key={p}
-              className="glass-card w-[16rem] shrink-0 snap-start rounded-feature px-5 py-4 text-[1.0625rem] leading-snug font-medium lg:w-auto lg:py-3 lg:text-[1rem] lg:max-w-[30rem] lg:odd:ml-0 lg:even:ml-12"
-              style={{ "--tilt": `${TILTS[i % TILTS.length]}deg`, "--dur": `${7 + (i % 3)}s`, "--delay": `${-i * 1.3}s` } as React.CSSProperties}
-            >
-              <span className="mr-3 font-bold text-on-primary/60">{i + 1}</span>
-              {p}
-            </li>
-          ))}
-        </ul>
-      </div>
+        <div className="mt-8 lg:mt-10">
+          <p data-reveal="up" style={{ "--d": 5 } as React.CSSProperties} className="text-[0.9375rem] font-semibold tracking-wide text-on-primary/75 uppercase">
+            {pointsTitle}
+          </p>
+          <ul className="-mx-6 mt-4 flex snap-x snap-mandatory scroll-px-6 gap-4 overflow-x-auto px-6 pb-2 [scrollbar-width:none] sm:-mx-10 sm:scroll-px-10 sm:px-10 lg:mx-0 lg:block lg:space-y-5 lg:overflow-visible lg:px-0 lg:pb-0">
+            {points.map((p, i) => (
+              <li
+                key={p}
+                data-reveal="right"
+                className="w-[16rem] shrink-0 snap-start lg:w-auto lg:max-w-[30rem] lg:odd:ml-0 lg:even:ml-12"
+                style={{ "--d": 6 + i } as React.CSSProperties}
+              >
+                <div
+                  className="glass-card rounded-feature px-5 py-4 text-[1.0625rem] leading-snug font-medium lg:py-3 lg:text-[1rem]"
+                  style={{ "--tilt": `${TILTS[i % TILTS.length]}deg`, "--dur": `${7 + (i % 3)}s`, "--delay": `${-i * 1.3}s` } as React.CSSProperties}
+                >
+                  <span className="mr-3 font-bold text-on-primary/60">{i + 1}</span>
+                  {p}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
     </div>
   );

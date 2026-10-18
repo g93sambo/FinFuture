@@ -596,3 +596,69 @@ tspan[font-weight="700"] {
 .font-normal {
   font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
 }
+
+/* ------------------------------------------------------------------------
+ * Reveal on scroll (homepage). RevealOnScroll adds .is-in when an element
+ * marked data-reveal="<variant>" enters the viewport; --d staggers it.
+ * Keyframes only set the starting pose, so each element lands on its own
+ * resting transform (e.g. the tilted step numbers).
+ * --------------------------------------------------------------------- */
+[data-reveal]:not(.is-in) {
+  opacity: 0;
+}
+[data-reveal].is-in {
+  animation-duration: 850ms;
+  animation-timing-function: cubic-bezier(0.2, 1, 0.3, 1);
+  animation-delay: calc(var(--d, 0) * 100ms);
+  animation-fill-mode: backwards;
+}
+[data-reveal="up"].is-in { animation-name: reveal-up; }
+[data-reveal="down"].is-in { animation-name: reveal-down; }
+[data-reveal="left"].is-in { animation-name: reveal-left; }
+[data-reveal="right"].is-in { animation-name: reveal-right; }
+[data-reveal="zoom"].is-in { animation-name: reveal-zoom; }
+[data-reveal="tilt"].is-in { animation-name: reveal-tilt; }
+[data-reveal="sweep"].is-in { animation-name: reveal-sweep; animation-duration: 1100ms; }
+[data-reveal="pop"].is-in,
+[data-reveal="spin"].is-in {
+  animation-timing-function: cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+[data-reveal="pop"].is-in { animation-name: reveal-pop; }
+[data-reveal="spin"].is-in { animation-name: reveal-spin; animation-duration: 1000ms; }
+
+@keyframes reveal-up { from { opacity: 0; translate: 0 40px; } }
+@keyframes reveal-down { from { opacity: 0; translate: 0 -100%; } }
+@keyframes reveal-left { from { opacity: 0; translate: -70px 0; } }
+@keyframes reveal-right { from { opacity: 0; translate: 70px 0; } }
+@keyframes reveal-zoom { from { opacity: 0; scale: 0.85; } }
+@keyframes reveal-tilt { from { opacity: 0; translate: 0 0.6em; rotate: -8deg; filter: blur(6px); } }
+@keyframes reveal-sweep { from { opacity: 0; translate: -40% 0; } }
+@keyframes reveal-pop { from { opacity: 0; scale: 0.3; rotate: -14deg; } }
+@keyframes reveal-spin { from { opacity: 0; scale: 0.3; rotate: -200deg; } }
+
+@media (prefers-reduced-motion: reduce) {
+  [data-reveal]:not(.is-in) {
+    opacity: 1;
+  }
+  [data-reveal].is-in {
+    animation: none !important;
+  }
+}
+
+/* Auth pages: the watermark drifts in, and each form row rises in turn. */
+[data-reveal="drift"].is-in { animation-name: reveal-drift; animation-duration: 1600ms; }
+@keyframes reveal-drift { from { opacity: 0; translate: 30% 0; } }
+[data-reveal="fields"].is-in { animation: none; }
+[data-reveal="fields"].is-in form > * {
+  animation: reveal-up 750ms cubic-bezier(0.2, 1, 0.3, 1) backwards;
+}
+[data-reveal="fields"].is-in form > :nth-child(1) { animation-delay: 500ms; }
+[data-reveal="fields"].is-in form > :nth-child(2) { animation-delay: 600ms; }
+[data-reveal="fields"].is-in form > :nth-child(3) { animation-delay: 700ms; }
+[data-reveal="fields"].is-in form > :nth-child(4) { animation-delay: 800ms; }
+[data-reveal="fields"].is-in form > :nth-child(5) { animation-delay: 900ms; }
+@media (prefers-reduced-motion: reduce) {
+  [data-reveal="fields"].is-in form > * {
+    animation: none !important;
+  }
+}

@@ -75,7 +75,7 @@ export function RuleWall() {
 
   return (
     <div>
-      <div className="rule-tape" aria-hidden>
+      <div className="rule-tape" data-reveal="sweep" aria-hidden>
         <div className="rule-tape__track">
           {tape.map((t, i) => (
             <span key={i} className="flex items-center gap-8 px-4">
