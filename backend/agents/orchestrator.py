@@ -1757,13 +1757,12 @@ class OrchestratorAgent:
         if not proposal:
             executed = await self.c.cache.get_json(f"executed_proposal:{proposal_id}")
             if executed:
-                return [
-                    _event(
-                        "agent_response",
-                        "ExecutionModule",
-                        f"Order for {executed.get('symbol', 'this asset')} has already been confirmed and processed.",
-                    )
-                ]
+                raise TradeBlocked(
+                    [],
+                    [],
+                    reason=f"Duplicate submit rejected: Order for {executed.get('symbol', 'this asset')} has already been confirmed and processed.",
+                    error_type="DuplicateTradeError",
+                )
             raise HTTPException(status_code=404, detail="Trade proposal not found or expired (15 minute window)")
         client_id = proposal["client_id"]
 

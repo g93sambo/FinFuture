@@ -16,6 +16,23 @@ from services.anchoring import compute_merkle_root, generate_merkle_proof, get_a
 router = APIRouter(prefix="/api/v1", tags=["audit"])
 
 
+@router.get("/audit/logs")
+async def get_audit_logs(
+    limit: int = Query(100, ge=1, le=1000),
+    user: DBUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Prompt alias for /audit/{client_id}."""
+    profile = (
+        await db.execute(
+            select(DBClientProfile).where(DBClientProfile.user_id == user.id).order_by(DBClientProfile.created_at.desc())
+        )
+    ).scalars().first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Client profile not found. Complete onboarding first.")
+    return await get_audit_trail(client_id=profile.client_id, limit=limit, user=user, db=db)
+
+
 @router.get("/audit/{client_id}")
 async def get_audit_trail(
     client_id: str,
@@ -46,23 +63,6 @@ async def get_audit_trail(
             for r in rows
         ],
     }
-
-
-@router.get("/audit/logs")
-async def get_audit_logs(
-    limit: int = Query(100, ge=1, le=1000),
-    user: DBUser = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Prompt alias for /audit/{client_id}."""
-    profile = (
-        await db.execute(
-            select(DBClientProfile).where(DBClientProfile.user_id == user.id).order_by(DBClientProfile.created_at.desc())
-        )
-    ).scalars().first()
-    if not profile:
-        raise HTTPException(status_code=404, detail="Client profile not found. Complete onboarding first.")
-    return await get_audit_trail(client_id=profile.client_id, limit=limit, user=user, db=db)
 
 
 @router.get("/audit/{client_id}/verify")
