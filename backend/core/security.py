@@ -24,8 +24,7 @@ from db.models import DBUser, DBClientProfile
 
 logger = logging.getLogger("wealth_advisor.core.security")
 
-# --- Password Hashing Context ---
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+import bcrypt
 
 # --- OAuth2 Scheme for Swagger & REST Endpoints ---
 oauth2_scheme = OAuth2PasswordBearer(
@@ -35,31 +34,35 @@ oauth2_scheme = OAuth2PasswordBearer(
 
 
 # =============================================================================
-# 1. Password Hashing & Verification
+# 1. Password Hashing & Verification (Native Bcrypt)
 # =============================================================================
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
-    Verifies a plaintext password against an existing bcrypt hash.
+    Verifies a plaintext password against an existing bcrypt hash using native bcrypt.
     Safely truncates to 72 bytes to conform with bcrypt limitations.
     """
     if not plain_password or not hashed_password:
         return False
-    # Bcrypt max length is 72 bytes
-    truncated = plain_password.encode("utf-8")[:72].decode("utf-8", errors="ignore")
-    return pwd_context.verify(truncated, hashed_password)
+    try:
+        pw_bytes = plain_password.encode("utf-8")[:72]
+        hash_bytes = hashed_password.encode("utf-8")
+        return bcrypt.checkpw(pw_bytes, hash_bytes)
+    except Exception as e:
+        logger.warning("verify_password failed: %s", e)
+        return False
 
 
 def get_password_hash(password: str) -> str:
     """
-    Generates a salted bcrypt hash for a plaintext password.
+    Generates a salted bcrypt hash for a plaintext password using native bcrypt.
     Safely truncates to 72 bytes to satisfy bcrypt specifications.
     """
     if not password:
         raise ValueError("Password cannot be empty")
-    # Bcrypt max length is 72 bytes
-    truncated = password.encode("utf-8")[:72].decode("utf-8", errors="ignore")
-    return pwd_context.hash(truncated)
+    pw_bytes = password.encode("utf-8")[:72]
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(pw_bytes, salt).decode("utf-8")
 
 
 # =============================================================================
