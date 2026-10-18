@@ -285,7 +285,9 @@ export default function AdvisorPage() {
   }, [sessions, sessionSearch]);
 
   const grouped = useMemo(() => groupSessions(filteredSessions), [filteredSessions]);
-  const hasMessages = items.length > 1 || (items.length === 1 && items[0].from === "you");
+  const hasMessages =
+    items.length > 1 ||
+    (items.length === 1 && (items[0].from === "you" || !items[0].text?.toLowerCase().includes("how can i assist you")));
   const profiling = stage === "PROFILING" && !clientId;
 
   return (

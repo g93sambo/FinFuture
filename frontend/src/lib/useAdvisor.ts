@@ -35,29 +35,19 @@ export function useAdvisor() {
 
   const wsRef = useRef<WebSocket | null>(null);
   const lastApproved = useRef<string | null>(null);
+  const hasInitialized = useRef(false);
   const seeded = useRef<string | null>(null);
-
-  // Initialize activeSessionId from auth session
-  useEffect(() => {
-    if (initialSession && !activeSessionId) {
-      setActiveSessionId(initialSession.session_id);
-      setStage(initialSession.stage || "PROFILING");
-    }
-  }, [initialSession, activeSessionId]);
 
   // Fetch user's session list
   const refreshSessions = useCallback(async () => {
     try {
       const list = await api.getChatSessions();
       setSessions(list);
+      return list;
     } catch {
-      // offline / quiet fallback
+      return [];
     }
   }, []);
-
-  useEffect(() => {
-    void refreshSessions();
-  }, [refreshSessions, activeSessionId]);
 
   const push = useCallback((item: Omit<TranscriptItem, "id" | "at"> & { at?: string }) => {
     setItems((xs) => [...xs, { id: nextId(), at: item.at ?? new Date().toISOString(), ...item }]);
@@ -103,10 +93,107 @@ export function useAdvisor() {
     [push, setClientId],
   );
 
+  // Load a historical chat session
+  const loadSession = useCallback(
+    async (sessionId: string, force = false) => {
+      if (sessionId === activeSessionId && !force) return;
+      setLoadingHistory(true);
+      try {
+        if (typeof window !== "undefined") {
+          localStorage.setItem("finfuture.active_chat_session", sessionId);
+        }
+        const detail = await api.getChatSession(sessionId);
+        setActiveSessionId(detail.session_id);
+        setActiveTitle(detail.title || "Advisory Conversation");
+        setStage(detail.stage || "ADVICE_GENERATION");
+        seeded.current = detail.session_id;
+
+        const converted: TranscriptItem[] = [];
+        const nextProposals: Record<string, ProposalState> = {};
+
+        for (const m of detail.messages) {
+          const from = m.sender === "user" ? ("you" as const) : ("agent" as const);
+          const ev = m.events && m.events.length > 0 ? m.events[0] : undefined;
+
+          if (ev?.event === "trade_proposal" && ev.proposal) {
+            nextProposals[ev.proposal.proposal_id] = "open";
+          }
+          if (ev?.event === "trade_filled" && ev.execution) {
+            nextProposals[ev.execution.proposal_id] = "done";
+          }
+
+          converted.push({
+            id: m.id || nextId(),
+            from,
+            text: m.text || "",
+            event: ev,
+            attachments: m.attachments,
+            at: m.created_at,
+          });
+        }
+
+        if (converted.length > 0) {
+          setItems(converted);
+        } else {
+          setItems([
+            {
+              id: nextId(),
+              from: "agent",
+              text: "Welcome to Orion Wealth Advisor. How can I assist you with your investments today?",
+              event: {
+                event: "agent_response",
+                agent: "WealthAdvisor",
+                text: "Welcome to Orion Wealth Advisor. How can I assist you with your investments today?",
+              },
+              at: new Date().toISOString(),
+            },
+          ]);
+        }
+        setProposals(nextProposals);
+      } catch (e) {
+        console.error("Failed to load session:", e);
+      } finally {
+        setLoadingHistory(false);
+      }
+    },
+    [activeSessionId],
+  );
+
+  // Initialize and restore active session with full message history
+  useEffect(() => {
+    if (hasInitialized.current) return;
+    const token = tokenStore.get();
+    if (!token) return;
+
+    async function initSession() {
+      try {
+        const list = await api.getChatSessions();
+        setSessions(list);
+        hasInitialized.current = true;
+
+        const storedId = typeof window !== "undefined" ? localStorage.getItem("finfuture.active_chat_session") : null;
+        const targetId =
+          (storedId && list.some((s) => s.session_id === storedId) ? storedId : null) ||
+          (list.length > 0 ? list[0].session_id : null) ||
+          initialSession?.session_id;
+
+        if (targetId) {
+          void loadSession(targetId, true);
+        }
+      } catch {
+        if (initialSession?.session_id) {
+          void loadSession(initialSession.session_id, true);
+        }
+      }
+    }
+
+    void initSession();
+  }, [initialSession, loadSession]);
+
   // Seed initial greeting if active session is new
   useEffect(() => {
     if (!initialSession || !activeSessionId || seeded.current === activeSessionId) return;
-    if (activeSessionId === initialSession.session_id) {
+    if (activeSessionId === initialSession.session_id && items.length === 0) {
       seeded.current = activeSessionId;
       setStage(initialSession.stage);
       push({
@@ -115,7 +202,7 @@ export function useAdvisor() {
         text: initialSession.message,
       });
     }
-  }, [initialSession, activeSessionId, push]);
+  }, [initialSession, activeSessionId, items.length, push]);
 
   // Connect WebSocket to currently active session
   useEffect(() => {
@@ -165,53 +252,6 @@ export function useAdvisor() {
 
   const socketOpen = () => wsRef.current?.readyState === WebSocket.OPEN;
 
-  // Load a historical chat session
-  const loadSession = useCallback(
-    async (sessionId: string) => {
-      if (sessionId === activeSessionId) return;
-      setLoadingHistory(true);
-      try {
-        const detail = await api.getChatSession(sessionId);
-        setActiveSessionId(detail.session_id);
-        setActiveTitle(detail.title || "Advisory Conversation");
-        setStage(detail.stage || "ADVICE_GENERATION");
-        seeded.current = detail.session_id;
-
-        const converted: TranscriptItem[] = [];
-        const nextProposals: Record<string, ProposalState> = {};
-
-        for (const m of detail.messages) {
-          const from = m.sender === "user" ? ("you" as const) : ("agent" as const);
-          const ev = m.events && m.events.length > 0 ? m.events[0] : undefined;
-
-          if (ev?.event === "trade_proposal" && ev.proposal) {
-            nextProposals[ev.proposal.proposal_id] = "open";
-          }
-          if (ev?.event === "trade_filled" && ev.execution) {
-            nextProposals[ev.execution.proposal_id] = "done";
-          }
-
-          converted.push({
-            id: m.id || nextId(),
-            from,
-            text: m.text || "",
-            event: ev,
-            attachments: m.attachments,
-            at: m.created_at,
-          });
-        }
-
-        setItems(converted);
-        setProposals(nextProposals);
-      } catch (e) {
-        console.error("Failed to load session:", e);
-      } finally {
-        setLoadingHistory(false);
-      }
-    },
-    [activeSessionId],
-  );
-
   // Create a brand new chat session
   const createNewSession = useCallback(
     async (title = "New Advisory Conversation") => {
@@ -222,6 +262,9 @@ export function useAdvisor() {
         setActiveTitle(res.title || title);
         setStage(res.stage || "ADVICE_GENERATION");
         seeded.current = res.session_id;
+        if (typeof window !== "undefined") {
+          localStorage.setItem("finfuture.active_chat_session", res.session_id);
+        }
 
         setItems([
           {
@@ -248,12 +291,11 @@ export function useAdvisor() {
     async (sessionId: string) => {
       try {
         await api.deleteChatSession(sessionId);
-        await refreshSessions();
+        const remaining = await refreshSessions();
         if (sessionId === activeSessionId) {
-          // Switch to another session or create new
-          const remaining = sessions.filter((s) => s.session_id !== sessionId);
-          if (remaining.length > 0) {
-            void loadSession(remaining[0].session_id);
+          const next = remaining.filter((s) => s.session_id !== sessionId);
+          if (next.length > 0) {
+            void loadSession(next[0].session_id, true);
           } else {
             void createNewSession("New Advisory Conversation");
           }
@@ -262,12 +304,15 @@ export function useAdvisor() {
         console.error("Failed to delete session:", e);
       }
     },
-    [activeSessionId, sessions, refreshSessions, loadSession, createNewSession],
+    [activeSessionId, refreshSessions, loadSession, createNewSession],
   );
 
   const restSend = useCallback(
     async (text: string, attachments?: ChatMessageAttachment[]) => {
       if (!activeSessionId) return;
+      if (typeof window !== "undefined") {
+        localStorage.setItem("finfuture.active_chat_session", activeSessionId);
+      }
       try {
         const res = await api.sendMessage(activeSessionId, text, attachments);
         ingest(res.events);
@@ -284,6 +329,9 @@ export function useAdvisor() {
     (text: string, attachments?: ChatMessageAttachment[]) => {
       const t = text.trim();
       if ((!t && (!attachments || attachments.length === 0)) || !activeSessionId) return;
+      if (typeof window !== "undefined") {
+        localStorage.setItem("finfuture.active_chat_session", activeSessionId);
+      }
       push({ from: "you", text: t, attachments });
       setWaiting(true);
       if (socketOpen()) {

@@ -128,7 +128,7 @@ async def _handle_connection(websocket: WebSocket, session_id: Optional[str], to
         session = None
         if session_id:
             try:
-                session = await orch.load_session(session_id, user.id)
+                session = await orch.load_session(session_id, user.id, db=db)
             except Exception:
                 logger.warning("Session %s not found for user %s; starting fresh session", session_id, user.id)
                 session = None
@@ -139,7 +139,7 @@ async def _handle_connection(websocket: WebSocket, session_id: Optional[str], to
                     select(DBClientProfile).where(DBClientProfile.user_id == user.id).order_by(DBClientProfile.created_at.desc())
                 )
             ).scalars().first()
-            started = await orch.start_session(user.id, client_id=existing.client_id if existing else None)
+            started = await orch.start_session(user.id, client_id=existing.client_id if existing else None, db=db)
             session_id = started["session"]["session_id"]
             session = started["session"]
 
