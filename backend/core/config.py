@@ -248,11 +248,13 @@ class Settings(BaseSettings):
     def async_database_url(self) -> str:
         """
         Returns a normalized database URL with asynchronous driver prefixes.
-        Converts 'postgresql://' -> 'postgresql+asyncpg://'
+        Converts 'postgres://' or 'postgresql://' -> 'postgresql+asyncpg://'
         Converts 'sqlite://' -> 'sqlite+aiosqlite://'
         """
         url = self.database_url.strip()
-        if url.startswith("postgresql://"):
+        if url.startswith("postgres://"):
+            return url.replace("postgres://", "postgresql+asyncpg://", 1)
+        if url.startswith("postgresql://") and not url.startswith("postgresql+asyncpg://"):
             return url.replace("postgresql://", "postgresql+asyncpg://", 1)
         if url.startswith("sqlite://") and not url.startswith("sqlite+aiosqlite://"):
             return url.replace("sqlite://", "sqlite+aiosqlite://", 1)
