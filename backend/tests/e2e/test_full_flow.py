@@ -5,8 +5,6 @@ Runs the real FastAPI app (lifespan, routers, agents, DB, cache) in-process with
 simulated paper fills (DRY_RUN) and no network access to the LLM or broker.
 """
 
-import os
-import re
 import sqlite3
 import uuid
 
@@ -200,7 +198,9 @@ def test_audit_chain_verifies_then_detects_tampering(client, user_a):
     assert len(entries) >= 3
     assert client.get(f"/api/v1/audit/{cid}/verify", headers=h).json()["valid"] is True
 
-    db_path = re.sub(r"^sqlite\+aiosqlite:///", "", os.environ["DATABASE_URL"])
+    # Use the engine the app actually connected to; another conftest may have changed DATABASE_URL since.
+    from db.database import engine
+    db_path = engine.url.database
     con = sqlite3.connect(db_path)
     con.execute("UPDATE audit_log SET details = '{\"tampered\": true}' WHERE id = ?", (entries[-1]["entry_id"],))
     con.commit()

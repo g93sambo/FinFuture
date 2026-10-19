@@ -121,7 +121,7 @@ def compute_black_litterman(
         conf = max(0.01, min(0.99, view.confidence))
         uncertainty_scale = (1.0 - conf) / conf
         # Variance of view from prior: p_i * (tau * Sigma) * p_i^T
-        v_var = float(p[i : i + 1] @ (tau * sigma) @ p[i : i + 1].T)
+        v_var = (p[i : i + 1] @ (tau * sigma) @ p[i : i + 1].T).item()
         omega_diag[i] = max(1e-6, v_var * uncertainty_scale)
 
     omega = np.diag(omega_diag)

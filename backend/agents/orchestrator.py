@@ -16,12 +16,13 @@ chat endpoint and the WebSocket endpoint share exactly the same behaviour.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -1793,15 +1794,20 @@ class OrchestratorAgent:
     ) -> List[Dict[str, Any]]:
         proposal = await self.c.cache.get_json(f"proposal:{proposal_id}")
         if not proposal:
+            audit_window_start = datetime.now(timezone.utc) - timedelta(seconds=PROPOSAL_TTL_SECONDS + 60)
             executed = await self.c.cache.get_json(f"executed_proposal:{proposal_id}")
             if not executed:
                 # Persistent DB check: query audit logs for TRADE_EXECUTED with this proposal_id
                 try:
+                    # A proposal can only be recovered inside its TTL, so only executions from that
+                    # window (plus clock-skew margin) can be replays of it.
                     stmt_exec = (
                         select(DBAuditLog)
-                        .where(DBAuditLog.event_type == "TRADE_EXECUTED")
+                        .where(
+                            DBAuditLog.event_type == "TRADE_EXECUTED",
+                            DBAuditLog.timestamp >= audit_window_start,
+                        )
                         .order_by(desc(DBAuditLog.timestamp))
-                        .limit(100)
                     )
                     recent_execs = (await db.execute(stmt_exec)).scalars().all()
                     for log in recent_execs:
@@ -1824,9 +1830,11 @@ class OrchestratorAgent:
             try:
                 stmt_prop = (
                     select(DBAuditLog)
-                    .where(DBAuditLog.event_type == "TRADE_PROPOSED")
+                    .where(
+                        DBAuditLog.event_type == "TRADE_PROPOSED",
+                        DBAuditLog.timestamp >= audit_window_start,
+                    )
                     .order_by(desc(DBAuditLog.timestamp))
-                    .limit(50)
                 )
                 recent_props = (await db.execute(stmt_prop)).scalars().all()
                 for log in recent_props:
@@ -1849,6 +1857,25 @@ class OrchestratorAgent:
         if profile is None or str(profile.user_id or "") != str(user_id):
             raise HTTPException(status_code=403, detail="Proposal does not belong to this user")
 
+        # Red-tier orders (> $1,000 or > 5% NAV) always need step-up confirmation. An approval
+        # that arrives without it (chat "yes", WebSocket approve, bare REST call) is turned back
+        # before compliance so it neither executes nor counts as a security incident; the
+        # proposal stays pending for the trade ticket.
+        tier = self.c.compliance.classify_trade_permission_tier(
+            float(proposal.get("notional_value") or 0.0), float(proposal.get("projected_weight") or 0.0)
+        )
+        if approved and tier["requires_step_up_auth"] and mfa_code is None:
+            reason = (
+                f"{tier['step_up_reason']} Open the trade ticket for this proposal and enter the "
+                "6-digit step-up code with the fiduciary attestation to approve it."
+            )
+            raise TradeBlocked(
+                [],
+                [_event("error", "ComplianceGuard", text=reason, error="StepUpRequiredError", proposal_id=str(proposal_id))],
+                reason=reason,
+                error_type="StepUpRequiredError",
+            )
+
         approval_ts = datetime.now(timezone.utc)
         events: List[Dict[str, Any]] = []
         if approved:
@@ -1869,7 +1896,7 @@ class OrchestratorAgent:
             "currency": proposal.get("currency"),
             "mfa_code": mfa_code,
             "fiduciary_attested": fiduciary_attested,
-            "enforce_step_up_mfa": (mfa_code is not None or fiduciary_attested is not None),
+            "enforce_step_up_mfa": True,
         }
         try:
             check = await self.c.compliance.check_trade(db, client_id, trade, profile)
@@ -1880,8 +1907,9 @@ class OrchestratorAgent:
             for v in exc.violations:
                 rid = getattr(v, "rule_id", "RULE")
                 rname = getattr(v, "rule_name", rid)
-                desc = getattr(v, "description", "") or getattr(v, "details", "") or str(v)
-                violation_details.append(f"{rid} ({rname}): {desc}")
+                # Not named "desc": that would shadow sqlalchemy.desc used earlier in this method
+                v_desc = getattr(v, "description", "") or getattr(v, "details", "") or str(v)
+                violation_details.append(f"{rid} ({rname}): {v_desc}")
             violation_text = "Trade blocked by regulatory & compliance rules:\n• " + "\n• ".join(violation_details)
             self.c.compliance.record_security_incident(str(user_id), violation_text, incident_type="TRADE_COMPLIANCE_BLOCK")
             events.append(

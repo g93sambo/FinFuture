@@ -181,6 +181,46 @@ async def test_compliance_enforces_daily_cap_and_step_up_mfa():
     )
     assert res.passed is True
 
+    # 4. Regression (RISK-14): omitting the step-up fields no longer skips the gate
+    with pytest.raises(ComplianceViolationError) as exc_omitted:
+        await guard.check_trade(
+            None,
+            "test-cap-client",
+            {
+                "proposal_id": proposal_id,
+                "symbol": "BND",
+                "side": "BUY",
+                "qty": 50,
+                "notional_value": 3_600.0,
+                "projected_weight": 0.04,
+                "user_approved": True,
+                "user_approved_at": now_iso,
+            },
+            profile,
+        )
+    assert any(v.rule_id == "PERM-STEP-UP-MFA" for v in exc_omitted.value.violations)
+
+    # 5. Regression (RISK-07): the former static demo code is no longer accepted
+    with pytest.raises(ComplianceViolationError) as exc_static:
+        await guard.check_trade(
+            None,
+            "test-cap-client",
+            {
+                "proposal_id": proposal_id,
+                "symbol": "BND",
+                "side": "BUY",
+                "qty": 50,
+                "notional_value": 3_600.0,
+                "projected_weight": 0.04,
+                "user_approved": True,
+                "user_approved_at": now_iso,
+                "mfa_code": "482910",
+                "fiduciary_attested": True,
+            },
+            profile,
+        )
+    assert any(v.rule_id == "PERM-STEP-UP-MFA" for v in exc_static.value.violations)
+
 
 def test_pii_redaction_and_context_pseudonymization():
     """Verify direct PII is stripped before LLM calls and ClientFinancialContext uses ANON-XXXXXXXX pseudonyms."""
@@ -333,3 +373,30 @@ async def test_webank_fisco_bcos_fate_and_wealth_shelf():
     assert "WBK6M" in ranked_syms
     assert comp.score_reputation("WeBank Live+ Cash Management Fund", "WBKCASH") == 10.0
 
+
+
+def test_circuit_breaker_reset_only_clears_simulated_drills():
+    """Regression (RISK-17): a lock caused by real blocked attempts cannot be self-reset."""
+    guard = ComplianceGuard()
+    drill, real = "cb-drill-user", "cb-real-user"
+    guard.reset_circuit_breaker(drill)
+    guard.reset_circuit_breaker(real)
+    guard._circuit_breaker_last_real_incident.pop(drill, None)
+    guard._circuit_breaker_last_real_incident.pop(real, None)
+
+    for _ in range(3):
+        guard.record_security_incident(drill, "drill", incident_type=guard.SIMULATED_INCIDENT_TYPE)
+    assert guard.get_circuit_breaker_status(drill)["is_locked"] is True
+    allowed, _ = guard.can_user_reset_circuit_breaker(drill)
+    assert allowed is True
+
+    guard.record_security_incident(real, "drill", incident_type=guard.SIMULATED_INCIDENT_TYPE)
+    guard.record_security_incident(real, "blocked trade", incident_type="TRADE_COMPLIANCE_BLOCK")
+    guard.record_security_incident(real, "drill", incident_type=guard.SIMULATED_INCIDENT_TYPE)
+    assert guard.get_circuit_breaker_status(real)["is_locked"] is True
+    allowed, reason = guard.can_user_reset_circuit_breaker(real)
+    assert allowed is False
+    assert "unlocks automatically" in reason
+
+    guard._circuit_breaker_last_real_incident.pop(real, None)
+    guard.reset_circuit_breaker(real)

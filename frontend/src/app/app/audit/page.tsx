@@ -171,8 +171,18 @@ function Audit({ clientId }: { clientId: string }) {
                   <span className="text-xs font-semibold uppercase tracking-wider text-ink">
                     WeBank FISCO BCOS v3.6 Consortium Receipt
                   </span>
-                  <Tag tone="success">{fiscoReceipt.consensus}</Tag>
+                  {fiscoReceipt.onchain ? (
+                    <Tag tone="success">{fiscoReceipt.consensus}</Tag>
+                  ) : (
+                    <Tag tone="warning">Simulated · {fiscoReceipt.status}</Tag>
+                  )}
                 </div>
+                {!fiscoReceipt.onchain ? (
+                  <p className="mb-3 text-[13px] text-muted">
+                    No transaction was submitted to a FISCO BCOS node. The hash and event ID below are derived
+                    locally from the Merkle root and do not prove on-chain anchoring.
+                  </p>
+                ) : null}
                 <Ledger
                   rows={[
                     { label: "Consortium Engine", value: `${fiscoReceipt.engine} · Group ${fiscoReceipt.group_id}` },

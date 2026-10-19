@@ -222,7 +222,7 @@ async def test_state_machine_out_of_order_approvals(container, registered_user, 
 
 
 @pytest.mark.asyncio
-async def test_state_machine_expired_proposal_rejection(container, registered_user, verified_client_profile, db_session):
+async def test_state_machine_expired_proposal_rejection(container, registered_user, verified_client_profile, db_session, monkeypatch):
     """Ensure expired proposals (evicted from cache) fail gracefully and reject approval."""
     orch: OrchestratorAgent = container.orchestrator
     user_id = registered_user.id
@@ -234,8 +234,10 @@ async def test_state_machine_expired_proposal_rejection(container, registered_us
     proposal = await orch.create_trade_proposal(db_session, cid, "BND", "BUY", 5.0, session_id=sid)
     pid = proposal["proposal_id"]
 
-    # Simulate proposal cache TTL expiration by deleting key
+    # Simulate TTL expiration: evict the cache key and shrink the TTL so the audit-log
+    # recovery path also treats the proposal as expired
     await container.cache.delete(f"proposal:{pid}")
+    monkeypatch.setattr("agents.orchestrator.PROPOSAL_TTL_SECONDS", 0)
 
     # Approving expired proposal must raise 404
     with pytest.raises(HTTPException) as exc_info:

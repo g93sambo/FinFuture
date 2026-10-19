@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import time
+from typing import Dict, List, Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr, Field
@@ -14,6 +17,20 @@ from db.database import get_db
 from db.models import DBUser
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+
+# Per-account failed-login throttle (in-process; resets on restart and is not shared across instances)
+LOGIN_MAX_FAILURES = 5
+LOGIN_FAILURE_WINDOW_SECONDS = 15 * 60
+_failed_logins: Dict[str, List[float]] = {}
+
+
+def _recent_failures(email: str, now: float) -> List[float]:
+    failures = [t for t in _failed_logins.get(email, []) if now - t < LOGIN_FAILURE_WINDOW_SECONDS]
+    if failures:
+        _failed_logins[email] = failures
+    else:
+        _failed_logins.pop(email, None)
+    return failures
 
 
 class RegisterRequest(BaseModel):
@@ -89,9 +106,21 @@ async def login(
             detail="Missing username/email or password in request",
         )
 
-    result = await db.execute(select(DBUser).where(DBUser.email == email.lower()))
+    email_key = email.lower()
+    now = time.time()
+    failures = _recent_failures(email_key, now)
+    if len(failures) >= LOGIN_MAX_FAILURES:
+        retry_after = int(LOGIN_FAILURE_WINDOW_SECONDS - (now - failures[0])) + 1
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed login attempts for this account. Try again later.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+    result = await db.execute(select(DBUser).where(DBUser.email == email_key))
     user = result.scalars().first()
     if user is None or not verify_password(password, user.hashed_password):
+        _failed_logins.setdefault(email_key, []).append(now)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
@@ -99,6 +128,7 @@ async def login(
         )
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Inactive user account")
+    _failed_logins.pop(email_key, None)
     return TokenResponse(access_token=create_access_token({"sub": user.id}))
 
 

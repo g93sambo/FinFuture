@@ -10,10 +10,14 @@ import logging
 import os
 from functools import lru_cache
 from typing import Optional, List
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger("wealth_advisor.core.config")
+
+_DEV_SECRET_KEY = "dev-insecure-secret-key-change-in-production-min-32-chars!"
+_DEV_AUDIT_SECRET_KEY = "dev-insecure-audit-hmac-key-change-in-production-min-32!"
+_MIN_SECRET_LENGTH = 32
 
 
 class Settings(BaseSettings):
@@ -32,10 +36,14 @@ class Settings(BaseSettings):
         default="http://localhost:3000,http://127.0.0.1:3000",
         description="Allowed CORS origins (comma-separated string, or '*' for open)"
     )
+    cors_origin_regex: str = Field(
+        default=r"https://fin-?future(-[a-z0-9-]+)?\.vercel\.app|http://localhost:\d+|http://127\.0\.0\.1:\d+",
+        description="Regex of additional allowed origins: this project's Vercel production/preview domains and local dev"
+    )
 
     # --- Security & JWT Authentication ---
     secret_key: str = Field(
-        default="dev-insecure-secret-key-change-in-production-min-32-chars!",
+        default=_DEV_SECRET_KEY,
         description="Secret key for JWT token signature"
     )
     jwt_algorithm: str = Field(default="HS256", description="JWT cryptographic algorithm")
@@ -45,7 +53,7 @@ class Settings(BaseSettings):
         description="Access token validity lifetime in minutes"
     )
     audit_secret_key: str = Field(
-        default="dev-insecure-audit-hmac-key-change-in-production-min-32!",
+        default=_DEV_AUDIT_SECRET_KEY,
         description="Secret key for HMAC-SHA256 audit log signing"
     )
 
@@ -174,6 +182,29 @@ class Settings(BaseSettings):
                 "'ALLOW_AUTONOMOUS_EXECUTION' must be False. The advisor is strictly non-discretionary."
             )
         return v
+
+    @model_validator(mode="after")
+    def guard_production_secrets(self) -> "Settings":
+        """
+        Refuse to start in production with the built-in development signing keys or short keys:
+        anyone who knows them could forge JWTs (SECRET_KEY) or re-sign the audit chain (AUDIT_SECRET_KEY).
+        """
+        if self.environment.strip().lower() != "production":
+            return self
+        for name, value, dev_default in (
+            ("SECRET_KEY", self.secret_key, _DEV_SECRET_KEY),
+            ("AUDIT_SECRET_KEY", self.audit_secret_key, _DEV_AUDIT_SECRET_KEY),
+        ):
+            if not value or value == dev_default or len(value) < _MIN_SECRET_LENGTH:
+                raise ValueError(
+                    f"CRITICAL SECURITY GUARD: {name} must be set to a unique random value of at least "
+                    f"{_MIN_SECRET_LENGTH} characters when ENVIRONMENT=production."
+                )
+        if self.secret_key == self.audit_secret_key:
+            raise ValueError(
+                "CRITICAL SECURITY GUARD: SECRET_KEY and AUDIT_SECRET_KEY must be different values."
+            )
+        return self
 
     @field_validator("alpaca_paper")
     @classmethod

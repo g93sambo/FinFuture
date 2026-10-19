@@ -90,7 +90,7 @@ flowchart TD
 
 ### 2.4 Restart resilience
 
-Proposals and locks live in Redis when it is available, otherwise in process memory. Two database fallbacks (commit `e7e217d`) keep the trade path correct across a restart:
+Proposals and locks live in Redis when it is available, otherwise in process memory. Two database fallbacks keep the trade path correct across a restart. Both query audit entries inside the proposal TTL window (15 min + 60 s skew margin). They were added in `e7e217d`, but a variable-shadowing bug stopped them running until the 2026-10-19 fix. A regression test now covers both.
 
 - **Proposal recovery:** if a `proposal_id` is not in the cache, `handle_trade_approval` looks it up in recent `TRADE_PROPOSED` audit entries. It accepts the proposal only if it is still inside the 15-minute TTL.
 - **Replay rejection:** an already-executed proposal is found in `TRADE_EXECUTED` audit entries and rejected with `DuplicateTradeError` (HTTP 409). Separately, `ExecutionModule` rejects an identical client, symbol and side committed in the last 30 s.
@@ -174,6 +174,9 @@ A declarative task graph dispatches eight specialist roles (macro, financial, in
 
 ### 4.1 Identity and tenancy
 - bcrypt-hashed passwords (72-byte truncation handled explicitly); HS256 JWT with a configurable lifetime (default 60 min).
+- Five failed logins for one account within 15 minutes return HTTP 429 with `Retry-After`. The counter is in-process.
+- With `ENVIRONMENT=production` the app refuses to start if `SECRET_KEY` or `AUDIT_SECRET_KEY` is the development default, shorter than 32 characters, or identical to the other.
+- CORS allows the configured `CORS_ORIGINS` plus `CORS_ORIGIN_REGEX`. The regex defaults to this project's Vercel domains and localhost.
 - Every client-scoped route calls `verify_client_ownership`, so one user cannot read another's profile, portfolio, trades or audit log.
 - WebSocket sessions are bound to the authenticated user; a connection to another tenant's session is closed with code **1008**.
 
@@ -192,8 +195,8 @@ A declarative task graph dispatches eight specialist roles (macro, financial, in
 - **12 rules:** `SUIT-001..003`, `CONC-001..003`, `REG-001..004`, `AML-001..002`.
 - **Permission gates:** `PERM-TIER-5`, `PERM-CIRCUIT-BREAKER`, `PERM-WHITELIST`, `PERM-CAP-DAILY`, `PERM-STEP-UP-MFA`.
 - **Limits:** per-trade \$100,000; rolling 24 h \$250,000; 129-symbol whitelist (`ALLOWED_TRADING_SYMBOLS`); 15-minute approval freshness; 30-second double-submit lock (cache lock plus a durable PostgreSQL check on client + symbol + side).
-- **Step-up confirmation:** orders over \$1,000 or 5 % of NAV need a 6-digit code and an attestation. The code is derived from the `proposal_id`, so this is demonstration-grade friction, not a second factor (see `RISK-07` and `RISK-14` in the self-assessment).
-- **Circuit breaker:** ≥ 3 violations within 60 s locks execution for 15 minutes.
+- **Step-up confirmation:** orders over \$1,000 or 5 % of NAV need the proposal's 6-digit code and an attestation, on every approval path. An approval that arrives without the code (chat "yes", WebSocket approve, bare REST call) is turned back with `StepUpRequiredError`, and the proposal stays pending. The code is derived from the `proposal_id`, so this is demonstration-grade friction, not a second factor (`RISK-07` in the self-assessment).
+- **Circuit breaker:** ≥ 3 violations within 60 s locks execution for 15 minutes. The compliance console's drill button records `SIMULATED_DRILL` incidents. Only a lock caused entirely by drills can be reset by the user; otherwise the reset endpoint returns HTTP 423.
 
 ### 4.4 Prompt-injection and privacy controls
 - **Inbound:** `RULE-09` scans user text for jailbreak and bypass patterns.
@@ -205,7 +208,7 @@ A declarative task graph dispatches eight specialist roles (macro, financial, in
 - `entry_hash = SHA-256(prev_hash ‖ client_id ‖ event_type ‖ canonical_details ‖ timestamp)`, starting from a 64-zero genesis hash.
 - Each entry is signed with HMAC-SHA-256; the chain can be re-verified with `GET /api/v1/audit/{client_id}/verify` or `tools/verify_audit.py`.
 - Entries are batched into an RFC 6962 Merkle tree; inclusion proofs are served at `/audit/{client_id}/merkle-proof/{entry_id}`.
-- **Anchoring:** the Merkle root can be written to Ethereum Sepolia (a real signed transaction when `SEPOLIA_RPC_URL`, key and contract are configured). Mainnet (chain ID 1) is hard-rejected. The FISCO BCOS path currently only checks the node's block height and builds a hash-derived receipt; it does not yet submit a transaction (`RISK-16`). With no RPC endpoint configured both paths return a labelled `dry_run` receipt.
+- **Anchoring:** the Merkle root can be written to Ethereum Sepolia (a real signed transaction when `SEPOLIA_RPC_URL`, key and contract are configured). Mainnet (chain ID 1) is hard-rejected. The FISCO BCOS path currently only checks the node's block height and builds a hash-derived receipt. It does not submit a transaction, so the receipt carries `status="simulated"` and `onchain=false`, and the UI tags it as simulated (`RISK-16`). With no RPC endpoint configured both paths return a labelled `dry_run` receipt.
 
 ### 4.6 Execution safety
 Paper trading only: the Alpaca base URL is validated at startup and live endpoints are refused. `ALLOW_AUTONOMOUS_EXECUTION` must be `false` or the application will not start.
@@ -238,23 +241,27 @@ Full machine-readable specs: `GET /openapi.json` (REST) and the AsyncAPI documen
 | Research E2E | `tests/e2e_research/` | Four-tier requirement-driven DAG tests |
 | Live production | `evidence/` (see the evidence guide) | Zero-mock run against the deployed Render and Vercel apps |
 
-Local run of the full Python suite (2026-10-19, `backend/tests` + `tests`): **898 passed, 8 failed (906 total)**. The security and compliance suites pass in full (208 / 208). The failures, with their causes:
+Local run of the full Python suite (2026-10-19, `backend/tests` + `tests`): **913 passed, 0 failed**.
 
-| Test | Cause |
-| :--- | :--- |
-| `e2e/test_full_flow::test_audit_chain_verifies_then_detects_tampering`, `e2e/test_spec_scenarios::test_s07_…tamper_check` | The test opens the SQLite file by path to tamper with it, but the app wrote to a different database file (`no such table: audit_log`). This is a test-harness problem, not a chain-verification failure. |
-| `test_challenger_m4_execution` (3 tests: TTL release, cross-client stress, approval-freshness boundary) | The tests mock the clock or the cache lock. The durable 30 s duplicate check added in `e7e217d` reads the real `trades` table and real time, so it rejects the follow-up order. The tests need updating for the new check. |
-| `test_black_litterman::test_black_litterman_bullish_view_shifts_weight_positively` | `services/black_litterman.py:124` converts a 1-element array with `float()`. Recent NumPy versions reject this. **Real bug:** pin NumPy or use `.item()`. |
-| `e2e_research/test_tier3_dag_workflows::test_non_discretionary_paper_trading_guard` | The test expects a different rule ID, but `PERM-WHITELIST` now blocks the test symbol first. The assertion is out of date; the block itself is correct. |
-| `integration/test_data_layer_challenger::test_duplicate_symbols_in_get_history_reveals_bug` | Adversarial "challenger" test written to expose a known edge case: duplicate symbols passed to `get_history`. |
+An earlier run the same day had 8 failures. They were fixed as follows:
 
-Live production run (2026-10-18): **57 / 57 operations passed, 0 HTTP 500s**, covering auth, chat persistence in PostgreSQL, trade execution and 30 s duplicate lock, compliance, audit-chain verification, frontend assets and WebSocket handshake. Raw telemetry: `evidence/live_e2e_results.json`.
+| Test | Cause | Fix |
+| :--- | :--- | :--- |
+| `test_black_litterman::test_black_litterman_bullish_view_shifts_weight_positively` | **Real bug:** `services/black_litterman.py` called `float()` on a 1×1 array, which NumPy 2.x rejects | Use `.item()` |
+| `integration/test_data_layer_challenger::…duplicate_symbols…` | **Real bug:** `get_history(["SPY", "SPY"])` built a duplicate column and crashed | Symbols are deduplicated; the test now asserts the fixed behaviour |
+| `test_challenger_m4_execution` (3 tests) | The tests shared one in-memory SQLite connection across concurrent sessions. They also expired only the cache lock, not the durable 30 s database check. | File-backed test DB; tests also expire the durable check |
+| `e2e/test_full_flow::…tamper…`, `e2e/test_spec_scenarios::test_s07_…` | A second conftest changes `DATABASE_URL` after the app connected, so the tests tampered with the wrong file | Tests read the path from the live engine |
+| `e2e_research/test_tier3_dag_workflows::test_non_discretionary_paper_trading_guard` | Used symbol `VT`, which `PERM-WHITELIST` correctly blocks | Uses `VTI` |
+
+Fixing those also exposed two silent production bugs in `agents/orchestrator.py`. A local variable `desc` shadowed `sqlalchemy.desc`, which disabled the restart fallbacks (§2.4). `asyncio` was never imported, so the LLM's parallel tool dispatch raised `NameError` and was swallowed as "Agentic chat turn failed". Both are fixed.
+
+Live production run (2026-10-18, before the 2026-10-19 fixes): **57 / 57 operations passed, 0 HTTP 500s**, covering auth, chat persistence in PostgreSQL, trade execution and 30 s duplicate lock, compliance, audit-chain verification, frontend assets and WebSocket handshake. Raw telemetry: `evidence/live_e2e_results.json`.
 
 Reproduce locally:
 
-```powershell
-$env:PYTHONPATH="backend;."
-python -m pytest backend/tests tests -q
+```bash
+PYTHONPATH=backend:. python -m pytest backend/tests tests -q   # PowerShell: $env:PYTHONPATH="backend;."
+(cd frontend && npx tsc --noEmit)
 ```
 
 ---
@@ -266,7 +273,7 @@ python -m pytest backend/tests tests -q
 | Backend | Render web service | `DATABASE_URL`, `SECRET_KEY`, `AUDIT_SECRET_KEY`, `CORS_ORIGINS`, `ALPACA_*`, `OPENAI_API_KEY`, `DRY_RUN` |
 | Frontend | Vercel | `NEXT_PUBLIC_API_URL` = the Render service URL (the WebSocket URL is derived from it automatically) |
 
-Environment variable names are defined in `backend/core/config.py` and listed in `.env.example`. **Production must override** `SECRET_KEY` and `AUDIT_SECRET_KEY`; the built-in defaults are development placeholders.
+Environment variable names are defined in `backend/core/config.py` and listed in `.env.example`. With `ENVIRONMENT=production`, the backend **refuses to start** unless `SECRET_KEY` and `AUDIT_SECRET_KEY` are set to two different random values of at least 32 characters. Generate them with `python -c "import secrets; print(secrets.token_urlsafe(48))"`. `CORS_ORIGIN_REGEX` can override the default allowed Vercel domains.
 
 Local run:
 

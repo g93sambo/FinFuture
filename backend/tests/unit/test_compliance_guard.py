@@ -637,7 +637,8 @@ async def test_trade_conc_001_override_with_fiduciary_attestation(compliance_gua
         "user_approved_at": datetime.now(timezone.utc),
         "projected_weight": 0.28,  # > 0.15
         "fiduciary_attested": True,  # Affirmative client waiver
-        "mfa_code": "482910",
+        "proposal_id": "prop-482910-demo",
+        "mfa_code": "482910",  # derived from the proposal_id digits
         "enforce_step_up_mfa": True,
     }
     res = await compliance_guard.check_trade(None, "c1", trade, mock_profile)

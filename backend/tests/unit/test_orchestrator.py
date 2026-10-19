@@ -345,6 +345,24 @@ async def test_unapproved_trade_fails_reg003(container, db_session, registered_u
     assert any("REG-003" in str(v.rule_id if hasattr(v, "rule_id") else v) for v in exc_info.value.violations)
 
 
+@pytest.mark.asyncio
+async def test_proposal_recovered_from_audit_log_after_cache_loss(container, db_session, registered_user, client_profile):
+    """A restart that drops the cache still lets the user approve within the TTL, and blocks replays."""
+    orch: OrchestratorAgent = container.orchestrator
+    proposal = await orch.create_trade_proposal(db_session, client_profile.client_id, "BND", "BUY", 2.0)
+    pid = proposal["proposal_id"]
+    await orch.c.cache.delete(f"proposal:{pid}")
+
+    events = await orch.handle_trade_approval(db_session, registered_user.id, pid, approved=True)
+    assert any(e.get("event") == "trade_filled" for e in events)
+
+    await orch.c.cache.delete(f"proposal:{pid}")
+    await orch.c.cache.delete(f"executed_proposal:{pid}")
+    with pytest.raises(TradeBlocked) as exc_info:
+        await orch.handle_trade_approval(db_session, registered_user.id, pid, approved=True)
+    assert exc_info.value.error_type == "DuplicateTradeError"
+
+
 # ============================================================================
 # 5. Facade & Canonical Method Equivalence Tests
 # ============================================================================

@@ -138,7 +138,8 @@ class MarketDataAgent:
         if not symbols:
             raise ValueError("symbols list must not be empty.")
 
-        norm_symbols = [s.strip().upper() for s in symbols]
+        # Deduplicate (order-preserving): a repeated column would turn df[sym] into a DataFrame
+        norm_symbols = list(dict.fromkeys(s.strip().upper() for s in symbols))
         cached_series: Dict[str, pd.Series] = {}
         missing_symbols: List[str] = []
 

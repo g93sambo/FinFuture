@@ -31,6 +31,7 @@ from agents.orchestrator import (
     extract_quote_symbol,
     build_container,
 )
+from agents.compliance_guard import ComplianceGuard
 from db.models import DBClientProfile, DBUser
 from core.security import get_password_hash
 
@@ -238,8 +239,18 @@ async def test_concurrent_proposal_replacement(container, registered_user, clien
     assert pid1 != pid2
     assert s2["stage"] == SessionStage.PROPOSAL_REVIEW.value
 
-    # Approve trade 2
-    events_app = await orch.process_user_message(sid, user_id, cid, "approve", db_session)
+    # Trade 2 is Red-tier (> $1,000), so a bare chat "approve" is turned back for step-up
+    # confirmation and the proposal stays pending.
+    with pytest.raises(TradeBlocked) as step_up:
+        await orch.process_user_message(sid, user_id, cid, "approve", db_session)
+    assert step_up.value.error_type == "StepUpRequiredError"
+    assert (await orch.load_session(sid, user_id))["pending_proposal_id"] == pid2
+
+    # Approve trade 2 from the trade ticket with the step-up code and attestation
+    events_app = await orch.handle_trade_approval(
+        db_session, user_id, pid2, approved=True,
+        mfa_code=ComplianceGuard.compute_expected_mfa_code(pid2), fiduciary_attested=True,
+    )
     assert any(e.get("event") == "trade_filled" for e in events_app)
     # The filled trade should be SPY (proposal 2)
     filled_event = next(e for e in events_app if e.get("event") == "trade_filled")

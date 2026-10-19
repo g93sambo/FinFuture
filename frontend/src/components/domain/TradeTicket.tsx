@@ -75,7 +75,7 @@ export function ProposalTicket({
   }
 
   const mfaValid = !isRedTier || (
-    (mfaCode.trim() === expectedCode || mfaCode.trim() === "482910") &&
+    mfaCode.trim() === expectedCode &&
     (exceedsConcentration ? overrideAttested : attested)
   );
 

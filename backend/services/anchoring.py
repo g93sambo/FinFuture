@@ -180,6 +180,9 @@ class AnchoringService:
             "block_number": blk,
             "contract_address": "0x8fB0c2498E4a17D691b973cE39A4e2F9574a9880",
             "status": status,
+            # True only when a real transaction hash was returned by the node. A receipt
+            # without one is a locally derived placeholder and proves nothing on-chain.
+            "onchain": tx_hash is not None,
             "entries_count": entries_count,
             "weevent_topic": "com.webank.finfuture.audit.anchor",
             "weevent_event_id": weevent_id,
@@ -210,11 +213,13 @@ class AnchoringService:
                         data = resp.json()
                         raw_blk = data.get("result", 184209)
                         blk = int(raw_blk, 16) if isinstance(raw_blk, str) and raw_blk.startswith("0x") else int(raw_blk)
+                        # Only the node's block height is read; no anchoring transaction is
+                        # submitted yet, so the receipt is labelled "simulated", not "confirmed".
                         return self._build_fisco_bcos_receipt(
                             merkle_root=merkle_root,
                             entries_count=len(leaf_hashes),
                             ts=now,
-                            status="confirmed",
+                            status="simulated",
                             block_number=blk,
                         )
             except Exception as exc:

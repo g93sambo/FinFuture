@@ -32,10 +32,14 @@ from agents.execution_module import (
 
 
 @pytest_asyncio.fixture
-async def challenger_db_engine():
-    """Isolated in-memory SQLite engine for challenger stress tests."""
+async def challenger_db_engine(tmp_path):
+    """Isolated file-backed SQLite engine for challenger stress tests.
+
+    A file (not :memory:) is used so concurrent sessions get their own connections
+    instead of interleaving transactions on one shared in-memory connection.
+    """
     engine = create_async_engine(
-        "sqlite+aiosqlite:///:memory:",
+        f"sqlite+aiosqlite:///{tmp_path / 'challenger.db'}",
         echo=False,
         connect_args={"check_same_thread": False},
     )
@@ -72,6 +76,15 @@ def execution_module(cache_service):
         cache_service=cache_service,
         audit_logger=get_audit_logger(),
     )
+
+
+async def _expire_durable_trade_lock(session_factory, client_id: str) -> None:
+    """Backdates the client's trades past the 30s window so the durable DB duplicate check clears."""
+    async with session_factory() as s:
+        trades = (await s.execute(select(DBTrade).where(DBTrade.client_id == client_id))).scalars().all()
+        for t in trades:
+            t.created_at = t.created_at - timedelta(seconds=31)
+        await s.commit()
 
 
 @pytest_asyncio.fixture
@@ -278,6 +291,7 @@ async def test_stress_lock_release_after_ttl_expiration(
     val, exp = cache_service.fallback._data[lock_key]
     # Set expire_at to 1 second in the past
     cache_service.fallback._data[lock_key] = (val, time.time() - 1.0)
+    await _expire_durable_trade_lock(session_factory, client_id)
 
     # Step 4: Submission after TTL expiration must succeed
     async with session_factory() as s:
@@ -343,6 +357,7 @@ async def test_stress_reg_004_approval_freshness_boundary_exact_cases(
 
     async def attempt_at_offset(delta: timedelta) -> TradeExecutionResult:
         await cache_service.release_lock(lock_key)
+        await _expire_durable_trade_lock(session_factory, client_id)
         with patch("agents.execution_module.datetime") as mock_dt:
             mock_dt.now.return_value = T0
             mock_dt.side_effect = lambda *args, **kw: datetime(*args, **kw)

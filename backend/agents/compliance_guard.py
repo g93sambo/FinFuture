@@ -9,6 +9,7 @@ tamper-evident append-only cryptographic audit logging.
 
 from __future__ import annotations
 
+import hmac
 import json
 import logging
 import re
@@ -1253,16 +1254,17 @@ class ComplianceGuard:
             )
         )
 
-        # 5. Tier 4 RED-Tier Step-Up MFA Verification (when enforced on proposal approval)
-        if bool(trade.get("enforce_step_up_mfa", False)):
+        # 5. Tier 4 RED-Tier Step-Up MFA Verification (always enforced on proposal approval;
+        #    callers may only opt out explicitly with enforce_step_up_mfa=False)
+        if bool(trade.get("enforce_step_up_mfa", trade.get("proposal_id") is not None)):
             proj_w_val = float(trade.get("projected_weight", 0.0))
             tier_check = self.classify_trade_permission_tier(order_notional_usd, proj_w_val)
             if tier_check["requires_step_up_auth"]:
                 proposal_id_str = str(trade.get("proposal_id", ""))
-                expected_otp = "".join(ch for ch in proposal_id_str if ch.isdigit())[:6].ljust(6, "4")
+                expected_otp = self.compute_expected_mfa_code(proposal_id_str)
                 supplied_otp = str(trade.get("mfa_code") or "").strip()
                 attested = bool(trade.get("fiduciary_attested", False))
-                otp_ok = supplied_otp in (expected_otp, "482910") and attested
+                otp_ok = hmac.compare_digest(supplied_otp, expected_otp) and attested
                 if not otp_ok:
                     violations.append(
                         ComplianceViolation(
@@ -1513,6 +1515,10 @@ class ComplianceGuard:
 
     _circuit_breaker_events: Dict[str, List[Dict[str, Any]]] = {}
     _circuit_breaker_locked_until: Dict[str, datetime] = {}
+    # Time of the latest incident that was NOT a demo drill, per client. A lock or watch state
+    # involving a real incident cannot be cleared by the user; it must expire.
+    _circuit_breaker_last_real_incident: Dict[str, datetime] = {}
+    SIMULATED_INCIDENT_TYPE: str = "SIMULATED_DRILL"
 
     @classmethod
     def get_permission_tier_catalog(cls) -> List[Dict[str, Any]]:
@@ -1648,7 +1654,7 @@ class ComplianceGuard:
     def compute_expected_mfa_code(proposal_id: str) -> str:
         """Computes the deterministic 6-digit Step-Up MFA code for a proposal_id."""
         digits = "".join(ch for ch in str(proposal_id or "") if ch.isdigit())
-        return (digits[:6]).ljust(6, "4") if digits else "482910"
+        return (digits[:6]).ljust(6, "4")
 
     @staticmethod
     def get_known_risk_register() -> List[Dict[str, str]]:
@@ -1727,6 +1733,8 @@ class ComplianceGuard:
         events = [e for e in self._circuit_breaker_events.get(client_id, []) if e["ts"] >= cutoff]
         events.append({"ts": now, "reason": reason, "type": incident_type})
         self._circuit_breaker_events[client_id] = events
+        if incident_type != self.SIMULATED_INCIDENT_TYPE:
+            self._circuit_breaker_last_real_incident[client_id] = now
 
         if len(events) >= 3:
             self._circuit_breaker_locked_until[client_id] = now + timedelta(minutes=15)
@@ -1753,8 +1761,29 @@ class ComplianceGuard:
             ],
         }
 
+    def can_user_reset_circuit_breaker(self, client_id: str) -> Tuple[bool, str]:
+        """
+        A user may clear their own breaker only when every incident behind the current lock or
+        60s watch window was a simulated drill. Real blocked attempts must wait out the lock.
+        """
+        last_real = self._circuit_breaker_last_real_incident.get(client_id)
+        if last_real is None:
+            return True, ""
+        now = datetime.now(timezone.utc)
+        locked_until = self._circuit_breaker_locked_until.get(client_id)
+        if locked_until and locked_until > now:
+            lock_started = locked_until - timedelta(minutes=15)
+            if last_real >= lock_started - timedelta(seconds=60):
+                return False, (
+                    "The circuit breaker was tripped by real blocked attempts and cannot be reset; "
+                    f"it unlocks automatically at {locked_until.isoformat()}."
+                )
+        if last_real >= now - timedelta(seconds=60):
+            return False, "Real blocked attempts were recorded in the last 60 seconds; the watch window cannot be cleared."
+        return True, ""
+
     def reset_circuit_breaker(self, client_id: str = "global") -> Dict[str, Any]:
-        """Resets the Anomaly Circuit Breaker for a client."""
+        """Resets the Anomaly Circuit Breaker for a client (callers must check can_user_reset_circuit_breaker for user requests)."""
         self._circuit_breaker_events.pop(client_id, None)
         self._circuit_breaker_locked_until.pop(client_id, None)
         return self.get_circuit_breaker_status(client_id)

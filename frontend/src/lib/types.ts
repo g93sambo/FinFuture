@@ -452,6 +452,7 @@ export interface FiscoBcosReceipt {
   weevent_topic: string;
   weevent_event_id: string;
   status: string;
+  onchain?: boolean;
   timestamp: string;
 }
 

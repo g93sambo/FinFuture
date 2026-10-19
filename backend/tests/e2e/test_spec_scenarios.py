@@ -17,8 +17,6 @@ Scenarios:
 - S10: Portfolio Drift & Rebalance Report (>5% Drift, Health Score, 60/40 Benchmark, SELL-before-BUY)
 """
 
-import os
-import re
 import sqlite3
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -66,7 +64,9 @@ def _register_and_login(client: TestClient, email: str = None, password: str = "
 
 def _get_sqlite_conn() -> sqlite3.Connection:
     """Connect directly to the SQLite test database for raw SQL manipulation."""
-    db_path = re.sub(r"^sqlite\+aiosqlite:///", "", os.environ["DATABASE_URL"])
+    # Use the engine the app actually connected to; another conftest may have changed DATABASE_URL since.
+    from db.database import engine
+    db_path = engine.url.database
     return sqlite3.connect(db_path)
 
 

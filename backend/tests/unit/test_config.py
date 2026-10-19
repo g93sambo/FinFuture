@@ -15,6 +15,25 @@ def test_default_settings():
     assert "paper" in s.alpaca_base_url
 
 
+def test_production_refuses_default_secrets():
+    with pytest.raises(ValidationError) as exc_info:
+        Settings(environment="production")
+    assert any("SECRET_KEY must be set" in str(e["msg"]) for e in exc_info.value.errors())
+
+
+def test_production_refuses_short_or_shared_secrets():
+    with pytest.raises(ValidationError):
+        Settings(environment="production", secret_key="short", audit_secret_key="b" * 40)
+    with pytest.raises(ValidationError) as exc_info:
+        Settings(environment="production", secret_key="a" * 40, audit_secret_key="a" * 40)
+    assert any("must be different" in str(e["msg"]) for e in exc_info.value.errors())
+
+
+def test_production_accepts_unique_secrets():
+    s = Settings(environment="production", secret_key="a" * 40, audit_secret_key="b" * 40)
+    assert s.environment == "production"
+
+
 def test_paper_guard_blocks_live_flag():
     with pytest.raises(ValidationError) as exc_info:
         Settings(alpaca_paper=False)

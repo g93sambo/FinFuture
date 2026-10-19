@@ -517,3 +517,23 @@ def test_trade_lock_isolation_between_different_clients(client: TestClient):
     )
     assert res_y.status_code == 200, f"Client Y was unexpectedly blocked by Client X's lock: {res_y.status_code}: {res_y.text}"
     assert res_y.json()["execution"]["status"] == "FILLED"
+
+
+def test_login_throttled_after_repeated_failures(client: TestClient):
+    """Regression (RISK-11): 5 failed logins lock the account for the window, even for the right password."""
+    user = _create_user(client)
+    for _ in range(5):
+        r = client.post("/api/v1/auth/login", data={"username": user["email"], "password": "wrong-password"})
+        assert r.status_code == 401
+    r = client.post("/api/v1/auth/login", data={"username": user["email"], "password": "T3st-P@ssw0rd!"})
+    assert r.status_code == 429
+    assert "Retry-After" in r.headers
+
+
+def test_successful_login_clears_failure_count(client: TestClient):
+    user = _create_user(client)
+    for _ in range(4):
+        client.post("/api/v1/auth/login", data={"username": user["email"], "password": "wrong-password"})
+    assert client.post("/api/v1/auth/login", data={"username": user["email"], "password": "T3st-P@ssw0rd!"}).status_code == 200
+    for _ in range(4):
+        assert client.post("/api/v1/auth/login", data={"username": user["email"], "password": "wrong-password"}).status_code == 401

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import Optional
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -134,7 +134,7 @@ async def simulate_circuit_breaker_incident(
     status = c.compliance.record_security_incident(
         str(user.id),
         reason="Simulated adversarial prompt injection / rapid concentration override attempt blocked by ComplianceGuard.",
-        incident_type="ADVERSARIAL_OVERRIDE_BLOCKED",
+        incident_type=c.compliance.SIMULATED_INCIDENT_TYPE,
     )
     return {"circuit_breaker": status}
 
@@ -144,7 +144,10 @@ async def reset_circuit_breaker_endpoint(
     user: DBUser = Depends(get_current_user),
     c: AgentContainer = Depends(get_container),
 ):
-    """Resets the Anomaly Circuit Breaker back to CLOSED_NORMAL."""
+    """Resets the Anomaly Circuit Breaker back to CLOSED_NORMAL (simulated drills only)."""
+    allowed, reason = c.compliance.can_user_reset_circuit_breaker(str(user.id))
+    if not allowed:
+        raise HTTPException(status_code=423, detail=reason)
     status = c.compliance.reset_circuit_breaker(str(user.id))
     return {"circuit_breaker": status}
 

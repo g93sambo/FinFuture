@@ -218,8 +218,8 @@ export default function CompliancePage() {
                 </div>
                 {cb.is_locked ? (
                   <Notice tone="danger" title="Circuit breaker tripped (OPEN_LOCKED)">
-                    High-risk trade execution is temporarily frozen due to repeated blocked compliance/injection attempts. Click Reset below to
-                    clear the lock.
+                    High-risk trade execution is temporarily frozen due to repeated blocked compliance/injection attempts. A lock caused only
+                    by simulated drills can be reset below; a lock caused by real blocked attempts expires after 15 minutes.
                   </Notice>
                 ) : null}
                 <div className="flex flex-wrap gap-3 pt-1">
@@ -230,6 +230,7 @@ export default function CompliancePage() {
                     Reset circuit breaker
                   </Button>
                 </div>
+                <ErrorNotice error={simulateCb.error ?? resetCb.error} />
               </div>
             ) : null}
           </Panel>

@@ -11,7 +11,7 @@ from sqlalchemy import delete, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from agents.orchestrator import AgentContainer
+from agents.orchestrator import AgentContainer, TradeBlocked
 from api.deps import get_container
 from core.security import get_current_user
 from db.database import get_db
@@ -239,14 +239,27 @@ async def chat_message(
     c: AgentContainer = Depends(get_container),
 ):
     """Send a user message with optional multimodal attachments."""
-    events = await c.orchestrator.process_user_message(
-        session_id=req.session_id,
-        user_id=user.id,
-        client_id=None,
-        message=req.message,
-        db=db,
-        attachments=req.attachments,
-    )
+    try:
+        events = await c.orchestrator.process_user_message(
+            session_id=req.session_id,
+            user_id=user.id,
+            client_id=None,
+            message=req.message,
+            db=db,
+            attachments=req.attachments,
+        )
+    except TradeBlocked as blocked:
+        # Same shape the WebSocket endpoint sends for a blocked approval
+        events = blocked.events or [
+            {
+                "event": "error",
+                "agent": "ComplianceGuard",
+                "error": blocked.error_type,
+                "text": blocked.reason,
+                "violations": [v.to_dict() if hasattr(v, "to_dict") else dict(v) for v in blocked.violations],
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        ]
     replies = [e for e in events if e.get("event") not in ("user_message",)]
     last_text = next((e for e in reversed(replies) if e.get("text")), None)
     return ChatResponse(

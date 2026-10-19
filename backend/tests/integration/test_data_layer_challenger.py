@@ -373,18 +373,14 @@ async def test_corrupted_treasury_and_macro_dict_values(market_agent, clean_cach
 
 
 @pytest.mark.asyncio
-async def test_duplicate_symbols_in_get_history_reveals_bug(market_agent):
+async def test_duplicate_symbols_in_get_history_are_deduplicated(market_agent):
     """
-    EMPIRICAL BUG REPRODUCTION:
-    Passing duplicate symbols (e.g. ['SPY', 'SPY']) causes fetched_df['SPY'] to return
-    a 2-column DataFrame rather than a Series.
-    At market_data.py line 178:
-        'prices': [float(p) for p in series.values]
-    p is a 2-element numpy array, which crashes with:
-    TypeError: only length-1 arrays can be converted to Python scalars
+    Regression: duplicate symbols (e.g. ['SPY', 'SPY']) used to produce a 2-column
+    frame for 'SPY' and crash when serialising prices. They are now deduplicated.
     """
-    with pytest.raises(TypeError, match="only length-1 arrays can be converted to Python scalars"):
-        await market_agent.get_history(["SPY", "SPY"], period="1y")
+    df = await market_agent.get_history(["SPY", "spy"], period="1y")
+    assert list(df.columns) == ["SPY"]
+    assert len(df) > 0
 
 
 

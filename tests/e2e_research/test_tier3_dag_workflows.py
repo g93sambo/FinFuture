@@ -313,7 +313,7 @@ class TestDAGWorkflows:
 
         # Case 1: Trade without explicit user approval must be blocked (REG-003)
         unapproved_trade = {
-            "symbol": "VT",
+            "symbol": "VTI",
             "quantity": 100,
             "order_type": "BUY",
             "user_approved": False,
@@ -325,7 +325,7 @@ class TestDAGWorkflows:
 
         # Case 2: Trade with explicit user approval and paper flag passes
         approved_trade = {
-            "symbol": "VT",
+            "symbol": "VTI",
             "quantity": 100,
             "order_type": "BUY",
             "user_approved": True,
