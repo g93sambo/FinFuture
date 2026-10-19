@@ -100,7 +100,7 @@ Proposals and locks live in Redis when it is available, otherwise in process mem
 | Path | Responsibility |
 | :--- | :--- |
 | `backend/main.py` | App factory, CORS, router mounting, fixture warm-up, default rule seeding |
-| `backend/api/routes/` | `auth`, `session`, `chat`, `profile`, `compare`, `portfolio`, `trade`, `audit`, `market`, `compliance`, `research`, `ws`, `asyncapi` |
+| `backend/api/routes/` | `auth`, `session`, `chat`, `profile`, `compare`, `portfolio`, `trade`, `audit`, `market`, `compliance`, `ws`, `asyncapi` |
 | `backend/agents/` | `orchestrator`, `risk_profiler`, `product_comparison`, `allocation_engine`, `behavioral_bias`, `review_stage`, `compliance_guard`, `execution_module`, `market_data` |
 | `backend/services/` | `financial_engineering`, `black_litterman`, `audit_logger`, `anchoring`, `sanitizer`, `evidence_ledger`, `context_builder`, `portfolio_service`, `data_pipeline`, providers (`equities`, `macro`, `treasury`, `sec_edgar`, `screener`, …) |
 | `backend/tools/` | `ToolRegistry`, adapters (retry/backoff/circuit breaker), 22 registered tools |
@@ -228,7 +228,7 @@ Full machine-readable specs: `GET /openapi.json` (REST) and the AsyncAPI documen
 | Markets & allocation | quotes, history, macro, `allocation/optimize`, `allocation/current`, product `compare` |
 | Trade | propose, `trade/{proposal_id}/step-up` (email a one-time code), execute, `trade/orders` |
 | Compliance & audit | `compliance/check`, `compliance/check-input`, `compliance/permission-tiers`, `audit/logs`, `audit/{client_id}/verify`, anchor, Merkle proof |
-| Streaming | `WSS /ws/chat/{session_id}?token=…`; SSE research stream |
+| Streaming | `WSS /ws/chat/{session_id}?token=…` |
 
 ---
 

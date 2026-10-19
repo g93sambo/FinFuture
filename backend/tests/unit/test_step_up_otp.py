@@ -47,7 +47,7 @@ class CapturingSender(EmailSender):
 
 
 def make_service(**overrides):
-    cfg = Settings(otp_resend_cooldown_seconds=0, **overrides)
+    cfg = Settings(_env_file=None, otp_resend_cooldown_seconds=0, **overrides)
     sender = CapturingSender(cfg)
     return StepUpOTPService(CacheService(redis_url="redis://127.0.0.1:1/0"), cfg=cfg, sender=sender), sender
 
@@ -145,7 +145,7 @@ async def test_resend_replaces_previous_code():
 @pytest.mark.asyncio
 async def test_resend_cooldown_and_send_cap():
     svc, _ = make_service()
-    svc.cfg = Settings(otp_resend_cooldown_seconds=60)
+    svc.cfg = Settings(_env_file=None, otp_resend_cooldown_seconds=60)
     p = proposal()
     await svc.issue("user-1", "a@b.com", p)
     with pytest.raises(OTPRateLimitedError) as exc:
@@ -174,7 +174,7 @@ async def test_expired_code_is_rejected():
 
 @pytest.mark.asyncio
 async def test_console_delivery_fails_closed_in_production():
-    cfg = Settings(environment="production", secret_key="a" * 40, audit_secret_key="b" * 40)
+    cfg = Settings(_env_file=None, environment="production", secret_key="a" * 40, audit_secret_key="b" * 40)
     sender = EmailSender(cfg)
     assert sender.channel == "console"
     with pytest.raises(OTPDeliveryError):
@@ -189,21 +189,21 @@ async def test_console_delivery_fails_closed_in_production():
 
 
 def test_email_mode_without_provider_is_unconfigured():
-    assert EmailSender(Settings(otp_delivery="email")).channel == "unconfigured"
-    assert EmailSender(Settings(smtp_host="smtp.gmail.com")).channel == "smtp"
-    assert EmailSender(Settings(resend_api_key="re_x", smtp_host="smtp.gmail.com")).channel == "resend"
-    assert EmailSender(Settings(brevo_api_key="xkeysib", resend_api_key="re_x")).channel == "brevo"
+    assert EmailSender(Settings(_env_file=None, otp_delivery="email")).channel == "unconfigured"
+    assert EmailSender(Settings(_env_file=None, smtp_host="smtp.gmail.com")).channel == "smtp"
+    assert EmailSender(Settings(_env_file=None, resend_api_key="re_x", smtp_host="smtp.gmail.com")).channel == "resend"
+    assert EmailSender(Settings(_env_file=None, brevo_api_key="xkeysib", resend_api_key="re_x")).channel == "brevo"
 
 
 @pytest.mark.asyncio
 async def test_dev_echo_is_opt_in_and_refused_in_production():
-    cfg = Settings(otp_dev_echo=True)
+    cfg = Settings(_env_file=None, otp_dev_echo=True)
     svc = StepUpOTPService(CacheService(redis_url="redis://127.0.0.1:1/0"), cfg=cfg)
     info = await svc.issue("user-1", "a@b.com", proposal())
     assert info["delivery"] == "console" and re.fullmatch(r"\d{6}", info["dev_code"])
 
     with pytest.raises(ValidationError):
-        Settings(environment="production", secret_key="a" * 40, audit_secret_key="b" * 40, otp_dev_echo=True)
+        Settings(_env_file=None, environment="production", secret_key="a" * 40, audit_secret_key="b" * 40, otp_dev_echo=True)
 
 
 def test_mask_email():
@@ -241,7 +241,7 @@ async def red_tier_setup(db_session):
     container = build_container()
     sender = CapturingSender(container.otp.cfg)
     container.otp.sender = sender
-    container.otp.cfg = Settings(otp_resend_cooldown_seconds=0)
+    container.otp.cfg = Settings(_env_file=None, otp_resend_cooldown_seconds=0)
     p = await container.orchestrator.create_trade_proposal(db_session, profile.client_id, "SPY", "BUY", 5)
     assert p["requires_step_up_auth"] is True
     return container, user, p, sender

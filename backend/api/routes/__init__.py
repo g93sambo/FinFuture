@@ -1,7 +1,6 @@
 """API route modules."""
 
 from api.routes import (
-    advisory,
     asyncapi,
     audit,
     auth,
@@ -14,11 +13,9 @@ from api.routes import (
     session,
     trade,
     ws,
-    research,
 )
 
 __all__ = [
-    "advisory",
     "asyncapi",
     "audit",
     "auth",
@@ -31,5 +28,4 @@ __all__ = [
     "session",
     "trade",
     "ws",
-    "research",
 ]

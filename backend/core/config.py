@@ -132,6 +132,11 @@ class Settings(BaseSettings):
         description="Notional threshold in USD above which step-up 6-digit MFA is required"
     )
 
+    # --- Authentication abuse limits (per client IP, in-process) ---
+    auth_rate_limit_enabled: bool = Field(default=True, description="Throttle registrations and failed logins per IP")
+    register_max_per_ip_per_hour: int = Field(default=10, ge=1, description="Accounts one IP may create per hour")
+    login_failures_max_per_ip: int = Field(default=30, ge=1, description="Failed logins one IP may make per 15 minutes")
+
     # --- Step-Up OTP & Transactional Email ---
     otp_delivery: str = Field(
         default="auto",
@@ -162,7 +167,9 @@ class Settings(BaseSettings):
         env_file=(".env", "../.env"),
         env_file_encoding="utf-8",
         case_sensitive=False,
-        extra="ignore"
+        extra="ignore",
+        # Validation errors would otherwise print every setting, API keys included, into the logs
+        hide_input_in_errors=True,
     )
 
     # -------------------------------------------------------------------------

@@ -28,7 +28,10 @@ interface Props {
 }
 
 const W = 640;
-const PAD = { top: 16, right: 20, bottom: 40, left: 56 };
+const PAD = { top: 16, right: 20, bottom: 40 };
+// Approximate glyph width of the 13px tick font, used to keep the rotated y-axis title clear of tick labels
+const TICK_CHAR_PX = 7.6;
+const Y_TITLE_PX = 24;
 
 function niceTicks(min: number, max: number, count = 4): number[] {
   if (min === max) return [min];
@@ -58,7 +61,6 @@ export function LineChart({
 }: Props) {
   const [hover, setHover] = useState<number | null>(null);
   const H = height;
-  const iw = W - PAD.left - PAD.right;
   const ih = H - PAD.top - PAD.bottom;
 
   const geo = useMemo(() => {
@@ -71,19 +73,24 @@ export function LineChart({
     const padY = (yMax - yMin || Math.abs(yMax) || 1) * 0.12;
     yMin -= padY;
     yMax += padY;
-    const sx = (v: number) => PAD.left + ((v - xMin) / (xMax - xMin || 1)) * iw;
+    const yTicks = niceTicks(yMin, yMax);
+    const widest = Math.max(0, ...yTicks.map((t) => formatY(t).length));
+    const left = Math.max(56, Math.ceil(Y_TITLE_PX + widest * TICK_CHAR_PX + 10));
+    const iw = W - left - PAD.right;
+    const sx = (v: number) => left + ((v - xMin) / (xMax - xMin || 1)) * iw;
     const sy = (v: number) => PAD.top + ih - ((v - yMin) / (yMax - yMin || 1)) * ih;
     const coords = points.map((p, i) => ({ cx: sx(categoricalX ? i : p.x), cy: sy(p.y) }));
-    return { coords, sy, sx, yTicks: niceTicks(yMin, yMax), xTicks: categoricalX ? [] : niceTicks(xMin, xMax, 5) };
-  }, [points, categoricalX, iw, ih]);
+    return { coords, sy, sx, yTicks, xTicks: categoricalX ? [] : niceTicks(xMin, xMax, 5), left, iw };
+  }, [points, categoricalX, ih, formatY]);
 
   if (points.length === 0) return null;
   const path = geo.coords.map((c, i) => `${i ? "L" : "M"}${c.cx.toFixed(1)},${c.cy.toFixed(1)}`).join("");
   const areaPath = `${path} L${geo.coords[geo.coords.length - 1].cx.toFixed(1)},${(PAD.top + ih).toFixed(1)} L${geo.coords[0].cx.toFixed(1)},${(PAD.top + ih).toFixed(1)} Z`;
 
+  const { left, iw } = geo;
   const onMove = (e: React.PointerEvent<SVGRectElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * iw + PAD.left;
+    const x = ((e.clientX - rect.left) / rect.width) * iw + left;
     let best = 0;
     geo.coords.forEach((c, i) => {
       if (Math.abs(c.cx - x) < Math.abs(geo.coords[best].cx - x)) best = i;
@@ -106,8 +113,8 @@ export function LineChart({
         </defs>
         {geo.yTicks.map((t) => (
           <g key={`y${t}`}>
-            <line x1={PAD.left} x2={W - PAD.right} y1={geo.sy(t)} y2={geo.sy(t)} className="stroke-chart-grid" strokeWidth={1} />
-            <text x={PAD.left - 8} y={geo.sy(t)} dy="0.32em" textAnchor="end" className="fill-muted figures text-[0.8125rem]">
+            <line x1={left} x2={W - PAD.right} y1={geo.sy(t)} y2={geo.sy(t)} className="stroke-chart-grid" strokeWidth={1} />
+            <text x={left - 8} y={geo.sy(t)} dy="0.32em" textAnchor="end" className="fill-muted figures text-[0.8125rem]">
               {formatY(t)}
             </text>
           </g>
@@ -123,11 +130,11 @@ export function LineChart({
                 {formatX(t)}
               </text>
             ))}
-        <line x1={PAD.left} x2={W - PAD.right} y1={PAD.top + ih} y2={PAD.top + ih} className="stroke-line" strokeWidth={1} />
-        <text x={PAD.left + iw / 2} y={H - 4} textAnchor="middle" className="fill-muted text-[0.8125rem]">
+        <line x1={left} x2={W - PAD.right} y1={PAD.top + ih} y2={PAD.top + ih} className="stroke-line" strokeWidth={1} />
+        <text x={left + iw / 2} y={H - 4} textAnchor="middle" className="fill-muted text-[0.8125rem]">
           {xLabel}
         </text>
-        <text transform={`translate(12 ${PAD.top + ih / 2}) rotate(-90)`} textAnchor="middle" className="fill-muted text-[0.8125rem]">
+        <text transform={`translate(14 ${PAD.top + ih / 2}) rotate(-90)`} textAnchor="middle" className="fill-muted text-[0.8125rem]">
           {yLabel}
         </text>
 
@@ -160,7 +167,7 @@ export function LineChart({
           </g>
         ) : null}
         <rect
-          x={PAD.left}
+          x={left}
           y={PAD.top}
           width={iw}
           height={ih}

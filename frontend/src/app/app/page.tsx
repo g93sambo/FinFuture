@@ -6,7 +6,7 @@ import { LineChart, type LinePoint } from "@/components/charts/LineChart";
 import { RequireProfile } from "@/components/shell/RequireProfile";
 import { ErrorNotice, Skeleton, Tag } from "@/components/ui/Feedback";
 import { PageHeader, Panel } from "@/components/ui/Layout";
-import { Table } from "@/components/ui/Table";
+import { Table, Td, Th, Tr } from "@/components/ui/Table";
 import { api } from "@/lib/api";
 import { dateTime, fixed, humanize, money, pct, qty } from "@/lib/format";
 import type { PortfolioHistoryPoint } from "@/lib/types";
@@ -52,6 +52,9 @@ function ValuationChart({ points }: { points: PortfolioHistoryPoint[] }) {
     return out;
   }, [points]);
 
+  const spanMs = series.length ? series[series.length - 1].x - series[0].x : 0;
+  const shortSpan = spanMs < 2 * 24 * 3600 * 1000;
+
   if (series.length < 2) {
     return (
       <p className="py-10 text-center text-sm text-muted">
@@ -65,7 +68,11 @@ function ValuationChart({ points }: { points: PortfolioHistoryPoint[] }) {
       points={series}
       xLabel="Date"
       yLabel="Value (USD)"
-      formatX={(v) => new Date(v).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+      formatX={(v) =>
+        shortSpan
+          ? new Date(v).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+          : new Date(v).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+      }
       formatY={(v) => money(v)}
     />
   );
@@ -210,39 +217,59 @@ function Overview({ clientId }: { clientId: string }) {
               <Table caption="Portfolio holdings">
                 <thead>
                   <tr>
-                    <th>Symbol</th>
-                    <th className="text-right">Shares</th>
-                    <th className="text-right">Price</th>
-                    <th className="text-right">Market value</th>
-                    <th className="text-right">Weight</th>
-                    <th className="text-right" />
+                    <Th>Symbol</Th>
+                    <Th numeric>Shares</Th>
+                    <Th numeric>Price</Th>
+                    <Th numeric>Market value</Th>
+                    <Th numeric>Weight</Th>
+                    <Th numeric>
+                      <span className="sr-only">Actions</span>
+                    </Th>
                   </tr>
                 </thead>
                 <tbody>
                   {positions.map((p) => (
-                    <tr key={p.symbol} className="hover:bg-surface/50">
-                      <td className="font-semibold text-ink">
+                    <Tr key={p.symbol}>
+                      <Td className="font-semibold">
                         <Link href={`/app/markets?symbol=${p.symbol}`} className="hover:underline">
                           {p.symbol}
                         </Link>
-                      </td>
-                      <td className="figures text-right text-ink">{qty(p.qty)}</td>
-                      <td className="figures text-right text-ink">{money(p.price)}</td>
-                      <td className="figures text-right font-semibold text-ink">{money(p.market_value)}</td>
-                      <td className="figures text-right text-muted">{pct(p.weight)}</td>
-                      <td className="text-right">
+                      </Td>
+                      <Td numeric>{qty(p.qty)}</Td>
+                      <Td numeric>{money(p.price)}</Td>
+                      <Td numeric className="font-semibold">{money(p.market_value)}</Td>
+                      <Td numeric className="text-muted">{pct(p.weight)}</Td>
+                      <Td numeric>
                         <Link
                           href={`/app/trade?symbol=${p.symbol}`}
                           className="inline-flex items-center rounded-md border border-line bg-surface px-2.5 py-1 text-xs font-semibold text-accent transition-colors hover:bg-accent hover:text-on-accent"
                         >
                           Trade
                         </Link>
-                      </td>
-                    </tr>
+                      </Td>
+                    </Tr>
                   ))}
                 </tbody>
               </Table>
             )}
+          </Panel>
+
+          <Panel title="Next steps">
+            <ul className="grid gap-x-8 gap-y-4 text-sm sm:grid-cols-2">
+              {[
+                ["/app/health", "Run a health review", "Drift, concentration and stress scenarios."],
+                ["/app/allocation", "Get an allocation", "Optimised for your profile, with reasons."],
+                ["/app/compare", "Compare funds", "Six-factor scores for any tickers you choose."],
+                ["/app/audit", "Verify your audit trail", "Recompute every hash and signature."],
+              ].map(([href, label, note]) => (
+                <li key={href}>
+                  <Link href={href} className="font-medium text-primary underline decoration-primary/30 underline-offset-4 hover:decoration-primary">
+                    {label}
+                  </Link>
+                  <p className="text-[0.9375rem] text-muted">{note}</p>
+                </li>
+              ))}
+            </ul>
           </Panel>
         </div>
 
@@ -288,23 +315,6 @@ function Overview({ clientId }: { clientId: string }) {
             )}
           </Panel>
 
-          <Panel title="Next steps">
-            <ul className="space-y-3 text-sm">
-              {[
-                ["/app/health", "Run a health review", "Drift, concentration and stress scenarios."],
-                ["/app/allocation", "Get an allocation", "Optimised for your profile, with reasons."],
-                ["/app/compare", "Compare funds", "Six-factor scores for any tickers you choose."],
-                ["/app/audit", "Verify your audit trail", "Recompute every hash and signature."],
-              ].map(([href, label, note]) => (
-                <li key={href}>
-                  <Link href={href} className="font-medium text-primary underline decoration-primary/30 underline-offset-4 hover:decoration-primary">
-                    {label}
-                  </Link>
-                  <p className="text-[0.9375rem] text-muted">{note}</p>
-                </li>
-              ))}
-            </ul>
-          </Panel>
         </div>
       </div>
     </div>

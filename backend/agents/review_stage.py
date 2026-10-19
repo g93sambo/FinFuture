@@ -23,6 +23,12 @@ from core.config import settings
 
 logger = logging.getLogger("wealth_advisor.agents.review_stage")
 
+RISK_NOTE = (
+    "\n\n**Risk note:** investments can fall in value as well as rise. A broad market decline of 20% or more "
+    "is possible, so size positions to what you could hold through a drawdown. Past performance does not "
+    "guarantee future results."
+)
+
 
 @dataclass
 class ReviewerFeedback:
@@ -108,8 +114,9 @@ class DevilsAdvocateReviewer:
     async def review(self, text: str, client_context: Optional[Dict[str, Any]] = None) -> ReviewerFeedback:
         text_lower = text.lower()
 
-        # If text makes specific investment proposals or strong buys without mentioning risk or downside
-        has_proposal = any(w in text_lower for w in ["recommend", "allocation", "portfolio", "invest in", "buy "])
+        # If text makes specific investment proposals or strong buys without mentioning risk or downside.
+        # A passing mention of "portfolio" is not a proposal.
+        has_proposal = any(w in text_lower for w in ["i recommend", "we recommend", "recommended allocation", "invest in", "you should buy", "consider buying"])
         has_risk_mention = any(w in text_lower for w in ["risk", "drawdown", "volatility", "downside", "loss", "stress", "devaluation", "inflation"])
 
         if has_proposal and not has_risk_mention:
@@ -198,6 +205,7 @@ class ReviewStage:
         openai_client: Optional[Any] = None,
         model: Optional[str] = None,
         max_revisions: int = 3,
+        user_question: Optional[str] = None,
     ) -> ReviewStageResult:
         """
         Executes parallel reviews and automatically drives revision loops if any review fails.
@@ -221,6 +229,17 @@ class ReviewStage:
                     reviewer_feedbacks=feedbacks,
                 )
 
+            # A missing risk disclosure alone is fixed by adding one, not by rewriting the answer:
+            # an LLM rewrite tends to drift away from what the client actually asked
+            if all(f.reviewer_name == "DevilsAdvocateReviewer" for f in failed):
+                return ReviewStageResult(
+                    passed=True,
+                    revisions_count=revisions_count,
+                    escalated_to_human=False,
+                    final_text=current_text + RISK_NOTE,
+                    reviewer_feedbacks=feedbacks,
+                )
+
             # If failed and revisions remain and we have an LLM client
             if attempt < max_revisions and openai_client:
                 revisions_count += 1
@@ -230,15 +249,18 @@ class ReviewStage:
                 )
                 logger.info("Review stage flagged issues (attempt %d). Requesting revision:\n%s", attempt + 1, critiques_summary)
 
+                question_block = f"CLIENT QUESTION:\n{user_question}\n\n" if user_question else ""
                 revision_prompt = (
-                    "You are a fiduciary wealth advisor. Your previous advisory draft failed our internal multi-reviewer quality audit.\n\n"
-                    f"CRITICAL AUDIT CRITIQUES:\n{critiques_summary}\n\n"
+                    "You are a fiduciary wealth advisor. Your previous draft failed our internal quality review.\n\n"
+                    f"{question_block}"
+                    f"REVIEW FINDINGS:\n{critiques_summary}\n\n"
                     "PREVIOUS DRAFT:\n"
                     f"{current_text}\n\n"
                     "INSTRUCTION:\n"
-                    "Rewrite the advisory recommendation to resolve every critique above. "
-                    "Ensure full suitability compliance, include explicit downside risk and drawdown disclosures, "
-                    "and maintain strict mathematical accuracy. Provide the complete revised text."
+                    "Revise the draft so it resolves every finding above while still answering the client's question "
+                    "directly. Keep the same topic, length and structure; do not add recommendations the client did not "
+                    "ask for. Include a brief downside-risk disclosure where advice is given, and keep all figures accurate. "
+                    "Return only the revised answer."
                 )
 
                 try:

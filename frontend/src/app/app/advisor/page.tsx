@@ -81,6 +81,11 @@ function GlowingSpiralOrb() {
   );
 }
 
+// Mirrors backend/services/attachments.py: the advisor reads images only
+const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+const MAX_ATTACHMENTS = 4;
+
 export default function AdvisorPage() {
   const { user, clientId } = useAuth();
   const {
@@ -104,8 +109,7 @@ export default function AdvisorPage() {
 
   const [draft, setDraft] = useState("");
   const [stagedAttachments, setStagedAttachments] = useState<ChatMessageAttachment[]>([]);
-  const [reasoningActive, setReasoningActive] = useState(true);
-  const [deepResearchActive, setDeepResearchActive] = useState(false);
+  const [composerError, setComposerError] = useState<string | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [sessionDropdownOpen, setSessionDropdownOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -199,7 +203,7 @@ export default function AdvisorPage() {
 
   function toggleSpeech() {
     if (!recognitionRef.current) {
-      alert("Voice input is not supported in this browser. Please use Chrome or Edge.");
+      setComposerError("Voice input is not supported in this browser. Try Chrome or Edge.");
       return;
     }
     if (isListening) {
@@ -212,16 +216,25 @@ export default function AdvisorPage() {
   }
 
   function handleFiles(files: FileList | File[]) {
-    const list = Array.from(files);
+    setComposerError(null);
+    const all = Array.from(files);
+    const list = all.filter((f) => IMAGE_TYPES.includes(f.type) && f.size <= MAX_IMAGE_BYTES);
+    if (list.length < all.length) {
+      setComposerError("Only PNG, JPEG, WebP or GIF images up to 4 MB can be attached.");
+    }
+    const room = MAX_ATTACHMENTS - stagedAttachments.length;
+    if (list.length > room) {
+      setComposerError(`You can attach up to ${MAX_ATTACHMENTS} images per message.`);
+      list.splice(Math.max(0, room));
+    }
     list.forEach((file) => {
       const reader = new FileReader();
       reader.onload = (e) => {
         const result = e.target?.result as string;
-        const isImage = file.type.startsWith("image/");
         setStagedAttachments((prev) => [
           ...prev,
           {
-            type: isImage ? "image" : "document",
+            type: "image",
             name: file.name,
             size: file.size,
             mime_type: file.type || "application/octet-stream",
@@ -242,7 +255,7 @@ export default function AdvisorPage() {
   function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
     if (e.clipboardData && e.clipboardData.files && e.clipboardData.files.length > 0) {
       const files = Array.from(e.clipboardData.files);
-      const hasMedia = files.some((f) => f.type.startsWith("image/") || f.type.includes("pdf"));
+      const hasMedia = files.some((f) => f.type.startsWith("image/"));
       if (hasMedia) {
         e.preventDefault();
         handleFiles(files);
@@ -259,6 +272,7 @@ export default function AdvisorPage() {
   }
 
   function removeAttachment(idx: number) {
+    setComposerError(null);
     setStagedAttachments((prev) => prev.filter((_, i) => i !== idx));
   }
 
@@ -267,12 +281,8 @@ export default function AdvisorPage() {
     const textToSend = draft.trim();
     if ((!textToSend && stagedAttachments.length === 0) || waiting) return;
 
-    let enrichedPrompt = textToSend;
-    if (deepResearchActive) {
-      enrichedPrompt = `[Deep SEC & Web Research Mode] ${enrichedPrompt}`;
-    }
-
-    send(enrichedPrompt, stagedAttachments);
+    send(textToSend, stagedAttachments);
+    setComposerError(null);
     setDraft("");
     setStagedAttachments([]);
     inputRef.current?.focus();
@@ -304,7 +314,7 @@ export default function AdvisorPage() {
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*,.pdf,.csv,.json,.txt"
+        accept="image/png,image/jpeg,image/webp,image/gif"
         multiple
         className="hidden"
         onChange={handleFileChange}
@@ -318,8 +328,8 @@ export default function AdvisorPage() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
             </svg>
           </div>
-          <p className="mt-3 text-base font-semibold text-ink">Drop charts, images, or documents here</p>
-          <p className="text-xs text-muted">Orion will analyze your financial documents</p>
+          <p className="mt-3 text-base font-semibold text-ink">Drop images here</p>
+          <p className="text-xs text-muted">Screenshots of statements or charts, up to 4 MB each</p>
         </div>
       )}
 
@@ -568,7 +578,12 @@ export default function AdvisorPage() {
               onSubmit={submit}
               className="rounded-2xl border border-line bg-background p-3 shadow-xs transition-all focus-within:border-accent focus-within:ring-1 focus-within:ring-accent/20"
             >
-              {/* Staged Multimodal Attachments / Context Chips */}
+              {composerError ? (
+                <p role="alert" className="mb-2 text-xs text-danger">
+                  {composerError}
+                </p>
+              ) : null}
+              {/* Staged image attachments */}
               {stagedAttachments.length > 0 && (
                 <div className="mb-2.5 flex flex-wrap gap-2 border-b border-line pb-2">
                   {stagedAttachments.map((att, idx) => (
@@ -576,18 +591,16 @@ export default function AdvisorPage() {
                       key={idx}
                       className="inline-flex items-center gap-2 rounded-xl border border-line bg-surface px-2.5 py-1 text-xs text-ink shadow-2xs"
                     >
-                      {att.type === "image" && att.data ? (
+                      {att.data ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={att.data} alt={att.name || "Upload"} className="h-5 w-5 rounded object-cover" />
-                      ) : (
-                        <span className="text-accent text-[11px]">📎</span>
-                      )}
-                      <span className="max-w-[150px] truncate font-medium">{att.name || "Attachment"}</span>
+                        <img src={att.data} alt="" className="h-5 w-5 rounded object-cover" />
+                      ) : null}
+                      <span className="max-w-[150px] truncate font-medium">{att.name || "Image"}</span>
                       <button
                         type="button"
                         onClick={() => removeAttachment(idx)}
                         className="text-muted hover:text-ink font-semibold ml-1"
-                        aria-label="Remove"
+                        aria-label={`Remove ${att.name || "image"}`}
                       >
                         ✕
                       </button>
@@ -627,38 +640,11 @@ export default function AdvisorPage() {
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    title="Attach files or images"
+                    title="Attach images"
+                    aria-label="Attach images"
                     className="grid h-7 w-7 place-items-center rounded-full text-muted hover:bg-surface hover:text-ink transition-colors"
                   >
                     <span className="text-base font-bold leading-none">+</span>
-                  </button>
-
-                  {/* Reasoning toggle button */}
-                  <button
-                    type="button"
-                    onClick={() => setReasoningActive((v) => !v)}
-                    title="Toggle Reasoning Mode"
-                    className={`grid h-7 w-7 place-items-center rounded-full transition-colors ${
-                      reasoningActive ? "bg-accent-soft text-accent" : "text-muted hover:bg-surface hover:text-ink"
-                    }`}
-                  >
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                    </svg>
-                  </button>
-
-                  {/* Deep Research toggle button */}
-                  <button
-                    type="button"
-                    onClick={() => setDeepResearchActive((v) => !v)}
-                    title="Toggle Deep Web & SEC Research"
-                    className={`grid h-7 w-7 place-items-center rounded-full transition-colors ${
-                      deepResearchActive ? "bg-accent-soft text-accent" : "text-muted hover:bg-surface hover:text-ink"
-                    }`}
-                  >
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
                   </button>
                 </div>
 

@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from agents.orchestrator import AgentContainer
 from api.deps import get_container
-from core.security import get_current_user
+from core.security import get_current_user, verify_client_ownership
 from db.database import get_db
 from db.models import DBUser
 
@@ -76,9 +76,13 @@ async def get_permission_tiers(
 async def check_input_endpoint(
     req: CheckInputRequest,
     user: DBUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
     c: AgentContainer = Depends(get_container),
 ):
     """Inspects user input for prompt injection (RULE-09) and redacts direct PII/secrets (RULE-10)."""
+    # Blocked inputs count toward the circuit breaker, so only the caller's own client can be targeted
+    if req.client_id:
+        await verify_client_ownership(user, req.client_id, db)
     target_id = req.client_id or str(user.id)
     result = c.compliance.check_input_safety(req.text, client_id=target_id)
     return {
@@ -91,10 +95,11 @@ async def check_input_endpoint(
 async def check_compliance_alias(
     req: CheckInputRequest,
     user: DBUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
     c: AgentContainer = Depends(get_container),
 ):
     """Prompt alias for /compliance/check-input."""
-    return await check_input_endpoint(req, user=user, c=c)
+    return await check_input_endpoint(req, user=user, db=db, c=c)
 
 
 @router.post("/compliance/circuit-breaker/simulate")

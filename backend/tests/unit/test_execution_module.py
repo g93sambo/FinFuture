@@ -21,6 +21,8 @@ from agents.execution_module import (
     ExpiredApprovalError,
     KYCUnverifiedError,
     DuplicateTradeError,
+    ExecutionError,
+    describe_broker_error,
 )
 
 
@@ -429,7 +431,7 @@ async def test_execute_trade_broker_exception(db_session, execution_module, seed
     now = datetime.now(timezone.utc)
     await execution_module.cache_service.release_lock(key_trade_lock(client_id))
 
-    with pytest.raises(RuntimeError) as exc_info:
+    with pytest.raises(ExecutionError) as exc_info:
         await execution_module.execute_trade(
             db=db_session,
             client_id=client_id,
@@ -442,4 +444,12 @@ async def test_execute_trade_broker_exception(db_session, execution_module, seed
             dry_run=False,
         )
     assert "API rate limit exceeded" in str(exc_info.value)
+
+
+def test_broker_errors_are_described_in_plain_language():
+    wash = RuntimeError('{"code":40310000,"existing_order_id":"x","message":"potential wash trade detected. use complex orders","reject_reason":"opposite side market/stop order exists"}')
+    text = describe_broker_error(wash, "GLD")
+    assert "opposite side" in text and "GLD" in text and "{" not in text
+    assert "buying power" in describe_broker_error(RuntimeError('{"message":"insufficient buying power"}'), "SPY")
+    assert describe_broker_error(RuntimeError("timeout"), "SPY") == "The broker rejected this order: timeout."
 

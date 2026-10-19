@@ -23,7 +23,7 @@ const nextId = () => `t${Date.now().toString(36)}${(seq++).toString(36)}`;
 export function useAdvisor() {
   const { session: initialSession, clientId, setClientId } = useAuth();
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const [activeTitle, setActiveTitle] = useState<string>("Orion Advisory");
+  const [activeTitle, setActiveTitle] = useState<string>("FinFuture Advisor");
   const [sessions, setSessions] = useState<ChatSessionItem[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
@@ -139,11 +139,11 @@ export function useAdvisor() {
             {
               id: nextId(),
               from: "agent",
-              text: "Welcome to Orion Wealth Advisor. How can I assist you with your investments today?",
+              text: "Welcome to FinFuture. How can I assist you with your investments today?",
               event: {
                 event: "agent_response",
                 agent: "WealthAdvisor",
-                text: "Welcome to Orion Wealth Advisor. How can I assist you with your investments today?",
+                text: "Welcome to FinFuture. How can I assist you with your investments today?",
               },
               at: new Date().toISOString(),
             },

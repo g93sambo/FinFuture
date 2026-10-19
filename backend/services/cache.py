@@ -154,7 +154,8 @@ class CacheService:
                 )
             await self._redis_client.ping()
             if not self._redis_available:
-                logger.info(f"Connected to Redis at {self.redis_url}")
+                # Log host only: the URL can carry a password (rediss://user:pass@host)
+                logger.info("Connected to Redis at %s", self.redis_url.rsplit("@", 1)[-1])
             self._redis_available = True
             return True
         except Exception as e:

@@ -27,7 +27,6 @@ from api.routes import (
     session,
     trade,
     ws,
-    research,
 )
 from api.routes.ws import ws_manager
 from core.config import settings
@@ -198,7 +197,6 @@ app.include_router(market.router)
 app.include_router(compliance.router)
 app.include_router(ws.router)
 app.include_router(asyncapi.router)
-app.include_router(research.router)
 
 
 @app.get("/", tags=["health"])

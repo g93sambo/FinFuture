@@ -77,8 +77,9 @@ export class ApiError extends Error {
       return detail;
     }
     if (Array.isArray(detail)) {
-      // FastAPI validation errors
-      return detail.map((d: { msg?: string; loc?: unknown[] }) => `${(d.loc ?? []).slice(1).join(".")} ${d.msg ?? ""}`.trim()).join("; ");
+      // FastAPI validation errors: show the messages, not internal field paths
+      const msgs = detail.map((d: { msg?: string }) => (d.msg ?? "").replace(/^Value error, /, "")).filter(Boolean);
+      return msgs.length ? `Please check your input: ${msgs.join("; ")}` : "Please check your input and try again.";
     }
     if (detail && typeof detail === "object" && "reason" in detail) return String((detail as { reason: unknown }).reason);
     if (status === 0) return "Unable to connect to the advisory service. Our servers may be warming up—please wait a moment and try again.";
@@ -86,7 +87,8 @@ export class ApiError extends Error {
     if (status === 403) return "You do not have permission to perform this action.";
     if (status === 404) return "The requested record was not found.";
     if (status >= 500) return "Our advisory servers experienced a brief hiccup. Please retry in a few moments.";
-    return `Service request could not be completed (${status}). Please try again.`;
+    if (status === 429) return "Too many attempts. Please wait a few minutes and try again.";
+    return "The request could not be completed. Please try again.";
   }
 }
 

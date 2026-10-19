@@ -329,28 +329,6 @@ function EventBody({
   }
 }
 
-/** Derives a topical pill label for the user query (e.g. "Mortgage & Macro", "Onboarding Demo") */
-function deriveQueryTopic(text?: string): string {
-  if (!text) return "Advisory Inquiry";
-  const lower = text.toLowerCase();
-  if (lower.includes("mortgage") || lower.includes("yield") || lower.includes("rate") || lower.includes("treasury")) {
-    return "Mortgage & Macro";
-  }
-  if (lower.includes("dangote") || lower.includes("refinery") || lower.includes("stock") || lower.includes("equity")) {
-    return "Equity Intelligence";
-  }
-  if (lower.includes("tax") || lower.includes("irs") || lower.includes("deduction")) {
-    return "Tax Optimization";
-  }
-  if (lower.includes("allocation") || lower.includes("portfolio") || lower.includes("wealth") || lower.includes("spy")) {
-    return "Portfolio Strategy";
-  }
-  if (lower.includes("demo") || lower.includes("workflow") || lower.includes("onboarding")) {
-    return "Onboarding Demo";
-  }
-  return "Institutional Advisory";
-}
-
 export function TranscriptRow({
   item,
   proposals,
@@ -368,16 +346,8 @@ export function TranscriptRow({
   const who = you ? "You" : agentNames[item.event?.agent ?? ""] ?? item.event?.agent ?? "Advisor";
 
   if (you) {
-    const topic = deriveQueryTopic(item.text);
     return (
       <li className="flex flex-col items-end my-5 animate-fade-in">
-        {/* Topic pill tag above user bubble */}
-        <div className="mb-1.5 flex items-center gap-1.5 pr-9">
-          <span className="inline-flex items-center rounded-md bg-accent-soft px-2.5 py-0.5 text-[11px] font-semibold text-accent">
-            {topic}
-          </span>
-        </div>
-
         {/* User Bubble Row */}
         <div className="flex items-end justify-end gap-2.5 max-w-[85%] sm:max-w-[75%]">
           <div className="flex flex-col items-end gap-1.5">

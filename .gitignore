@@ -4,6 +4,13 @@
 .env.*.local
 *.env
 !.env.example
+*.bak
+*.pem
+*.key
+# Screenshots dropped in the repo root while debugging (may show dashboards and settings)
+/*.png
+/*.jpg
+/*.jpeg
 
 # Python
 __pycache__/

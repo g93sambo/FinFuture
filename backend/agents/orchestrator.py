@@ -24,7 +24,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import HTTPException
 from sqlalchemy import select, desc
@@ -124,7 +124,7 @@ MACRO_RE = re.compile(
     re.IGNORECASE,
 )
 NAV_HELP_RE = re.compile(
-    r"\b(how\s+to\s+use|how\s+do\s+i\s+use|how\s+does\s+(this|the)\s+app\s+work|where\s+do\s+i\s+find|navigate|navigation|sitemap|app\s+guide|tour|help\s+me\s+use|what\s+page|pages\s+in\s+this\s+app)\b",
+    r"\b(how\s+to\s+use|how\s+do\s+i\s+use|how\s+does\s+(this|the)\s+app\s+work|where\s+(do|can|should)\s+i\s+(find|see|view|go|check|edit|change|update)|navigate|navigation|sitemap|app\s+guide|tour|help\s+me\s+use|(what|which)\s+page|pages\s+in\s+this\s+app)\b",
     re.IGNORECASE,
 )
 TICKER_RE = re.compile(r"\b[A-Za-z]{2,5}\b")
@@ -259,6 +259,20 @@ def _event(kind: str, agent: str, text: str = "", **extra: Any) -> Dict[str, Any
     return {"event": kind, "agent": agent, "text": text, "timestamp": datetime.now(timezone.utc).isoformat(), **extra}
 
 
+HISTORY_IMAGE_TURNS = 3
+
+
+def _trim_history_images(history: List[Dict[str, Any]]) -> None:
+    """Keep image data only on the most recent image-bearing turns, so cached sessions stay small."""
+    seen = 0
+    for turn in reversed(history):
+        if turn.get("images"):
+            seen += 1
+            if seen > HISTORY_IMAGE_TURNS:
+                turn.pop("images")
+                turn["content"] = turn.get("content") or "(image shared earlier)"
+
+
 class OrchestratorAgent:
     def __init__(self, c: AgentContainer) -> None:
         self.c = c
@@ -358,8 +372,10 @@ class OrchestratorAgent:
                         hist = []
                         for m in msg_rows[-20:]:
                             role = "user" if m.sender == "user" else "assistant"
-                            if m.text:
-                                hist.append({"role": role, "content": m.text})
+                            images = [a.get("data") for a in (m.attachments or []) if isinstance(a, dict) and a.get("data")] if role == "user" else []
+                            if m.text or images:
+                                hist.append({"role": role, "content": m.text or "", **({"images": images} if images else {})})
+                        _trim_history_images(hist)
                         return {
                             "session_id": row.id,
                             "user_id": row.user_id,
@@ -487,9 +503,11 @@ class OrchestratorAgent:
 
         # Track conversation history in session for multi-turn context
         history = session.setdefault("history", [])
-        history.append({"role": "user", "content": message})
+        images = [a["data"] for a in (attachments or []) if a.get("data")]
+        history.append({"role": "user", "content": message, **({"images": images} if images else {})})
         if len(history) > 20:
-            session["history"] = history[-20:]
+            session["history"] = history = history[-20:]
+        _trim_history_images(history)
 
         user_ev = _event("user_message", "User", message)
         if attachments:
@@ -1060,7 +1078,12 @@ class OrchestratorAgent:
             "   Maintain an authoritative, institutional, and consultative tone.\n"
             "   Always uphold fiduciary duty: include regulatory risk disclosures, highlight investment risks and potential drawdowns, and never guarantee speculative returns.\n"
             "7. MULTIMODAL FINANCIAL VISION:\n"
-            "   When the user provides charts, financial statements, or screenshots, scrutinize axes, labels, and numbers directly from the visual evidence and synthesize them with quantitative precision."
+            "   When the user provides charts, financial statements, or screenshots, scrutinize axes, labels, and numbers directly from the visual evidence and synthesize them with quantitative precision.\n"
+            "   Images the user shared earlier in this conversation are included in the history; refer back to them when asked.\n"
+            "8. ANSWER THE QUESTION ASKED:\n"
+            "   Answer exactly what the client asked, as concisely as the question allows. Do not substitute a general portfolio recommendation for a direct answer.\n"
+            "   You cannot generate images, send email, move real money or access other websites' accounts. If asked, say so in one sentence and offer what you can do instead "
+            "(for example, charts on the Markets, Allocation and Health review pages, or a comparison table here)."
         )
 
         # Inject unified financial context (Action 5)
@@ -1082,7 +1105,7 @@ class OrchestratorAgent:
             if history:
                 prior_turns = [
                     turn for turn in history
-                    if turn.get("role") in ("user", "assistant") and turn.get("content")
+                    if turn.get("role") in ("user", "assistant") and (turn.get("content") or turn.get("images"))
                 ]
                 if prior_turns and prior_turns[-1].get("role") == "user" and prior_turns[-1].get("content") == text:
                     prior_turns = prior_turns[:-1]
@@ -1090,6 +1113,11 @@ class OrchestratorAgent:
                     turn_content = turn["content"]
                     if isinstance(turn_content, str):
                         turn_content = self.c.compliance.redact_sensitive_data(turn_content)
+                    if turn["role"] == "user" and turn.get("images"):
+                        # Earlier screenshots stay visible to the model so follow-up questions can refer to them
+                        turn_content = [{"type": "text", "text": turn_content or "(image shared earlier)"}] + [
+                            {"type": "image_url", "image_url": {"url": url}} for url in turn["images"]
+                        ]
                     messages.append({"role": turn["role"], "content": turn_content})
 
             if attachments:
@@ -1137,6 +1165,7 @@ class OrchestratorAgent:
                                     openai_client=client,
                                     model=settings.openai_model,
                                     max_revisions=3,
+                                    user_question=redacted_text,
                                 )
                                 final_text = rev_res.final_text
                             except Exception as rev_err:
@@ -1312,7 +1341,7 @@ class OrchestratorAgent:
         elif is_direct_command and MACRO_RE.search(text):
             events += await self._macro(db, client_id)
         elif is_direct_command and NAV_HELP_RE.search(text):
-            events += await self._nav_guide(db, client_id)
+            events += await self._nav_guide(db, client_id, text)
         else:
             history = session.get("history", [])
             # 1. Run agentic tool-calling turn connected to application services
@@ -1361,7 +1390,7 @@ class OrchestratorAgent:
 
             # 3. Direct deterministic regex fallback when LLM is offline/unconfigured
             if NAV_HELP_RE.search(text):
-                events += await self._nav_guide(db, client_id)
+                events += await self._nav_guide(db, client_id, text)
                 return events
             elif (sym := extract_quote_symbol(text)):
                 events += await self._quote(db, client_id, sym)
@@ -1418,7 +1447,37 @@ class OrchestratorAgent:
             logger.warning("Macro data lookup failed: %s", exc)
             return [await self._say("Macroeconomic and Treasury data is currently unavailable.", db, client_id, agent="MarketData")]
 
-    async def _nav_guide(self, db: AsyncSession, client_id: Optional[str]) -> List[Dict[str, Any]]:
+    # Page -> (path, what it is for, keywords that point to it). Used to answer "where do I ...?" directly.
+    NAV_PAGES: Dict[str, Tuple[str, str, Tuple[str, ...]]] = {
+        "Trade": ("/app/trade", "draft an order, review the pre-trade checks and approve it into the paper account",
+                  ("buy", "sell", "trade", "order", "purchase", "invest in")),
+        "Markets": ("/app/markets", "live quotes, price charts and the Treasury yield curve",
+                    ("quote", "price", "chart", "market", "yield")),
+        "Allocation": ("/app/allocation", "your recommended target mix and how it was optimised",
+                       ("allocation", "allocate", "target mix", "asset mix")),
+        "Compare funds": ("/app/compare", "side-by-side ETF and bond comparison",
+                          ("compare", "comparison", "etf", "fund")),
+        "Health review": ("/app/health", "health score, drift, concentration and stress scenarios",
+                          ("health", "drift", "stress", "shock", "rebalanc")),
+        "Risk profile": ("/app/profile", "view or edit your details, risk tolerance and suitability",
+                         ("profile", "risk score", "suitability", "my details", "edit my", "settings", "permission")),
+        "Audit trail": ("/app/audit", "every action recorded in the signed, tamper-evident log",
+                        ("audit", "history", "log", "verify", "hash", "anchor")),
+        "Compliance rules": ("/app/compliance", "the rules and limits every order is checked against",
+                             ("compliance", "rule", "limit")),
+        "Overview": ("/app", "portfolio value, cash, holdings and recent orders",
+                     ("overview", "dashboard", "balance", "cash", "holdings", "home")),
+    }
+
+    async def _nav_guide(self, db: AsyncSession, client_id: Optional[str], question: str = "") -> List[Dict[str, Any]]:
+        q = question.lower()
+        matches = [(name, path, purpose) for name, (path, purpose, words) in self.NAV_PAGES.items() if any(w in q for w in words)]
+        if 1 <= len(matches) <= 2:
+            lines = [f"Go to **{name}** (`{path}`) in the sidebar: {purpose}." for name, path, purpose in matches]
+            if matches[0][0] == "Trade":
+                lines.append("You can also ask me here, for example \"buy 10 BND\", and I'll prepare the order for your approval.")
+            return [await self._say("\n\n".join(lines), db, client_id, agent="WealthAdvisor")]
+
         text = (
             "Here is your quick guide to navigating FinFuture and finding what you need:\n\n"
             "### 📈 Advice\n"
@@ -1451,8 +1510,11 @@ class OrchestratorAgent:
         )
 
         events: List[Dict[str, Any]] = []
-        if result.rebalance_plan and result.rebalance_plan.trades:
-            first_trade = result.rebalance_plan.trades[0]
+        plan = result.rebalance_plan
+        if plan and plan.orders:
+            # Sells first so they fund the buys; each order is approved separately
+            orders = sorted(plan.orders, key=lambda o: o.side != "SELL")
+            first_trade = orders[0]
             proposal = await self.create_trade_proposal(
                 db=db,
                 client_id=client_id,
@@ -1463,10 +1525,17 @@ class OrchestratorAgent:
             )
             session["pending_proposal_id"] = proposal["proposal_id"]
             session["stage"] = SessionStage.PROPOSAL_REVIEW.value
+            plan_lines = "\n".join(
+                f"{i}. {o.side} {o.qty:g} {o.symbol} (~${o.estimated_amount:,.0f}; weight {o.current_weight:.1%} → {o.target_weight:.1%})"
+                for i, o in enumerate(orders, 1)
+            )
+            remaining = len(orders) - 1
             txt = (
-                f"Portfolio drift detected. Recommended rebalancing step: {first_trade.side} "
-                f"{first_trade.qty:g} {first_trade.symbol} to align with target allocation. "
-                f"Reply 'approve' to execute within 15 minutes, or 'cancel'."
+                f"Your portfolio has drifted up to {plan.max_drift:.1%} from its target allocation. "
+                f"Rebalancing plan ({len(orders)} order{'s' if len(orders) != 1 else ''}):\n\n{plan_lines}\n\n"
+                f"Order 1 is ready for review below: {first_trade.side} {first_trade.qty:g} {first_trade.symbol}. "
+                "Approve it within 15 minutes, or cancel."
+                + (f" Each order needs its own approval; ask to rebalance again afterwards to stage the next of the remaining {remaining}." if remaining else "")
             )
             events.append(
                 await self._say(

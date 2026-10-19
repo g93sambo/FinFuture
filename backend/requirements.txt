@@ -48,8 +48,6 @@ yfinance>=0.2.36
 # --- Multi-Agent System, LLM & Resilient Networking ---
 openai>=1.13.3
 httpx>=0.25.2
-tenacity>=8.2.3
-datasets>=2.16.0
 ddgs>=9.16.0
 beautifulsoup4>=4.12.0
 

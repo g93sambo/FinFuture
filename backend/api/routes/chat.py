@@ -16,6 +16,7 @@ from api.deps import get_container
 from core.security import get_current_user
 from db.database import get_db
 from db.models import DBChatMessage, DBChatSession, DBClientProfile, DBUser
+from services.attachments import AttachmentError, validate_attachments
 
 router = APIRouter(prefix="/api/v1", tags=["chat"])
 
@@ -238,7 +239,11 @@ async def chat_message(
     db: AsyncSession = Depends(get_db),
     c: AgentContainer = Depends(get_container),
 ):
-    """Send a user message with optional multimodal attachments."""
+    """Send a user message with optional image attachments."""
+    try:
+        attachments = validate_attachments(req.attachments)
+    except AttachmentError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
     try:
         events = await c.orchestrator.process_user_message(
             session_id=req.session_id,
@@ -246,7 +251,7 @@ async def chat_message(
             client_id=None,
             message=req.message,
             db=db,
-            attachments=req.attachments,
+            attachments=attachments,
         )
     except TradeBlocked as blocked:
         # Same shape the WebSocket endpoint sends for a blocked approval

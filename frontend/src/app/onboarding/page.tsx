@@ -124,6 +124,26 @@ const specificGoalTags = [
   { id: "tax_optimization", label: "Tax Efficiency" },
 ];
 
+const THUMB_PX = 16; // native range thumb width; its centre travels from 8px to (width - 8px)
+
+/** Tick labels placed exactly under the slider positions of their values (not evenly spaced). */
+function SliderScale({ min, max, ticks }: { min: number; max: number; ticks: { value: number; label: string }[] }) {
+  return (
+    <div className="relative mt-2 h-4 text-[11px] font-medium text-muted" aria-hidden>
+      {ticks.map((t, i) => {
+        const frac = (t.value - min) / (max - min);
+        const edge = i === 0 ? "translate-x-0" : i === ticks.length - 1 ? "-translate-x-full" : "-translate-x-1/2";
+        const left = i === 0 ? "0px" : i === ticks.length - 1 ? "100%" : `calc(${frac * 100}% + ${(0.5 - frac) * THUMB_PX}px)`;
+        return (
+          <span key={t.value} className={`absolute top-0 whitespace-nowrap ${edge}`} style={{ left }}>
+            {t.label}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function OnboardingPage() {
   const { status, user, session, setClientId, refreshSession } = useAuth();
   const router = useRouter();
@@ -647,12 +667,16 @@ export default function OnboardingPage() {
                       onChange={(e) => setInvestmentHorizonYears(parseInt(e.target.value))}
                       className="mt-3 w-full accent-accent cursor-pointer"
                     />
-                    <div className="mt-2 flex justify-between text-[11px] font-medium text-muted">
-                      <span>1 yr (Min)</span>
-                      <span>10 yrs</span>
-                      <span>20 yrs</span>
-                      <span>35 yrs (Max)</span>
-                    </div>
+                    <SliderScale
+                      min={1}
+                      max={35}
+                      ticks={[
+                        { value: 1, label: "1 yr" },
+                        { value: 10, label: "10 yrs" },
+                        { value: 20, label: "20 yrs" },
+                        { value: 35, label: "35 yrs" },
+                      ]}
+                    />
                   </div>
 
                   {/* SLIDER: Target Annual Return */}
@@ -678,12 +702,16 @@ export default function OnboardingPage() {
                       onChange={(e) => setTargetReturn(parseFloat(e.target.value))}
                       className="mt-3 w-full accent-accent cursor-pointer"
                     />
-                    <div className="mt-2 flex justify-between text-[11px] font-medium text-muted">
-                      <span>3% (Min)</span>
-                      <span>7% (Market avg)</span>
-                      <span>11% (Growth)</span>
-                      <span>15% (Max)</span>
-                    </div>
+                    <SliderScale
+                      min={3}
+                      max={15}
+                      ticks={[
+                        { value: 3, label: "3%" },
+                        { value: 7, label: "7% (market avg)" },
+                        { value: 11, label: "11%" },
+                        { value: 15, label: "15%" },
+                      ]}
+                    />
                   </div>
 
                   <div>

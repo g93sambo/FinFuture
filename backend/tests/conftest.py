@@ -16,6 +16,7 @@ os.environ["OPENAI_API_KEY"] = ""
 os.environ["ALPACA_API_KEY"] = ""
 os.environ["ALPACA_SECRET_KEY"] = ""
 os.environ["REDIS_URL"] = "redis://127.0.0.1:1/0"  # unreachable -> in-memory fallback
+os.environ["AUTH_RATE_LIMIT_ENABLED"] = "false"  # suites register many users from one client; tested explicitly instead
 
 import pytest
 import pytest_asyncio

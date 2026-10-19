@@ -23,6 +23,7 @@ from agents.orchestrator import TradeBlocked, build_container
 from core.security import decode_access_token
 from db.database import AsyncSessionLocal
 from db.models import DBClientProfile, DBUser
+from services.attachments import AttachmentError, validate_attachments
 
 logger = logging.getLogger("wealth_advisor.api.ws")
 router = APIRouter(tags=["websocket"])
@@ -204,7 +205,18 @@ async def _handle_connection(websocket: WebSocket, session_id: Optional[str], to
                                 }
                             ]
                     else:
-                        attachments = obj.get("attachments") if isinstance(obj, dict) else None
+                        try:
+                            attachments = validate_attachments(obj.get("attachments") if isinstance(obj, dict) else None)
+                        except AttachmentError as exc:
+                            await websocket.send_json(
+                                {
+                                    "event": "error",
+                                    "agent": "Orchestrator",
+                                    "text": str(exc),
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                }
+                            )
+                            continue
                         if not text.strip() and not attachments:
                             continue
                         events = await orch.process_user_message(
@@ -244,7 +256,7 @@ async def _handle_connection(websocket: WebSocket, session_id: Optional[str], to
                             "event": "error",
                             "structured_event": "error",
                             "agent": "Orchestrator",
-                            "text": f"Internal error: {type(exc).__name__}",
+                            "text": "Something went wrong while handling that message. Please try again.",
                             "timestamp": datetime.now(timezone.utc).isoformat(),
                         }
                     ]

@@ -8,6 +8,7 @@ distributed double-submit locking, DB persistence, and cryptographic audit loggi
 from __future__ import annotations
 
 import os
+import json
 import uuid
 import asyncio
 import logging
@@ -41,6 +42,30 @@ logger = logging.getLogger("wealth_advisor.agents.execution_module")
 class ExecutionError(ValueError):
     """Base exception for execution module errors."""
     pass
+
+
+def describe_broker_error(exc: Exception, symbol: str) -> str:
+    """Turn an Alpaca API error (often a raw JSON body) into a sentence a client can act on."""
+    raw = str(exc)
+    message = raw
+    try:
+        body = json.loads(raw[raw.index("{"):]) if "{" in raw else {}
+        message = str(body.get("message") or raw)
+    except (ValueError, AttributeError):
+        pass
+    lower = message.lower()
+    if "wash trade" in lower:
+        return (
+            f"The broker refused this order because an open order on the opposite side for {symbol} is still pending "
+            "(wash-trade protection). Wait for that order to fill or cancel it, then try again."
+        )
+    if "insufficient" in lower and ("buying power" in lower or "balance" in lower or "qty" in lower):
+        return f"The paper account does not have enough buying power or shares of {symbol} for this order."
+    if "not tradable" in lower or "not active" in lower or ("asset" in lower and "not found" in lower):
+        return f"{symbol} cannot be traded on the broker right now."
+    if "market" in lower and "closed" in lower:
+        return "The market is closed, so the broker did not accept this order. Try again during trading hours."
+    return f"The broker rejected this order: {message.strip().rstrip('.')}."
 
 
 class UnapprovedTradeError(ExecutionError):
@@ -413,6 +438,7 @@ class ExecutionModule:
                 executed_at = cand_time if isinstance(cand_time, datetime) else now_utc
             except Exception as e:
                 logger.error(f"Alpaca API order submission error: {e}")
+                reason = describe_broker_error(e, symbol_clean)
                 await self._log_block(
                     db=db,
                     client_id=client_id,
@@ -421,9 +447,9 @@ class ExecutionModule:
                     side=side_clean,
                     qty=qty,
                     gate="BROKER_API_ERROR",
-                    reason=f"Alpaca API execution failed: {str(e)}",
+                    reason=reason,
                 )
-                raise
+                raise ExecutionError(reason) from e
 
         # ---------------------------------------------------------------------
         # Database Persistence (`trades` table / DBTrade)

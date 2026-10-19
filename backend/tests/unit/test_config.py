@@ -17,7 +17,8 @@ def test_default_settings():
 
 def test_production_refuses_default_secrets():
     with pytest.raises(ValidationError) as exc_info:
-        Settings(environment="production")
+        # Ignore any local .env so the built-in development secrets are what get validated
+        Settings(_env_file=None, environment="production")
     assert any("SECRET_KEY must be set" in str(e["msg"]) for e in exc_info.value.errors())
 
 

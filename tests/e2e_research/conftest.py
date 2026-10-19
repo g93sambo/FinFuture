@@ -34,6 +34,7 @@ os.environ["OPENAI_API_KEY"] = ""
 os.environ["ALPACA_API_KEY"] = ""
 os.environ["ALPACA_SECRET_KEY"] = ""
 os.environ["REDIS_URL"] = "redis://127.0.0.1:1/0"
+os.environ["AUTH_RATE_LIMIT_ENABLED"] = "false"
 
 # Add project root and backend directory to sys.path
 _current_dir = os.path.dirname(os.path.abspath(__file__))

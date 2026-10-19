@@ -149,6 +149,7 @@ All settings are environment variables, documented in [`.env.example`](.env.exam
 | `OPENAI_API_KEY`, `OPENAI_MODEL` | LLM for dialogue and synthesis | deterministic fallbacks |
 | `FRED_API_KEY` | Macro series | cached fixtures |
 | `SEPOLIA_RPC_URL`, `SEPOLIA_PRIVATE_KEY`, `AUDIT_CONTRACT_ADDRESS` | Optional Merkle-root anchoring on Sepolia | anchoring off (nothing is sent) |
+| `AUTH_RATE_LIMIT_ENABLED`, `REGISTER_MAX_PER_IP_PER_HOUR`, `LOGIN_FAILURES_MAX_PER_IP` | Per-IP limits on sign-ups and failed logins (each account also locks after 5 failures) | on; 10 per hour; 30 per 15 min |
 
 **Start-up refuses to run** with `ALLOW_AUTONOMOUS_EXECUTION=true`, `ALPACA_PAPER=false`, a live Alpaca URL, or any chain other than Sepolia. With `ENVIRONMENT=production` it also refuses default or shared secrets, `DEBUG=true` and `OTP_DEV_ECHO=true`.
 
@@ -187,7 +188,10 @@ Focused suites:
 | Compliance, permission tiers, security | `python -m pytest backend/tests/unit/test_compliance_guard.py backend/tests/unit/test_challenger_m4_compliance.py backend/tests/unit/test_challenger_m5_security.py backend/tests/unit/test_permission_tiers_and_privacy.py backend/tests/unit/test_config.py -q` |
 | Advisor quality evals | `python -m pytest backend/tests/evals -q` |
 | Live deployment (writes `evidence/`) | `python evidence/test_live_e2e.py` |
-| Frontend type-check and lint | `cd frontend && npx tsc --noEmit && npm run lint` |
+| Production hardening (attachments, auth throttles, tenant checks, public routes) | `python -m pytest backend/tests/unit/test_production_hardening.py -q` |
+| Frontend checks | `cd frontend && npm run check:prod && npm run lint && npm run typecheck && npm run build` |
+
+`.github/workflows/ci.yml` runs the Python suite, a check that production settings refuse insecure values, and the frontend checks (including `check:prod`, which fails on leftover `console.log`, `debugger`, placeholder text or hard-coded localhost URLs) on every push.
 
 ---
 
