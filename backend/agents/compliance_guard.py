@@ -1254,42 +1254,41 @@ class ComplianceGuard:
             )
         )
 
-        # 5. Tier 4 RED-Tier Step-Up MFA Verification (always enforced on proposal approval;
-        #    callers may only opt out explicitly with enforce_step_up_mfa=False)
-        if bool(trade.get("enforce_step_up_mfa", trade.get("proposal_id") is not None)):
-            proj_w_val = float(trade.get("projected_weight", 0.0))
-            tier_check = self.classify_trade_permission_tier(order_notional_usd, proj_w_val)
-            if tier_check["requires_step_up_auth"]:
-                proposal_id_str = str(trade.get("proposal_id", ""))
-                expected_otp = self.compute_expected_mfa_code(proposal_id_str)
-                supplied_otp = str(trade.get("mfa_code") or "").strip()
-                attested = bool(trade.get("fiduciary_attested", False))
-                otp_ok = hmac.compare_digest(supplied_otp, expected_otp) and attested
-                if not otp_ok:
-                    violations.append(
-                        ComplianceViolation(
-                            rule_id="PERM-STEP-UP-MFA",
-                            rule_name="Red-Tier Step-Up MFA & Attestation",
-                            category="PERMISSION_TIER",
-                            severity="BLOCK",
-                            description=(
-                                f"Red-Tier trade (notional ${order_notional_usd:,.2f}, weight {proj_w_val:.1%}) requires a valid "
-                                f"6-digit Step-Up MFA OTP and fiduciary attestation."
-                            ),
-                            actual_value=bool(supplied_otp),
-                            threshold=True,
-                        )
-                    )
-                rule_results.append(
-                    RuleCheckDetail(
+        # 5. Tier 4 RED-Tier Step-Up MFA Verification — always runs; the tier classifier
+        #    gates it to RED-tier trades only (notional > $1,000 or weight > 5% NAV).
+        proj_w_val = float(trade.get("projected_weight", 0.0))
+        tier_check = self.classify_trade_permission_tier(order_notional_usd, proj_w_val)
+        if tier_check["requires_step_up_auth"]:
+            proposal_id_str = str(trade.get("proposal_id", ""))
+            expected_otp = self.compute_expected_mfa_code(proposal_id_str)
+            supplied_otp = str(trade.get("mfa_code") or "").strip()
+            attested = bool(trade.get("fiduciary_attested", False))
+            otp_ok = hmac.compare_digest(supplied_otp, expected_otp) and attested
+            if not otp_ok:
+                violations.append(
+                    ComplianceViolation(
                         rule_id="PERM-STEP-UP-MFA",
                         rule_name="Red-Tier Step-Up MFA & Attestation",
                         category="PERMISSION_TIER",
-                        passed=otp_ok,
                         severity="BLOCK",
-                        details="Step-Up MFA & fiduciary attestation verified" if otp_ok else "Missing or invalid Step-Up MFA / attestation",
+                        description=(
+                            f"Red-Tier trade (notional ${order_notional_usd:,.2f}, weight {proj_w_val:.1%}) requires a valid "
+                            f"6-digit Step-Up MFA OTP and fiduciary attestation."
+                        ),
+                        actual_value=bool(supplied_otp),
+                        threshold=True,
                     )
                 )
+            rule_results.append(
+                RuleCheckDetail(
+                    rule_id="PERM-STEP-UP-MFA",
+                    rule_name="Red-Tier Step-Up MFA & Attestation",
+                    category="PERMISSION_TIER",
+                    passed=otp_ok,
+                    severity="BLOCK",
+                    details="Step-Up MFA & fiduciary attestation verified" if otp_ok else "Missing or invalid Step-Up MFA / attestation",
+                )
+            )
 
         # --------------------------------------------------------------------
         # Final Evaluation & Audit Logging

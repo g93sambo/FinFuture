@@ -176,12 +176,11 @@ class AnchoringService:
             "validator_nodes": 4,
             "pbft_view": 1024,
             "merkle_root": merkle_root,
-            "tx_hash": fisco_tx,
+            # None when no transaction was submitted; only populated for a real on-chain write.
+            "tx_hash": tx_hash,
             "block_number": blk,
             "contract_address": "0x8fB0c2498E4a17D691b973cE39A4e2F9574a9880",
             "status": status,
-            # True only when a real transaction hash was returned by the node. A receipt
-            # without one is a locally derived placeholder and proves nothing on-chain.
             "onchain": tx_hash is not None,
             "entries_count": entries_count,
             "weevent_topic": "com.webank.finfuture.audit.anchor",
