@@ -1,9 +1,13 @@
 import Link from "next/link";
 
-/** FinFuture brand wordmark with rounded emblem. `compact` hides subtitle if needed. */
-export function Wordmark({ href = "/", inverted = false }: { href?: string; inverted?: boolean; compact?: boolean }) {
+/** FinFuture brand wordmark with rounded emblem. `compact` shows the emblem only. */
+export function Wordmark({ href = "/", inverted = false, compact = false }: { href?: string; inverted?: boolean; compact?: boolean }) {
   return (
-    <Link href={href} className={`group inline-flex items-center gap-2.5 ${inverted ? "text-on-primary" : "text-ink"}`}>
+    <Link
+      href={href}
+      aria-label={compact ? "FinFuture home" : undefined}
+      className={`group inline-flex items-center gap-2.5 ${inverted ? "text-on-primary" : "text-ink"}`}
+    >
       <span
         aria-hidden
         className={`grid h-7 w-7 place-items-center rounded-[8px] transition-transform duration-150 group-hover:scale-105 ${
@@ -27,7 +31,7 @@ export function Wordmark({ href = "/", inverted = false }: { href?: string; inve
           />
         </svg>
       </span>
-      <span className="text-[17px] font-bold tracking-tight">FinFuture</span>
+      {compact ? null : <span className="text-[17px] font-bold tracking-tight">FinFuture</span>}
     </Link>
   );
 }

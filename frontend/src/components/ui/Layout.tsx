@@ -5,7 +5,7 @@ export function PageHeader({ title, lede, actions }: { title: string; lede?: Rea
   return (
     <header className="rise mb-9 flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
       <div className="max-w-[72ch]">
-        <h1 className="text-[2.2rem] sm:text-[2.5rem] font-bold leading-tight text-ink">{title}</h1>
+        <h1 className="text-[1.875rem] sm:text-[2.125rem] font-bold leading-tight text-ink">{title}</h1>
         <span aria-hidden className="mt-3 block h-1.5 w-16 -rotate-3 rounded-full bg-primary" />
         {lede ? <p className="mt-4 text-[1.0625rem] text-muted">{lede}</p> : null}
       </div>

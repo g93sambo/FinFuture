@@ -57,31 +57,16 @@
 
 /*
  * Global scale. Every size in the app is in rem, so this one value sets how
- * large the whole interface is. It grows with the screen: comfortable on a
- * phone, large and readable on a desktop monitor.
+ * large the whole interface is. It grows only slightly on large monitors so
+ * wide screens gain room for content instead of just bigger type.
  */
 html {
   -webkit-text-size-adjust: 100%;
   font-size: 100%; /* 16px */
 }
-@media (min-width: 640px) {
+@media (min-width: 1600px) {
   html {
-    font-size: 112.5%; /* 18px */
-  }
-}
-@media (min-width: 1024px) {
-  html {
-    font-size: 125%; /* 20px */
-  }
-}
-@media (min-width: 1440px) {
-  html {
-    font-size: 137.5%; /* 22px */
-  }
-}
-@media (min-width: 1800px) {
-  html {
-    font-size: 150%; /* 24px */
+    font-size: 106.25%; /* 17px */
   }
 }
 

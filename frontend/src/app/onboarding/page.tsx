@@ -203,6 +203,11 @@ export default function OnboardingPage() {
     }
   }, [status, router]);
 
+  // Start each step at the top of the page instead of where the Next/Back button was
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [step]);
+
   // Derived metrics for live feedback
   const reserveMonths = monthlyExpenses > 0 ? liquidAssets / monthlyExpenses : 0;
   const dtiRatio = annualIncome > 0 ? (existingDebts / annualIncome) * 100 : 0;
