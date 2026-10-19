@@ -1,160 +1,224 @@
-# FinFuture: Non-Discretionary AI Wealth Advisory Platform
+# FinFuture: Non-Discretionary AI Wealth Advisory Agent
 
-FinFuture is an institutional-grade, **non-discretionary, human-in-the-loop** multi-agent wealth management and quantitative advisory platform built for the **2026 8th FinTechathon (International Track · Topic B: Wealth Advisory Agent)**. It combines conversational risk profiling, deterministic quantitative portfolio engineering, multi-analyst equity research, statutory tax structuring, a code-enforced **5-tier permission model**, a **12-rule compliance firewall**, and an **RFC 6962 Merkle-anchored audit trail** on Ethereum Sepolia.
+FinFuture is a **non-discretionary, human-in-the-loop** multi-agent wealth advisor built for the **2026 8th FinTechathon, International Track, Topic B: Wealth Advisory Agent**. It profiles a client in conversation, compares ETFs and bonds against that profile, builds an explainable allocation, catches behavioural biases, and executes the client's approved order in a **paper-trading sandbox**. Every recommendation and trade passes a deterministic compliance firewall, and every step is written to a tamper-evident audit trail.
+
+> **The model writes the words; deterministic Python supplies the numbers; no trade executes without the client's explicit approval.** Orders above \$1,000 or 5 % of the portfolio also need a one-time code emailed to the client.
+
+| | |
+| :--- | :--- |
+| **Live app** | <https://fin-future.vercel.app> |
+| **API** (OpenAPI docs at `/docs`) | <https://finfuture.onrender.com> (free tier: the first request after idle can take 30–60 s) |
+| **Repository** | <https://github.com/g93sambo/FinFuture> |
 
 ---
 
-## 🏛️ System Architecture
+## Submission checklist
 
-FinFuture operates a 3-loop, multi-stage pipeline ensuring mathematical rigor, fiduciary safety, and cryptographic auditability. **The model writes the words, deterministic Python code supplies the numbers, and no trade can ever execute without explicit human approval under code-enforced limits.**
+| # | Deliverable (competition rules) | Where |
+| :--- | :--- | :--- |
+| 01 | Technical documentation: system architecture, core algorithms, security design | [`docs/TECHNICAL_DOCUMENTATION.md`](docs/TECHNICAL_DOCUMENTATION.md) |
+| 02 | Presentation deck (≤ 10 min) | Submitted through the competition portal |
+| 03 | Demo video (≤ 5 min) | Submitted through the competition portal |
+| 04 | Source code with README, deployment instructions and test cases | This repository: [Quickstart](#quickstart), [Deployment](#deployment), [Tests](#tests) |
+| 05 | Security self-assessment: permission tiers and known-risk list | [`SECURITY_SELF_ASSESSMENT.md`](SECURITY_SELF_ASSESSMENT.md) |
+| 06 | Execution evidence: sandbox operation logs | [`evidence/`](evidence/) and [`docs/EXECUTION_EVIDENCE_GUIDE.md`](docs/EXECUTION_EVIDENCE_GUIDE.md) |
+
+---
+
+## What it does
+
+The end-to-end loop is **profile → compare → recommend → explain → approve → execute → monitor**.
+
+1. **Conversational risk profiling** (`agents/risk_profiler.py`). Tap-to-answer chips plus free-text extraction build a typed profile. The risk tier is calibrated as min(stated, revealed) from drawdown-reaction questions.
+2. **Product comparison and suitability filtering** (`agents/product_comparison.py`). ETFs and bonds are scored on six factors against the client's horizon, liquidity needs and risk tier, with a written rationale. Unsuitable products are filtered out before display.
+3. **Explainable allocation** (`agents/allocation_engine.py`, `services/financial_engineering.py`). Black–Litterman posterior returns, 95 % CVaR optimisation and a 10,000-path Student-t Monte Carlo, with a plain-English summary and a technical rationale.
+4. **Behavioural bias detection** (`agents/behavioral_bias.py`). The agent detects loss aversion, recency bias, overconfidence, herd mentality and the disposition effect in dialogue and intervenes with debiasing nudges.
+5. **Runtime compliance** (`agents/compliance_guard.py`). Twelve rules (suitability, concentration, regulatory language, KYC, AML) plus five permission gates run in plain Python outside the LLM.
+6. **Human-approved paper execution** (`agents/execution_module.py`). Orders go to **Alpaca Paper Trading**, with a clearly labelled simulated fill when no broker key is configured.
+7. **Portfolio health monitoring** (`services/health_report.py`). Drift against target, performance, macro context and a natural-language health report.
+8. **Tamper-evident audit trail** (`services/audit_logger.py`, `services/anchoring.py`). An append-only SHA-256 hash chain with HMAC signatures and verifiable Merkle inclusion proofs. The Merkle root can be anchored on the Ethereum **Sepolia** testnet and checked on Etherscan (see [Checking on-chain anchors](#checking-on-chain-anchors)).
+
+## Architecture
 
 ```mermaid
 flowchart TD
-    User([Investor / Client]) <--> WebSocket[WebSocket / Chat Stream]
-    WebSocket <--> Orch[Central Orchestrator]
+    User([Client]) <--> UI[Next.js app]
+    UI <-->|REST + WebSocket, JWT| API[FastAPI]
+    API --> Orch[Orchestrator]
 
-    subgraph Pre-Turn Anonymized Context
-        CtxBuilder["Financial Context Builder (ANON-XXXXXXXX Pseudonym + PII Redaction)"] -->|Anonymized Suitability Parameters| Orch
+    subgraph Context [Privacy boundary]
+        Ctx["Context builder: ANON-xxxx pseudonym + PII redaction"]
     end
+    Ctx --> Orch
 
-    subgraph Tool Calling Pipeline [ToolRegistry: Role Permissions, Circuit Breakers & Provenance]
-        Orch --> Tools{Parallel Tool Dispatch}
-        Tools --> WebIntel[Web Intelligence & XML Sanitizer]
-        Tools --> MarketData[Quotes & Fundamentals]
-        Tools --> TaxEngine[Statutory Legal KB: PITA/CITA/NEPZA]
-        Tools --> ResearchGraph[8-Analyst Deep Research Graph]
-        Tools --> QuantEng[Student-t Monte Carlo, Black-Litterman, CVaR]
+    subgraph Tools [ToolRegistry: role permissions, circuit breakers, provenance]
+        MD[Market data: Yahoo / FRED / Treasury / SEC EDGAR]
+        Quant[Black–Litterman, CVaR, Monte Carlo]
+        Research[8-analyst research DAG]
+        Tax[Statutory tax knowledge base]
     end
-
-    subgraph Parallel Review Stage [3 Reviewers & Revise Loop]
-        SuitabilityReviewer[Suitability Reviewer]
-        DevilsAdvocate[Devil's Advocate Reviewer]
-        NumericReviewer[Numeric Consistency Reviewer]
-    end
-
-    Tools --> Synthesis[Advisory Synthesis]
-    Synthesis --> ParallelReviewStage
-    ParallelReviewStage -->|Max 3 Revisions or Human Escalation| ComplGate[12-Rule Compliance Guard + 5-Tier Permission Gate]
-    ComplGate --> NonDiscretionaryGate["Non-Discretionary Trade Approval Gate (15m TTL, Step-Up MFA, $100k/$250k Caps, Whitelist)"]
-    NonDiscretionaryGate --> Execution[Alpaca Paper Trading / Sepolia Merkle-Anchored Audit Log]
-    Execution --> User
+    Orch --> Tools
+    Tools --> Review["Review stage: suitability, devil's advocate, numeric consistency"]
+    Review --> Guard[Compliance guard: 12 rules + 5 permission gates]
+    Guard --> Proposal["Trade proposal (15 min TTL)"]
+    Proposal --> Approve{"Client approves on the trade ticket"}
+    Approve -->|"> $1,000 or > 5% NAV"| OTP["Emailed one-time code (step-up)"]
+    OTP --> Exec
+    Approve -->|small orders| Exec[Execution: Alpaca Paper]
+    Exec --> Audit[(Hash-chained audit log + Merkle proofs)]
 ```
 
----
+### Permission tiers
 
-## 🔐 Code-Enforced 5-Tier Permission Model
+Each tier is backed by code that the tier below cannot reach. The catalogue is served live at `GET /api/v1/compliance/permission-tiers`.
 
-Every agent action and user request is governed by an explicit **5-tier permission model** enforced in `backend/agents/compliance_guard.py`, `backend/agents/orchestrator.py`, and `backend/api/routes/trade.py` (`GET /api/v1/compliance/permission-tiers`):
-
-| Tier ID | Badge | Scope | Code-Enforced Limits & Safeguards |
-| :--- | :--- | :--- | :--- |
-| **`TIER_1_READ_ONLY`** | `GREEN` | **Read-Only Data** | Zero state mutation; market quotes, FRED macro series, SEC EDGAR filings, portfolio & audit reads. |
-| **`TIER_2_ADVISE`** | `GREEN` | **Advise & Simulate** | Risk profiling (`RiskProfiler`), ETF/Bond comparison (`ProductComparator`), Black-Litterman/CVaR & Student-$t$ Monte Carlo (`AllocationEngine`), 3-reviewer verification loop. Cannot stage or submit orders. |
-| **`TIER_3_PROPOSE_TRADE`** | `YELLOW` | **Propose Trade** | Stages an unsigned `TradeProposal` with a 15-minute TTL. Enforces Anomaly Circuit Breaker (`PERM-CIRCUIT-BREAKER`) and the 129-symbol whitelist (`PERM-WHITELIST`) at proposal creation. Cannot call broker APIs. |
-| **`TIER_4_EXECUTE_WITH_APPROVAL`** | `RED` | **Execute with Human Approval Under Limits** | Requires `user_approved=True` (`REG-003`) + 12-rule compliance pass + **Per-Trade Cap (`$100,000.00` / `AML-001`)** + **Rolling 24h Daily Cap (`$250,000.00` / `PERM-CAP-DAILY`)** + **129-symbol Whitelist (`PERM-WHITELIST`)** + **Step-Up 6-Digit MFA OTP & Attestation (`PERM-STEP-UP-MFA`)** for orders $> \$1,000$ or $> 5\%$ NAV + **30s Idempotency Lock**. |
-| **`TIER_5_AUTONOMOUS_DISABLED`** | `DISABLED` | **Autonomous Execution (Hard-Disabled)** | Explicitly disabled at startup (`core/config.py:guard_autonomous_execution_disabled`), API layer (`api/routes/trade.py`), and compliance firewall (`PERM-TIER-5`). The agent can never trade without live per-order human approval. |
-
----
-
-## 🛡️ External API & LLM Data Privacy Architecture
-
-FinFuture enforces strict data minimization and anonymization across external boundaries:
-
-- **Market, Macro & Filing APIs (`Yahoo Finance`, `FRED`, `SEC EDGAR`, `Finnhub`):** Receive **only public ticker symbols (`SPY`, `BND`), CIK numbers, or macro series IDs**. Zero client data is ever transmitted.
-- **External LLM Inference API (`OpenAI` / `Gemini`):** Receives the profiling and advisory conversation (including numerical suitability parameters such as age, income/net worth, risk score, and investment horizon) so the model can extract onboarding fields and synthesize tailored commentary. Before any LLM request is sent:
-  1. `ComplianceGuard.redact_sensitive_data()` (`backend/agents/orchestrator.py`) strips direct PII (self-reported names, email addresses, phone numbers, SSN/BVN/NIN national IDs, credit/debit card numbers, IBANs, and API/bearer tokens) from user messages and chat history.
-  2. `ClientFinancialContext.to_system_prompt_snippet()` (`backend/services/context_builder.py`) replaces `client_id` and `full_name` with a one-way truncated SHA-256 pseudonym (`ANON-XXXXXXXX`).
-  3. All risk scoring, portfolio optimization, and compliance checks execute locally in deterministic Python code.
-
----
-
-## ⚡ Key Capabilities
-
-1. **Central Tool Registry (`backend/tools/`)**:
-   - Every chat tool call is routed through `ToolRegistry` with role permissions (`Orchestrator`), circuit breakers, execution timeouts, rate limits, and provenance logging.
-   - Independent tools execute concurrently in parallel via `asyncio.gather`.
-
-2. **8-Analyst Multi-Agent Research Engine (`backend/research/`)**:
-   - Declarative DAG with 8 specialist analyst roles: Macro Analyst, Financial Analyst, Investment Research Analyst, Quantitative Analyst, Intelligence Analyst, Risk & Devil's Advocate, Personalized Advisory, and Compliance Guard.
-   - Live milestone telemetry streamed over WebSockets and verifiable citations stored in `EvidenceLedger`.
-
-3. **Hybrid Conversational & Structured Onboarding (`backend/agents/risk_profiler.py`)**:
-   - Interactive tap-to-answer suggestion chips paired with deterministic + LLM-assisted field extraction and behavioral stress calibration ($\min(\text{Stated}, \text{Revealed})$ risk tier).
-
-4. **Institutional Quantitative Engine (`backend/services/financial_engineering.py`, `backend/agents/allocation_engine.py`)**:
-   - Black-Litterman posterior return blending, 95% CVaR optimization, 10,000-path Student-$t$ ($\nu=5$) Monte Carlo simulation, numerical hurdle-rate bisection solver, and multi-factor macro stress testing.
-
-5. **Tamper-Evident Audit Trail & Dual-Ledger Anchoring (`backend/services/audit_logger.py`, `backend/services/anchoring.py`)**:
-   - Append-only SHA-256 hash chain + HMAC-SHA256 entry signatures + RFC 6962 binary Merkle tree root anchored simultaneously to **Ethereum Sepolia (`chain_id=11155111`)** and the **WeBank FISCO BCOS v3.6 Consortium Blockchain (`group0` PBFT + WeEvent topic `com.webank.finfuture.audit.anchor`)** with per-entry inclusion proofs (`GET /api/v1/audit/{client_id}/merkle-proof/{entry_id}`).
-
----
-
-## 🏦 WeBank Open-Source Fintech Ecosystem Integration
-
-FinFuture natively integrates four core pillars of the **WeBank (微众银行)** fintech stack for the **2026 8th FinTechathon (WeBank Fintech College Students Challenge)**:
-
-1. **WeBank FISCO BCOS v3.6 Consortium Blockchain (`backend/services/anchoring.py`, `POST /api/v1/audit/{client_id}/anchor/fisco-bcos`)**:
-   - Dual-anchors RFC 6962 audit Merkle roots to both Ethereum Sepolia (`chain_id=11155111`) and a **WeBank FISCO BCOS v3.6 Consortium Ledger (`group0`, 4-node PBFT sub-second finality, `AuditAnchorConsortium.sol`)**.
-2. **WeBank WeEvent v1.12 Event-Driven Governance Mesh**:
-   - Publishes every audit Merkle anchor and compliance circuit-breaker event to the WeEvent broker topic `com.webank.finfuture.audit.anchor` with deterministic `weevent-group0-<block>-<hash>` event receipts.
-3. **WeBank FATE v2.0 Privacy-Preserving Feature Envelope (`ClientFinancialContext.to_fate_privacy_envelope()`)**:
-   - Discretizes client suitability attributes into banded federated feature vectors (`party_id="WEBANK_FINFUTURE_GUEST_9999"`, `pseudonym_id="ANON-XXXXXXXX"`, `age_band`, `net_worth_tier`, `gba_wealth_connect_eligible`) signed with a SHA-256 Paillier/PSI-ready commitment hash (`raw_pii_exposed=False`).
-4. **WeBank Smart Wealth (`微众银行财富+`) & GBA Cross-Border Wealth Connect (`跨境理财通`) Product Shelf (`backend/services/providers/screener.py`, `backend/agents/product_comparison.py`)**:
-   - First-class quantitative screening, 6-factor scoring, and compliance whitelist support for:
-     - `WBKCASH`: *WeBank Live+ Cash Management Fund (微众活期+ R1 Money Market)*
-     - `WBK6M`: *WeBank Steady+ 180D Short-Duration Bond Note (微众稳健+ R2)*
-     - `GBAHK`: *WeBank GBA Wealth Connect Multi-Asset Income ETF (跨境理财通南向通 R2)*
-     - `WBKGLD`: *WeBank Digital Gold Accumulation Trust (微众黄金 Inflation Hedge R3)*
-
----
-
-## 🚀 Quickstart, Environment Setup & Verification
-
-### 1. Environment Variables (`backend/.env`)
-Copy `backend/.env.example` to `backend/.env`. All secrets are read from environment variables (safe development defaults are provided for offline testing):
-
-| Variable | Description | Default (Dev / Sandbox) |
+| Tier | What it may do | What enforces the limit |
 | :--- | :--- | :--- |
-| `OPENAI_API_KEY` | OpenAI / Gemini-compatible API key for LLM synthesis | Optional (deterministic fallback active) |
-| `OPENAI_MODEL` | Model identifier used by all agents | `gpt-4o` |
-| `SECRET_KEY` | Secret key for signing JWT access tokens (must be overridden in production) | Dev key |
-| `AUDIT_SECRET_KEY` | Secret key for HMAC-SHA256 audit log signatures (must be overridden in production) | Dev key |
-| `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` | Alpaca Paper Trading credentials (`paper-api.alpaca.markets`) | Dry-run paper fill fallback |
-| `SEPOLIA_RPC_URL` / `SEPOLIA_PRIVATE_KEY` | Ethereum Sepolia RPC URL & wallet key (`chain_id=11155111`, Mainnet hard-blocked) | Deterministic `dry_run` Merkle anchor |
-| `FISCO_BCOS_RPC_URL` / `WEEVENT_BROKER_URL` | Optional WeBank FISCO BCOS v3 JSON-RPC & WeEvent broker endpoint (`group0`) | Deterministic PBFT + WeEvent consortium receipt |
-| `ALLOW_AUTONOMOUS_EXECUTION` | Must remain `false` (startup validator refuses `true`) | `false` |
+| `TIER_1_READ_ONLY` | Quotes, macro, filings, own portfolio and audit reads | Read-only tools; providers receive tickers and series IDs only |
+| `TIER_2_ADVISE` | Profiling, comparison, allocation, simulation, research | Modules return data only and have no broker client |
+| `TIER_3_PROPOSE_TRADE` | Stage a proposal with a 15-minute TTL | No broker call; refuses non-whitelisted symbols and locked accounts |
+| `TIER_4_EXECUTE_WITH_APPROVAL` | Submit an approved order to the paper broker | Explicit approval, 12-rule check, \$100k per-trade cap, \$250k rolling 24 h cap, 101-symbol whitelist (US ETFs and large caps tradable on Alpaca), circuit breaker, 30 s duplicate lock, and **a step-up one-time code above \$1,000 or 5 % NAV** |
+| `TIER_5_AUTONOMOUS_DISABLED` | Nothing | Refused at start-up, at the API and in the compliance guard |
 
-### 2. Backend Setup & Running
+### Step-up verification for trade approval
+
+Orders above \$1,000 or above 5 % of the portfolio ("Red tier") need a second factor:
+
+1. The trade ticket calls `POST /api/v1/trade/{proposal_id}/step-up`.
+2. The server generates **6 random digits**, stores only an HMAC-SHA256 digest bound to that user and proposal, and **emails the code** to the account address (Brevo, Resend or SMTP).
+3. The client enters the code and confirms the attestation. The code expires after 5 minutes, allows 5 attempts, works once, and resends are throttled.
+4. The compliance guard accepts the order only after the server has verified the code. Approvals by chat or WebSocket without a code are turned back to the ticket.
+
+Issue, success and failure events go into the audit chain. Details and residual risks are in [`SECURITY_SELF_ASSESSMENT.md`](SECURITY_SELF_ASSESSMENT.md) §2.1 and `RISK-07`.
+
+### Data that leaves the backend
+
+- **Market, macro and filing APIs** receive public identifiers only (tickers, CIKs, series IDs).
+- **The LLM API** receives dialogue and suitability parameters after `redact_sensitive_data()` strips direct PII and the client is replaced by an `ANON-xxxxxxxx` pseudonym. All numbers, scoring and compliance are computed locally.
+- **The paper broker** receives `(symbol, side, qty)` only.
+- **Email** receives the code and order summary, sent to the account owner.
+
+---
+
+## Quickstart
+
+Requirements: Python 3.11–3.12 and Node.js 18+. No API keys are needed for a local run: without them FinFuture uses SQLite, an in-memory cache, cached market fixtures, simulated paper fills and console delivery for step-up codes.
+
 ```bash
+git clone https://github.com/g93sambo/FinFuture.git && cd FinFuture
+cp .env.example .env                     # optional: add keys (see Configuration)
+
+# Backend (http://localhost:8000, API docs at /docs)
 cd backend
 python -m venv .venv
-# Activate environment (.venv\Scripts\activate on Windows or source .venv/bin/activate on Linux/macOS)
+source .venv/bin/activate                # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 uvicorn main:app --reload --port 8000
-```
 
-### 3. Frontend Setup & Production Build
-```bash
+# Frontend (http://localhost:3000), in a second terminal
 cd frontend
 npm install
-npm run build
-npm run start
+npm run dev                              # set NEXT_PUBLIC_API_URL if the API is not on localhost:8000
 ```
 
-### 4. Running the Automated Test & Security Verification Suites
+**Trying a Red-tier trade locally without email:** the step-up code is printed in the backend log (`[OTP console delivery]`). To have the trade ticket display it during a local demo instead, set `OTP_DEV_ECHO=true` in `.env`; production refuses that flag.
+
+### Docker
+
 ```bash
-# Run unit, compliance, security, and contract tests
-$env:PYTHONPATH="backend;."; python -m pytest backend/tests/unit/ tests/e2e_research/ -v
-
-# Run 5-tier permission, compliance firewall, and adversarial security tests
-$env:PYTHONPATH="backend;."; python -m pytest backend/tests/unit/test_compliance_guard.py backend/tests/unit/test_challenger_m4_compliance.py backend/tests/unit/test_challenger_m5_security.py -v
-
-# Run legal statute retrieval & AI quality evaluation suites
-$env:PYTHONPATH="backend;."; python -m pytest backend/tests/unit/test_legal_retrieval.py backend/tests/evals/test_advisor_eval_suite.py -v
+cp .env.example .env
+docker compose up --build                # PostgreSQL + Redis + backend + frontend
 ```
+
+The frontend runs at <http://localhost:3000> and the API at <http://localhost:8000/docs>.
 
 ---
 
-## 📄 License
+## Configuration
 
-Released under the [MIT License](LICENSE). See [SECURITY_SELF_ASSESSMENT.md](SECURITY_SELF_ASSESSMENT.md) for the complete FinTechathon Deliverable #05 Security Self-Assessment Report.
+All settings are environment variables, documented in [`.env.example`](.env.example). The backend reads `.env` from the repository root or from `backend/`.
+
+| Variable | Purpose | Default |
+| :--- | :--- | :--- |
+| `ENVIRONMENT` | `production` turns on the start-up guards below | `development` |
+| `SECRET_KEY`, `AUDIT_SECRET_KEY` | JWT and audit-HMAC keys. Production requires two different random values of 32+ characters | development keys |
+| `DATABASE_URL` | `postgresql+asyncpg://…` or `sqlite+aiosqlite:///…` | local SQLite |
+| `REDIS_URL` | Shared cache, locks and OTP challenges (required to run more than one instance) | in-memory fallback |
+| `BREVO_API_KEY` / `RESEND_API_KEY` / `SMTP_*`, `EMAIL_FROM` | Email delivery for step-up codes; configure one provider | console (development only) |
+| `ALPACA_API_KEY`, `ALPACA_SECRET_KEY` | Alpaca **paper** account | simulated fills |
+| `OPENAI_API_KEY`, `OPENAI_MODEL` | LLM for dialogue and synthesis | deterministic fallbacks |
+| `FRED_API_KEY` | Macro series | cached fixtures |
+| `SEPOLIA_RPC_URL`, `SEPOLIA_PRIVATE_KEY`, `AUDIT_CONTRACT_ADDRESS` | Optional Merkle-root anchoring on Sepolia | anchoring off (nothing is sent) |
+
+**Start-up refuses to run** with `ALLOW_AUTONOMOUS_EXECUTION=true`, `ALPACA_PAPER=false`, a live Alpaca URL, or any chain other than Sepolia. With `ENVIRONMENT=production` it also refuses default or shared secrets, `DEBUG=true` and `OTP_DEV_ECHO=true`.
+
+---
+
+## Deployment
+
+The reference deployment uses **Vercel** for the frontend and **Render** for the backend.
+
+**Backend (Render web service, root `backend/`)**
+- Build: `pip install -r requirements.txt`
+- Start: `uvicorn main:app --host 0.0.0.0 --port $PORT --proxy-headers`
+- Environment: `ENVIRONMENT=production`, `SECRET_KEY`, `AUDIT_SECRET_KEY`, `DATABASE_URL` (Render PostgreSQL), `CORS_ORIGINS=https://<your-frontend>`, and an email provider. Render's free tier blocks outbound SMTP, so use `BREVO_API_KEY` plus a verified `EMAIL_FROM`.
+- Run **one instance** unless `REDIS_URL` points at a shared Redis: proposals, OTP challenges and throttles otherwise live in process memory.
+
+**Frontend (Vercel, root `frontend/`)**
+- Environment: `NEXT_PUBLIC_API_URL=https://<your-backend>`.
+
+The `backend/Dockerfile` and `frontend/Dockerfile` also work on any container host.
+
+---
+
+## Tests
+
+```bash
+# From the repository root. Windows PowerShell: $env:PYTHONPATH="backend;."
+export PYTHONPATH=backend:.
+python -m pytest backend/tests tests/e2e_research tests/unit -q
+```
+
+Focused suites:
+
+| Area | Command |
+| :--- | :--- |
+| Step-up OTP | `python -m pytest backend/tests/unit/test_step_up_otp.py -q` |
+| Compliance, permission tiers, security | `python -m pytest backend/tests/unit/test_compliance_guard.py backend/tests/unit/test_challenger_m4_compliance.py backend/tests/unit/test_challenger_m5_security.py backend/tests/unit/test_permission_tiers_and_privacy.py backend/tests/unit/test_config.py -q` |
+| Advisor quality evals | `python -m pytest backend/tests/evals -q` |
+| Live deployment (writes `evidence/`) | `python evidence/test_live_e2e.py` |
+| Frontend type-check and lint | `cd frontend && npx tsc --noEmit && npm run lint` |
+
+---
+
+## Checking on-chain anchors
+
+Anchoring is optional (Topic B does not require on-chain evidence) and uses the **Ethereum Sepolia testnet**, so it costs nothing real.
+
+**Turn it on**
+1. Create a new wallet used only for this, for example in MetaMask, and export its private key. Never reuse a wallet that holds real funds.
+2. Get free Sepolia ETH for it from a faucet such as <https://cloud.google.com/application/web3/faucet/ethereum/sepolia> or <https://www.alchemy.com/faucets/ethereum-sepolia>. About 0.05 ETH covers hundreds of anchors.
+3. Set `SEPOLIA_RPC_URL` (free from Infura or Alchemy) and `SEPOLIA_PRIVATE_KEY` on the backend and restart it. The Audit page then shows the wallet, its balance and an enabled **Anchor** button.
+
+**Check an anchor**
+1. On the Audit page, click **Anchor**. The app sends a zero-value transaction from the wallet to itself whose input data is the 32-byte Merkle root of your audit trail, and shows the transaction hash.
+2. The hash links to `https://sepolia.etherscan.io/tx/<hash>`. Anyone can open it without an account.
+3. On Etherscan, click **Click to show more** and compare **Input Data** with the Merkle root shown in the app. They must match exactly.
+4. The anchor is also written into the audit trail as an `AUDIT_ANCHORED` entry, so the Audit page lists every past anchor with its Etherscan link. Every anchor from the wallet is also visible on the wallet's Etherscan page.
+
+To recompute the root yourself, run `python tools/verify_audit.py`. A root covers the entries that existed when it was anchored; later entries produce a new root.
+
+## Repository layout
+
+```
+backend/        FastAPI app: agents/, api/routes/, services/, research/, tools/, db/, tests/
+frontend/       Next.js 14 app (App Router, Tailwind)
+docs/           Technical documentation, execution-evidence guide, development notes
+evidence/       Live-deployment operation logs and the script that produces them
+tests/          Requirement-driven end-to-end research suites
+tools/          Audit-chain verification utility
+```
+
+## License
+
+[MIT](LICENSE). Third-party data and libraries are used under their own licences; see `docs/TECHNICAL_DOCUMENTATION.md` §8.

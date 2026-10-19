@@ -1,0 +1,18 @@
+.env
+*.env
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+*.db
+*.sqlite
+*.sqlite3
+# tests/fixtures is read at startup for offline market data, so only the test code is excluded
+tests/unit/
+tests/e2e/
+tests/evals/
+tests/integration/
+tests/*.py

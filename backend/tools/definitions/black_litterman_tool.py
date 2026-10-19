@@ -30,7 +30,7 @@ class ViewInput(BaseModel):
 
 
 class BlackLittermanArgs(BaseModel):
-    assets: List[str] = Field(default=["SPY", "QQQ", "BND", "VXUS", "DANGCEM"], description="List of portfolio tickers")
+    assets: List[str] = Field(default=["SPY", "QQQ", "BND", "VXUS", "GLD"], description="List of portfolio tickers")
     risk_aversion: float = Field(default=2.5, description="Client risk aversion parameter (delta)")
     views: List[ViewInput] = Field(default_factory=list, description="List of analyst views from Research Engine")
 

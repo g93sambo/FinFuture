@@ -134,11 +134,9 @@ async def test_compliance_enforces_daily_cap_and_step_up_mfa():
         )
     assert any(v.rule_id == "PERM-CAP-DAILY" for v in exc_cap.value.violations)
 
-    # 2. Red-tier trade ($3,600 > $1,000) with enforce_step_up_mfa=True and wrong OTP -> blocked by PERM-STEP-UP-MFA
+    # 2. Red-tier trade ($3,600 > $1,000) whose emailed code was not verified -> blocked by PERM-STEP-UP-MFA.
+    #    A client-supplied mfa_code is ignored by the guard; only the server-side verification flag counts.
     proposal_id = "98765432-aaaa-bbbb-cccc-111122223333"
-    expected_otp = guard.compute_expected_mfa_code(proposal_id)
-    assert expected_otp == "987654"
-
     with pytest.raises(ComplianceViolationError) as exc_mfa:
         await guard.check_trade(
             None,
@@ -152,15 +150,14 @@ async def test_compliance_enforces_daily_cap_and_step_up_mfa():
                 "projected_weight": 0.04,
                 "user_approved": True,
                 "user_approved_at": now_iso,
-                "enforce_step_up_mfa": True,
-                "mfa_code": "000000",
+                "mfa_code": "987654",
                 "fiduciary_attested": True,
             },
             profile,
         )
     assert any(v.rule_id == "PERM-STEP-UP-MFA" for v in exc_mfa.value.violations)
 
-    # 3. Same Red-tier trade with valid OTP and attestation -> passes!
+    # 3. Same Red-tier trade after server-side OTP verification and attestation -> passes
     res = await guard.check_trade(
         None,
         "test-cap-client",
@@ -173,13 +170,32 @@ async def test_compliance_enforces_daily_cap_and_step_up_mfa():
             "projected_weight": 0.04,
             "user_approved": True,
             "user_approved_at": now_iso,
-            "enforce_step_up_mfa": True,
-            "mfa_code": expected_otp,
+            "step_up_verified": True,
             "fiduciary_attested": True,
         },
         profile,
     )
     assert res.passed is True
+
+    # 3b. Verified code without attestation is still blocked
+    with pytest.raises(ComplianceViolationError) as exc_unattested:
+        await guard.check_trade(
+            None,
+            "test-cap-client",
+            {
+                "proposal_id": proposal_id,
+                "symbol": "BND",
+                "side": "BUY",
+                "qty": 50,
+                "notional_value": 3_600.0,
+                "projected_weight": 0.04,
+                "user_approved": True,
+                "user_approved_at": now_iso,
+                "step_up_verified": True,
+            },
+            profile,
+        )
+    assert any(v.rule_id == "PERM-STEP-UP-MFA" for v in exc_unattested.value.violations)
 
     # 4. Regression (RISK-14): omitting the step-up fields no longer skips the gate
     with pytest.raises(ComplianceViolationError) as exc_omitted:
@@ -313,66 +329,9 @@ async def test_check_input_endpoint_and_permission_tiers_endpoint():
             assert auto_resp.status_code == 403
             assert "PERM-TIER-5" in str(auto_resp.json())
 
-            # 4. Verify WeBank ecosystem metadata in /api/v1/compliance/permission-tiers
-            assert "webank_ecosystem" in body
-            wb = body["webank_ecosystem"]
-            assert "FISCO BCOS" in wb["consortium_chain"]["engine"]
-            assert wb["event_mesh"]["topic"] == "com.webank.finfuture.audit.anchor"
-            assert wb["federated_privacy"]["raw_pii_transmitted"] is False
-            wb_symbols = {item["symbol"] for item in wb["wealth_shelf"]["instruments"]}
-            assert {"WBKCASH", "WBK6M", "GBAHK", "WBKGLD"}.issubset(wb_symbols)
-
-
-@pytest.mark.asyncio
-async def test_webank_fisco_bcos_fate_and_wealth_shelf():
-    """Verify WeBank FISCO BCOS v3.6 consortium anchoring, FATE v2.0 privacy envelope, and GBA Wealth Connect product comparison."""
-    from services.anchoring import AnchoringService
-    from agents.product_comparison import ProductComparisonAgent
-
-    # 1. WeBank FISCO BCOS v3.6 + WeEvent receipt generation
-    svc = AnchoringService()
-    leaves = ["a" * 64, "b" * 64, "c" * 64]
-    fisco = await svc.anchor_to_fisco_bcos(leaves)
-    assert fisco["group_id"] == "group0"
-    assert "FISCO BCOS" in fisco["engine"]
-    assert fisco["weevent_topic"] == "com.webank.finfuture.audit.anchor"
-    assert fisco["weevent_event_id"].startswith("weevent-group0-")
-    assert fisco["entries_count"] == 3
-
-    dual = await svc.anchor_hashes(leaves)
-    assert dual.fisco_bcos_receipt is not None
-    assert dual.fisco_bcos_receipt["merkle_root"] == dual.merkle_root
-
-    # 2. WeBank FATE v2.0 Privacy-Preserving Feature Envelope
-    ctx = ClientFinancialContext(
-        client_id="client-webank-001",
-        name="Chen Wei",
-        age=36,
-        annual_income=180_000.0,
-        liquid_net_worth=320_000.0,
-        risk_tolerance_score=5.8,
-        suitability_category="MODERATE",
-        kyc_verified=True,
-    )
-    fate = ctx.to_fate_privacy_envelope()
-    assert fate["raw_pii_exposed"] is False
-    assert fate["feature_vector"]["age_band"] == "30_44"
-    assert fate["feature_vector"]["net_worth_tier"] == "TIER_3_AFFLUENT"
-    assert fate["feature_vector"]["gba_wealth_connect_eligible"] is True
-    assert fate["feature_commitment_hash"].startswith("0x")
-    assert "Chen Wei" not in str(fate)
-
-    # 3. WeBank Smart Wealth & GBA Wealth Connect Product Shelf Comparison
-    comp = ProductComparisonAgent()
-    bond_res = await comp.compare_bonds(
-        symbols=["WBKCASH", "WBK6M", "BND", "SHY"],
-        profile={"risk_tolerance_score": 4.5, "investment_horizon_years": 10},
-    )
-    ranked_syms = [p.symbol for p in bond_res.ranked_products]
-    assert "WBKCASH" in ranked_syms
-    assert "WBK6M" in ranked_syms
-    assert comp.score_reputation("WeBank Live+ Cash Management Fund", "WBKCASH") == 10.0
-
+            # 4. The catalogue no longer advertises integrations that are not connected
+            assert "webank_ecosystem" not in body
+            assert not {"WBKCASH", "DANGCEM", "BTC", "^GSPC"} & set(body["enforced_limits"]["whitelisted_symbols"])
 
 
 def test_circuit_breaker_reset_only_clears_simulated_drills():

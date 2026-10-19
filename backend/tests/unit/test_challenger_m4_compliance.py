@@ -41,6 +41,9 @@ from services.health_report import (
     HealthGrade,
 )
 
+# Server-side step-up result (see test_step_up_otp.py); attestation is part of PERM-STEP-UP-MFA.
+STEP_UP_OK = {"step_up_verified": True, "fiduciary_attested": True}
+
 
 @pytest.fixture
 def compliance_guard():
@@ -281,6 +284,7 @@ class TestComplianceRuleBoundaries:
             "user_approved": True,
             "user_approved_at": now,
             "projected_weight": 0.1500,
+            **STEP_UP_OK,
         }
         res_pass = await compliance_guard.check_trade(None, "c1", trade_pass, base_profile)
         assert res_pass.passed is True
@@ -292,6 +296,7 @@ class TestComplianceRuleBoundaries:
             "user_approved": True,
             "user_approved_at": now,
             "projected_weight": 0.1501,
+            "step_up_verified": True,  # unattested, so the CONC-001 waiver does not apply
         }
         with pytest.raises(ComplianceViolationError) as exc:
             await compliance_guard.check_trade(None, "c1", trade_fail, base_profile)
@@ -381,7 +386,7 @@ class TestComplianceRuleBoundaries:
         # $100,000.00 -> PASS
         t_100k = {
             "symbol": "SPY", "qty": 200.0, "price": 500.0, "notional_value": 100000.00,
-            "user_approved": True, "user_approved_at": now,
+            "user_approved": True, "user_approved_at": now, **STEP_UP_OK,
         }
         res_100k = await compliance_guard.check_trade(None, "c1", t_100k, base_profile)
         assert res_100k.passed is True
@@ -389,7 +394,7 @@ class TestComplianceRuleBoundaries:
         # $100,001.00 -> FAIL
         t_100k_1 = {
             "symbol": "SPY", "qty": 200.0, "price": 500.0, "notional_value": 100001.00,
-            "user_approved": True, "user_approved_at": now,
+            "user_approved": True, "user_approved_at": now, **STEP_UP_OK,
         }
         with pytest.raises(ComplianceViolationError) as exc:
             await compliance_guard.check_trade(None, "c1", t_100k_1, base_profile)
@@ -399,7 +404,7 @@ class TestComplianceRuleBoundaries:
         t_enhanced = {
             "symbol": "SPY", "qty": 500.0, "price": 500.0, "notional_value": 250000.00,
             "user_approved": True, "user_approved_at": now,
-            "enhanced_kyc_approved": True,
+            "enhanced_kyc_approved": True, **STEP_UP_OK,
         }
         res_enhanced = await compliance_guard.check_trade(None, "c1", t_enhanced, base_profile)
         assert res_enhanced.passed is True

@@ -1,6 +1,6 @@
 # Execution Evidence Guide (Deliverable 06)
 
-**What the rules require.** For a non-on-chain topic (Topic B is one), execution evidence is **simulated-account / sandbox operation logs** *and* the **demo video**. Real on-chain transaction hashes are only required for the on-chain topic (F), so you do **not** need them — but if you mention Sepolia or FISCO anchoring anywhere, back it with real hashes or call it a dry run (see `SECURITY_SELF_ASSESSMENT.md` → `RISK-09`).
+**What the rules require.** For a non-on-chain topic (Topic B is one), execution evidence is **simulated-account / sandbox operation logs** *and* the **demo video**. Real on-chain transaction hashes are only required for the on-chain topic (F), so you do **not** need them — but if you show Sepolia anchoring, use a real anchor and open it on Etherscan (README → "Checking on-chain anchors").
 
 **Deadline:** 2026-10-20 23:59 Beijing (UTC+8) = 15:59 UTC = 16:59 London (BST). Later versions overwrite earlier ones, so submit early and re-submit if you improve it.
 
@@ -50,9 +50,8 @@ Record the **live** site, not localhost, so the judge sees the deployed product.
 
 **Before recording**
 1. Wake the backend: open `https://finfuture.onrender.com/health` until it returns `ok`.
-2. Use a **fresh account** (e.g. `demo1@example.com`) so onboarding is part of the story.
+2. Use a **fresh account with a real inbox you can open on screen** (e.g. a Gmail alias such as `you+demo1@gmail.com`), so onboarding is part of the story and the step-up code arrives. Red-tier orders cannot be approved on the live site until an email provider (`BREVO_API_KEY` + `EMAIL_FROM`) is set on Render.
 3. Close other tabs, hide bookmarks and personal data. Don't show `.env`, API keys, or the Render dashboard environment page.
-4. Do **not** start messages with `[DEMO]` — that prefix triggers canned replay responses (`demo_replay.py`) and would make the run look scripted. Say so honestly if you do use it.
 
 **Suggested script (~4:30)**
 
@@ -61,9 +60,9 @@ Record the **live** site, not localhost, so the judge sees the deployed product.
 | 0:00–0:20 | Landing page | One-line pitch: non-discretionary AI wealth advisor; the model writes words, code supplies numbers, a human approves every trade. |
 | 0:20–1:10 | Register → onboarding chat | Risk profiling by conversation; stated vs revealed tolerance; the more conservative wins. |
 | 1:10–2:00 | Advisor: ask for an allocation / compare funds | Black-Litterman + CVaR numbers come from code; show the comparison table and rationale. |
-| 2:00–2:45 | Propose a trade → try to approve | Tier 3 proposal, 15-min expiry; Tier 4 needs explicit approval; show the confirmation gate for > \$1,000. |
+| 2:00–2:45 | Propose a trade over \$1,000 → Continue to verification → open the email → enter the code | Tier 3 proposal, 15-min expiry. Tier 4 needs explicit approval, and above \$1,000 a single-use code emailed to the client. Optionally type a wrong code first to show "attempts left". |
 | 2:45–3:30 | **Trigger a block**: an oversized or non-whitelisted order, or paste a prompt-injection line | Compliance firewall blocks it deterministically; show the rule ID and reason. |
-| 3:30–4:00 | Audit page | Hash-chained entries, chain verification, Merkle proof. Be accurate about anchoring (dry-run vs real). |
+| 3:30–4:00 | Audit page | Hash-chained entries, chain verification, Merkle proof. If a Sepolia wallet is configured: anchor, open the Etherscan link, show Input Data = Merkle root. |
 | 4:00–4:30 | Refresh the page and reopen chat | History persisted in PostgreSQL across sessions. Close with the 57/57 live test result. |
 
 **After recording:** trim dead air, export MP4, keep under the size limit on the submission form, and upload to a link that works without login (YouTube *unlisted*, or Google Drive "anyone with the link"). **Open the link in a private window to verify it.**
@@ -78,6 +77,7 @@ Save to `evidence/screenshots/` with descriptive names so the package is self-ex
 2. `02_onboarding_profile.png` — completed risk profile
 3. `03_allocation.png` — allocation with weights / CVaR
 4. `04_trade_proposal.png` — proposal with expiry and compliance rule results
+4b. `04b_step_up_code.png` — the step-up dialog next to the received email (blank out the full address)
 5. `05_blocked_trade.png` — a trade rejected with the rule ID visible
 6. `06_audit_chain_verified.png` — audit page / `GET /audit/{client_id}/verify` showing `valid: true`
 7. `07_live_test_summary.png` — terminal output of `python evidence\test_live_e2e.py` ending with 57/57
@@ -123,4 +123,6 @@ Export Markdown to PDF with: `npx md-to-pdf docs/TECHNICAL_DOCUMENTATION.md` (me
 - [ ] Video link opens in a private window
 - [ ] No secrets in repo: `git ls-files | Select-String "\.env$"` returns nothing but `.env.example`
 - [ ] Production `SECRET_KEY` and `AUDIT_SECRET_KEY` are set on Render (not the dev defaults — `RISK-08`)
+- [ ] An email provider is set on Render (`BREVO_API_KEY` + verified `EMAIL_FROM`) and a Red-tier trade's code arrives
+- [ ] `OTP_DEV_ECHO` is **not** set on Render (production refuses to start with it)
 - [ ] Any anchoring claim in the deck/video matches reality (`RISK-09`)

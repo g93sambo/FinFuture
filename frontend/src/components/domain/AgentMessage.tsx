@@ -7,6 +7,7 @@ import { BiasAlert } from "./BiasAlert";
 import { ComplianceSummary, Violations } from "./Compliance";
 import { ExecutionReceipt, ProposalTicket } from "./TradeTicket";
 import { fixed, money, pct, timeOnly } from "@/lib/format";
+import type { ApproveOptions } from "@/lib/api";
 import type { AgentEvent } from "@/lib/types";
 import type { ProposalState, TranscriptItem } from "@/lib/useAdvisor";
 
@@ -209,7 +210,7 @@ function EventBody({
 }: {
   ev: AgentEvent;
   proposals: Record<string, ProposalState>;
-  onApprove: (id: string, opts?: { mfaCode?: string; fiduciaryAttested?: boolean }) => void;
+  onApprove: (id: string, opts?: ApproveOptions) => Promise<string | void> | void;
   onReject: (id: string) => void;
 }) {
   switch (ev.event) {
@@ -359,7 +360,7 @@ export function TranscriptRow({
 }: {
   item: TranscriptItem;
   proposals: Record<string, ProposalState>;
-  onApprove: (id: string, opts?: { mfaCode?: string; fiduciaryAttested?: boolean }) => void;
+  onApprove: (id: string, opts?: ApproveOptions) => Promise<string | void> | void;
   onReject: (id: string) => void;
   onSelectOption?: (option: string) => void;
 }) {

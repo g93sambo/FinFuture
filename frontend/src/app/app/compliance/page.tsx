@@ -82,76 +82,22 @@ export default function CompliancePage() {
   const tiers = tiersReq.data?.permission_tiers ?? [];
   const knownRisks = tiersReq.data?.known_risks ?? [];
   const pillars = tiersReq.data?.security_pillars ?? [];
-  const webank = tiersReq.data?.webank_ecosystem;
   const cb = cbOverride ?? tiersReq.data?.circuit_breaker;
 
   return (
     <>
       <PageHeader
         title="Compliance & security self-assessment"
-        lede="Runtime 5-tier permission architecture (Read-Only · Advise · Propose · Execute with Approval under Limits · Autonomous Hard-Disabled), WeBank open-source fintech stack (FISCO BCOS v3.6 · FATE v2.0 · WeEvent · GBA Wealth Connect), anomaly circuit breaker, and the active 12-rule regulatory catalogue."
+        lede="Runtime 5-tier permission model (Read-Only · Advise · Propose · Execute with Approval under Limits · Autonomous Hard-Disabled), anomaly circuit breaker, and the active 12-rule regulatory catalogue."
       />
       {loading && !data ? <Loading label="Loading compliance architecture" /> : null}
       <ErrorNotice error={error} onRetry={reload} />
 
       <div className="space-y-8">
-        {webank ? (
-          <Panel
-            title="WeBank Open-Source Fintech Stack Integration"
-            aside={<Tag tone="success">FISCO BCOS v3.6 · FATE v2.0 · WeEvent · GBA Wealth Connect</Tag>}
-          >
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-xl border border-line bg-surface/70 p-4 space-y-1.5">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-primary">Consortium Ledger</span>
-                  <Tag tone="success">PBFT Active</Tag>
-                </div>
-                <p className="text-sm font-medium text-ink">{webank.consortium_chain.engine}</p>
-                <p className="text-xs text-muted">{webank.consortium_chain.consensus}</p>
-                <p className="figures text-[11.5px] text-muted">Contract: {webank.consortium_chain.contract} ({webank.consortium_chain.group_id})</p>
-              </div>
-
-              <div className="rounded-xl border border-line bg-surface/70 p-4 space-y-1.5">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-primary">Event Governance Mesh</span>
-                  <Tag tone="success">WeEvent</Tag>
-                </div>
-                <p className="text-sm font-medium text-ink">{webank.event_mesh.engine}</p>
-                <p className="figures text-xs text-muted break-all">Topic: {webank.event_mesh.topic}</p>
-                <p className="text-[11.5px] text-muted">Protocol: {webank.event_mesh.protocol}</p>
-              </div>
-
-              <div className="rounded-xl border border-line bg-surface/70 p-4 space-y-1.5">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-primary">Federated Privacy</span>
-                  <Tag tone="success">Zero Raw PII</Tag>
-                </div>
-                <p className="text-sm font-medium text-ink">{webank.federated_privacy.engine}</p>
-                <p className="text-xs text-muted">{webank.federated_privacy.mode}</p>
-              </div>
-
-              <div className="rounded-xl border border-line bg-surface/70 p-4 space-y-1.5">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-primary">Product Shelf</span>
-                  <Tag tone="neutral">4 Instruments</Tag>
-                </div>
-                <p className="text-sm font-medium text-ink">{webank.wealth_shelf.platform}</p>
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  {webank.wealth_shelf.instruments.map((inst) => (
-                    <span key={inst.symbol} className="figures rounded-md border border-line bg-background px-2 py-0.5 text-[11.5px] text-ink">
-                      {inst.symbol} ({inst.risk_level})
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </Panel>
-        ) : null}
-
         {tiers.length > 0 ? (
           <Panel
             title="Five-tier permission model (code-enforced execution boundaries)"
-            aside={<span>Non-discretionary · $100k single cap · $250k daily cap · 90-symbol whitelist · Autonomous disabled</span>}
+            aside={<span>Non-discretionary · $100k single cap · $250k daily cap · {tiersReq.data?.enforced_limits?.whitelisted_symbols?.length ?? ""}-symbol whitelist · Autonomous disabled</span>}
           >
             <div className="grid gap-6 lg:grid-cols-3">
               {tiers.map((t) => (

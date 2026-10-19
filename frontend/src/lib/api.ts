@@ -16,9 +16,12 @@ import type {
   OnboardingData,
   PermissionTiersResponse,
   Portfolio,
+  PortfolioHistoryPoint,
   Proposal,
   Quote,
+  SepoliaNetwork,
   SessionStart,
+  StepUpChallenge,
   Trade,
   User,
 } from "./types";
@@ -85,6 +88,18 @@ export class ApiError extends Error {
     if (status >= 500) return "Our advisory servers experienced a brief hiccup. Please retry in a few moments.";
     return `Service request could not be completed (${status}). Please try again.`;
   }
+}
+
+export type ApproveOptions = { mfaCode?: string; fiduciaryAttested?: boolean };
+
+const RETRYABLE_STEP_UP_ERRORS = new Set(["InvalidStepUpCodeError", "AttestationRequiredError"]);
+
+/** The reason for a step-up error the client can fix on the trade ticket and retry, else null. */
+export function retryableStepUpReason(err: unknown): string | null {
+  if (!(err instanceof ApiError)) return null;
+  const d = err.detail;
+  const code = d && typeof d === "object" && "error" in d ? String((d as { error: unknown }).error) : "";
+  return RETRYABLE_STEP_UP_ERRORS.has(code) ? err.message : null;
 }
 
 let onUnauthorized: (() => void) | null = null;
@@ -175,6 +190,8 @@ export const api = {
   updateProfile: (data: Partial<OnboardingData> & { client_id?: string }) =>
     request<ClientProfile>("/api/v1/profile", { method: "PUT", body: json(data) }),
   portfolio: (clientId: string) => request<Portfolio>(`/api/v1/portfolio/${encodeURIComponent(clientId)}`),
+  portfolioHistory: (clientId: string) =>
+    request<{ client_id: string; points: PortfolioHistoryPoint[] }>(`/api/v1/portfolio/${encodeURIComponent(clientId)}/history`),
   healthReport: (clientId: string) =>
     request<HealthReport>("/api/v1/portfolio/health-report", { method: "POST", body: json({ client_id: clientId }) }),
   simulateShock: (clientId: string, scenario: string) =>
@@ -198,11 +215,13 @@ export const api = {
       method: "POST",
       body: json({ client_id: clientId, symbol, side, qty }),
     }),
+  requestStepUpCode: (proposalId: string) =>
+    request<StepUpChallenge>(`/api/v1/trade/${encodeURIComponent(proposalId)}/step-up`, { method: "POST" }),
   executeProposal: (
     clientId: string,
     proposalId: string,
     approved: boolean,
-    opts?: { mfaCode?: string; fiduciaryAttested?: boolean },
+    opts?: ApproveOptions,
   ) =>
     request<{ status: string; execution: Execution | null; events: AgentEvent[] }>("/api/v1/trade/execute", {
       method: "POST",
@@ -226,54 +245,11 @@ export const api = {
     ),
   anchorAudit: (clientId: string) =>
     request<AnchorResult>(`/api/v1/audit/${encodeURIComponent(clientId)}/anchor`, { method: "POST" }),
-  anchorFiscoBcos: async (clientId: string): Promise<import("./types").FiscoBcosReceipt> => {
-    try {
-      return await request<import("./types").FiscoBcosReceipt>(
-        `/api/v1/audit/${encodeURIComponent(clientId)}/anchor/fisco-bcos`,
-        { method: "POST" },
-      );
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 404) {
-        const res = await request<AnchorResult>(`/api/v1/audit/${encodeURIComponent(clientId)}/anchor`, {
-          method: "POST",
-        });
-        if (res.fisco_bcos_receipt) return res.fisco_bcos_receipt;
-        const blk = res.block_number ?? 184209;
-        return {
-          engine: "WeBank FISCO BCOS v3.6.0",
-          group_id: "group0",
-          consensus: "PBFT (4-Node Shenzhen-HK Regulatory Consortium)",
-          validator_nodes: 4,
-          pbft_view: 1024,
-          block_number: blk,
-          tx_hash: res.tx_hash,
-          merkle_root: res.merkle_root,
-          entries_count: res.entries_count,
-          contract_address: "0x8fB0c2498E4a17D691b973cE39A4e2F9574a9880",
-          weevent_topic: "com.webank.finfuture.audit.anchor",
-          weevent_event_id: `weevent-group0-${blk}-${res.merkle_root.slice(0, 12)}`,
-          status: res.status,
-          timestamp: res.timestamp,
-        };
-      }
-      throw err;
-    }
-  },
   merkleProof: (clientId: string, entryId: string) =>
     request<MerkleProofResponse>(
       `/api/v1/audit/${encodeURIComponent(clientId)}/merkle-proof/${encodeURIComponent(entryId)}`,
     ),
-  sepoliaNetwork: () =>
-    request<{
-      configured: boolean;
-      connected: boolean;
-      provider: string;
-      block_number?: number;
-      chain_id?: number;
-      gas_price_gwei?: number;
-      has_private_key?: boolean;
-      error?: string;
-    }>("/api/v1/audit/network/sepolia"),
+  sepoliaNetwork: () => request<SepoliaNetwork>("/api/v1/audit/network/sepolia", { auth: false }),
   rules: () => request<{ rules: ComplianceRule[] }>("/api/v1/compliance/rules"),
   permissionTiers: () => request<PermissionTiersResponse>("/api/v1/compliance/permission-tiers"),
   simulateCircuitBreaker: () =>

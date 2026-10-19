@@ -42,8 +42,8 @@ flowchart LR
     end
     API -->|ticker symbols only| Mkt["Yahoo Finance · FRED · SEC EDGAR"]
     API -->|"redacted + pseudonymised dialogue"| LLM["LLM API (OpenAI-compatible)"]
-    API -->|"(symbol, side, qty) paper orders"| Brk["Alpaca Paper / Bamboo sandbox"]
-    API -.->|"Merkle root (dry-run unless RPC configured)"| Chain["Ethereum Sepolia · FISCO BCOS"]
+    API -->|"(symbol, side, qty) paper orders"| Brk["Alpaca Paper"]
+    API -.->|"Merkle root (optional, when a wallet is configured)"| Chain["Ethereum Sepolia"]
 ```
 
 | Layer | Technology | Notes |
@@ -102,8 +102,8 @@ Proposals and locks live in Redis when it is available, otherwise in process mem
 | `backend/main.py` | App factory, CORS, router mounting, fixture warm-up, default rule seeding |
 | `backend/api/routes/` | `auth`, `session`, `chat`, `profile`, `compare`, `portfolio`, `trade`, `audit`, `market`, `compliance`, `research`, `ws`, `asyncapi` |
 | `backend/agents/` | `orchestrator`, `risk_profiler`, `product_comparison`, `allocation_engine`, `behavioral_bias`, `review_stage`, `compliance_guard`, `execution_module`, `market_data` |
-| `backend/services/` | `financial_engineering`, `black_litterman`, `audit_logger`, `anchoring`, `sanitizer`, `evidence_ledger`, `context_builder`, `portfolio_service`, `data_pipeline`, providers (`equities`, `macro`, `treasury`, `sec_edgar`, `screener`, `bamboo`, …) |
-| `backend/tools/` | `ToolRegistry`, adapters (retry/backoff/circuit breaker), 16 tool definitions |
+| `backend/services/` | `financial_engineering`, `black_litterman`, `audit_logger`, `anchoring`, `sanitizer`, `evidence_ledger`, `context_builder`, `portfolio_service`, `data_pipeline`, providers (`equities`, `macro`, `treasury`, `sec_edgar`, `screener`, …) |
+| `backend/tools/` | `ToolRegistry`, adapters (retry/backoff/circuit breaker), 22 registered tools |
 | `backend/research/` | `task_graph` (DAG), `memory` (tenant-isolated), `verification` (self-check loop) |
 | `backend/db/` | SQLAlchemy models, async engine, Alembic migrations |
 | `frontend/src/app/app/*` | Advisor chat, allocation, compare, markets, trade, audit, compliance, health, profile |
@@ -194,8 +194,8 @@ A declarative task graph dispatches eight specialist roles (macro, financial, in
 
 - **12 rules:** `SUIT-001..003`, `CONC-001..003`, `REG-001..004`, `AML-001..002`.
 - **Permission gates:** `PERM-TIER-5`, `PERM-CIRCUIT-BREAKER`, `PERM-WHITELIST`, `PERM-CAP-DAILY`, `PERM-STEP-UP-MFA`.
-- **Limits:** per-trade \$100,000; rolling 24 h \$250,000; 129-symbol whitelist (`ALLOWED_TRADING_SYMBOLS`); 15-minute approval freshness; 30-second double-submit lock (cache lock plus a durable PostgreSQL check on client + symbol + side).
-- **Step-up confirmation:** orders over \$1,000 or 5 % of NAV need the proposal's 6-digit code and an attestation, on every approval path. An approval that arrives without the code (chat "yes", WebSocket approve, bare REST call) is turned back with `StepUpRequiredError`, and the proposal stays pending. The code is derived from the `proposal_id`, so this is demonstration-grade friction, not a second factor (`RISK-07` in the self-assessment).
+- **Limits:** per-trade \$100,000; rolling 24 h \$250,000; 101-symbol whitelist (`ALLOWED_TRADING_SYMBOLS`, symbols tradable on Alpaca); 15-minute approval freshness; 30-second double-submit lock (cache lock plus a durable PostgreSQL check on client + symbol + side).
+- **Step-up one-time code:** orders over \$1,000 or 5 % of NAV need an emailed one-time code and an attestation, on every approval path. `POST /api/v1/trade/{proposal_id}/step-up` makes `StepUpOTPService` (`services/otp_service.py`) generate 6 random digits, store only an HMAC-SHA256 digest bound to the user and proposal, and email the code via Brevo, Resend or SMTP. Codes expire in 5 minutes, allow 5 attempts and are single-use, and resends are throttled. An approval without a code (chat "yes", WebSocket approve, bare REST call) is turned back with `StepUpRequiredError`; a wrong code returns `InvalidStepUpCodeError` with the attempts left. The compliance guard accepts the trade only when the orchestrator has verified the code server-side.
 - **Circuit breaker:** ≥ 3 violations within 60 s locks execution for 15 minutes. The compliance console's drill button records `SIMULATED_DRILL` incidents. Only a lock caused entirely by drills can be reset by the user; otherwise the reset endpoint returns HTTP 423.
 
 ### 4.4 Prompt-injection and privacy controls
@@ -207,8 +207,8 @@ A declarative task graph dispatches eight specialist roles (macro, financial, in
 ### 4.5 Tamper-evident audit trail
 - `entry_hash = SHA-256(prev_hash ‖ client_id ‖ event_type ‖ canonical_details ‖ timestamp)`, starting from a 64-zero genesis hash.
 - Each entry is signed with HMAC-SHA-256; the chain can be re-verified with `GET /api/v1/audit/{client_id}/verify` or `tools/verify_audit.py`.
-- Entries are batched into an RFC 6962 Merkle tree; inclusion proofs are served at `/audit/{client_id}/merkle-proof/{entry_id}`.
-- **Anchoring:** the Merkle root can be written to Ethereum Sepolia (a real signed transaction when `SEPOLIA_RPC_URL`, key and contract are configured). Mainnet (chain ID 1) is hard-rejected. The FISCO BCOS path currently only checks the node's block height and builds a hash-derived receipt. It does not submit a transaction, so the receipt carries `status="simulated"` and `onchain=false`, and the UI tags it as simulated (`RISK-16`). With no RPC endpoint configured both paths return a labelled `dry_run` receipt.
+- Entry hashes form a binary SHA-256 Merkle tree (odd nodes duplicated). Inclusion proofs are served at `/audit/{client_id}/merkle-proof/{entry_id}` and verified against the root server-side.
+- **Anchoring:** with `SEPOLIA_RPC_URL` and a funded testnet `SEPOLIA_PRIVATE_KEY`, `POST /audit/{client_id}/anchor` sends a zero-value transaction whose input data is the 32-byte Merkle root, returns its Etherscan link and records an `AUDIT_ANCHORED` audit entry. Without a wallet nothing is sent and no hash is returned. Mainnet (chain ID 1) is hard-rejected. See the README section "Checking on-chain anchors".
 
 ### 4.6 Execution safety
 Paper trading only: the Alpaca base URL is validated at startup and live endpoints are refused. `ALLOW_AUTONOMOUS_EXECUTION` must be `false` or the application will not start.
@@ -226,7 +226,7 @@ Full machine-readable specs: `GET /openapi.json` (REST) and the AsyncAPI documen
 | Session & chat | `POST /api/v1/session/start`, `GET/POST /api/v1/chat/sessions`, `GET/PATCH/DELETE /chat/sessions/{id}`, `POST /chat/message` |
 | Profile | onboarding questionnaire, profile read/update |
 | Markets & allocation | quotes, history, macro, `allocation/optimize`, `allocation/current`, product `compare` |
-| Trade | propose, execute, `trade/orders` |
+| Trade | propose, `trade/{proposal_id}/step-up` (email a one-time code), execute, `trade/orders` |
 | Compliance & audit | `compliance/check`, `compliance/check-input`, `compliance/permission-tiers`, `audit/logs`, `audit/{client_id}/verify`, anchor, Merkle proof |
 | Streaming | `WSS /ws/chat/{session_id}?token=…`; SSE research stream |
 
@@ -241,7 +241,7 @@ Full machine-readable specs: `GET /openapi.json` (REST) and the AsyncAPI documen
 | Research E2E | `tests/e2e_research/` | Four-tier requirement-driven DAG tests |
 | Live production | `evidence/` (see the evidence guide) | Zero-mock run against the deployed Render and Vercel apps |
 
-Local run of the full Python suite (2026-10-19, `backend/tests` + `tests`): **913 passed, 0 failed**.
+Local run of the full Python suite (2026-10-19, after the step-up OTP change; `backend/tests`, `tests/e2e_research`, `tests/unit` and the committed `tests/adversarial` suites): **921 passed, 0 failed**. This includes `test_step_up_otp.py` (15 tests: randomness, digest-only storage, single use, user binding, attempt limit, resend throttling, expiry, fail-closed production delivery and the orchestrator gate).
 
 An earlier run the same day had 8 failures. They were fixed as follows:
 
@@ -270,7 +270,7 @@ PYTHONPATH=backend:. python -m pytest backend/tests tests -q   # PowerShell: $en
 
 | Component | Platform | Key settings |
 | :--- | :--- | :--- |
-| Backend | Render web service | `DATABASE_URL`, `SECRET_KEY`, `AUDIT_SECRET_KEY`, `CORS_ORIGINS`, `ALPACA_*`, `OPENAI_API_KEY`, `DRY_RUN` |
+| Backend | Render web service | `DATABASE_URL`, `SECRET_KEY`, `AUDIT_SECRET_KEY`, `CORS_ORIGINS`, `ALPACA_*`, `OPENAI_API_KEY`, `DRY_RUN`, email provider for step-up codes (`BREVO_API_KEY` + `EMAIL_FROM`; Render's free tier blocks SMTP) |
 | Frontend | Vercel | `NEXT_PUBLIC_API_URL` = the Render service URL (the WebSocket URL is derived from it automatically) |
 
 Environment variable names are defined in `backend/core/config.py` and listed in `.env.example`. With `ENVIRONMENT=production`, the backend **refuses to start** unless `SECRET_KEY` and `AUDIT_SECRET_KEY` are set to two different random values of at least 32 characters. Generate them with `python -c "import secrets; print(secrets.token_urlsafe(48))"`. `CORS_ORIGIN_REGEX` can override the default allowed Vercel domains.
@@ -286,6 +286,8 @@ uvicorn main:app --reload --port 8000
 # frontend
 cd frontend && npm install && npm run build && npm run start
 ```
+
+Containerised: `docker compose up --build` starts PostgreSQL, Redis, the backend and the frontend (`docker-compose.yml`, `backend/Dockerfile`, `frontend/Dockerfile`).
 
 ---
 

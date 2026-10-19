@@ -17,7 +17,6 @@ try:
     from backend.tools.definitions.portfolio_optimizer import PortfolioOptimizerTool, PortfolioOptimizerArgs
     from backend.tools.definitions.tax_strategy import TaxStrategyTool, TaxStrategyArgs
     from backend.tools.definitions.global_intelligence import CryptoMacroTool, CryptoMacroArgs, SovereignMacroTool, SovereignMacroArgs
-    from backend.tools.definitions.bamboo_invest import BambooCalculateOrderTool, BambooCalculateOrderArgs, BambooPortfolioTool, BambooPortfolioArgs
     from backend.tools.definitions.web_intelligence import SearchFinancialWebTool, SearchFinancialWebArgs, FetchWebPageTool, FetchWebPageArgs
     from backend.tools.definitions.market_analytics import (
         StockMetricsTool,
@@ -38,7 +37,6 @@ try:
 except ImportError:
     from .tax_strategy import TaxStrategyTool, TaxStrategyArgs
     from .global_intelligence import CryptoMacroTool, CryptoMacroArgs, SovereignMacroTool, SovereignMacroArgs
-    from .bamboo_invest import BambooCalculateOrderTool, BambooCalculateOrderArgs, BambooPortfolioTool, BambooPortfolioArgs
     from .web_intelligence import SearchFinancialWebTool, SearchFinancialWebArgs, FetchWebPageTool, FetchWebPageArgs
     from .market_analytics import (
         StockMetricsTool,
@@ -82,10 +80,6 @@ __all__ = [
     "CryptoMacroArgs",
     "SovereignMacroTool",
     "SovereignMacroArgs",
-    "BambooCalculateOrderTool",
-    "BambooCalculateOrderArgs",
-    "BambooPortfolioTool",
-    "BambooPortfolioArgs",
     "SearchFinancialWebTool",
     "SearchFinancialWebArgs",
     "FetchWebPageTool",
@@ -136,8 +130,6 @@ def register_core_tools(registry: Optional[ToolRegistry] = None) -> None:
     registry.register(TaxStrategyTool())
     registry.register(CryptoMacroTool())
     registry.register(SovereignMacroTool())
-    registry.register(BambooCalculateOrderTool())
-    registry.register(BambooPortfolioTool())
     registry.register(SearchFinancialWebTool())
     registry.register(FetchWebPageTool())
     registry.register(StockMetricsTool())

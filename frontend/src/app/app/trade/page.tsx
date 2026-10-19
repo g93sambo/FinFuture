@@ -1,9 +1,8 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { Suspense, useState, useEffect } from "react";
+import { Suspense, useState } from "react";
 import { ComplianceSummary, Violations } from "@/components/domain/Compliance";
-import { ConnectBrokerModal } from "@/components/domain/ConnectBrokerModal";
 import { TickerAutocomplete } from "@/components/domain/TickerAutocomplete";
 import { ExecutionReceipt, ProposalTicket } from "@/components/domain/TradeTicket";
 import { RequireProfile } from "@/components/shell/RequireProfile";
@@ -12,24 +11,10 @@ import { ErrorNotice, Loading, Notice, TableSkeleton, Tag } from "@/components/u
 import { Field, Input, Segmented } from "@/components/ui/Field";
 import { PageHeader, Panel } from "@/components/ui/Layout";
 import { Table, Td, Th, Tr } from "@/components/ui/Table";
-import { ApiError, api } from "@/lib/api";
-import {
-  getStoredBroker,
-  getStoredBenchmark,
-  type BrokerageInfo,
-  type BenchmarkIndexInfo,
-} from "@/lib/custodians";
-import {
-  POPULAR_CURATED_ASSETS,
-  CURATED_BASKETS,
-  PRESET_DOLLAR_AMOUNTS,
-  getAssetRefPrice,
-  type CuratedAsset,
-  type CuratedBasket,
-} from "@/lib/curatedInvestments";
+import { ApiError, api, retryableStepUpReason, type ApproveOptions } from "@/lib/api";
+import { POPULAR_CURATED_ASSETS, PRESET_DOLLAR_AMOUNTS, type CuratedAsset } from "@/lib/curatedInvestments";
 import { dateTime, humanize, money, qty } from "@/lib/format";
-import type { AgentEvent, Execution, Proposal, Trade, TradeBlockedDetail } from "@/lib/types";
-import { CustodianVerificationModal } from "@/components/domain/CustodianVerificationModal";
+import type { AgentEvent, Execution, Proposal, TradeBlockedDetail } from "@/lib/types";
 import { useRequest } from "@/lib/useRequest";
 
 type Side = "BUY" | "SELL";
@@ -54,13 +39,6 @@ function TradeDesk({ clientId }: { clientId: string }) {
   const [selectedDollar, setSelectedDollar] = useState<number | null>(null);
   const [investMode, setInvestMode] = useState<"quick" | "custom">("quick");
 
-  // Broker & Custody Gateway state
-  const [isBrokerModalOpen, setIsBrokerModalOpen] = useState(false);
-  const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
-  const [verificationTrade, setVerificationTrade] = useState<Trade | null>(null);
-  const [activeBroker, setActiveBroker] = useState<BrokerageInfo>(() => getStoredBroker());
-  const [activeBenchmark, setActiveBenchmark] = useState<BenchmarkIndexInfo>(() => getStoredBenchmark());
-
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const [ticketState, setTicketState] = useState<"open" | "approving" | "done" | "cancelled" | "blocked">("open");
   const [outcome, setOutcome] = useState<Outcome | null>(null);
@@ -70,41 +48,29 @@ function TradeDesk({ clientId }: { clientId: string }) {
   const history = useRequest(`trades:${clientId}`, () => api.trades(clientId, 100));
   const portfolio = useRequest(`pf:${clientId}`, () => api.portfolio(clientId));
 
-  useEffect(() => {
-    setActiveBroker(getStoredBroker());
-    setActiveBenchmark(getStoredBenchmark());
-  }, []);
-
   const q = Number(quantity);
   const symbolOk = /^[A-Z0-9.]{1,10}$/.test(symbol);
   const qtyOk = Number.isFinite(q) && q > 0;
   const held = portfolio.data?.positions.find((p) => p.symbol === symbol)?.qty ?? 0;
-  const buyingPower = portfolio.data?.cash ?? 83420.0;
-  const currentRefPrice = getAssetRefPrice(symbol);
-  const estimatedTotal = qtyOk ? q * currentRefPrice : 0;
+  const buyingPower = portfolio.data?.cash ?? null;
+  const quote = useRequest(symbolOk ? `quote:${symbol}` : null, () => api.quote(symbol));
+  const livePrice = quote.data?.symbol === symbol && quote.data.price > 0 ? quote.data.price : null;
+  const estimatedTotal = qtyOk && livePrice ? q * livePrice : null;
 
-  function handleSelectAsset(asset: CuratedAsset, dollarAmount?: number) {
-    setSymbol(asset.symbol);
-    const amt = dollarAmount ?? selectedDollar ?? 100;
-    setSelectedDollar(amt);
-    const calculatedQty = Math.max(0.0001, Number((amt / asset.refPrice).toFixed(4)));
-    setQuantity(String(calculatedQty));
-    setDraftError(null);
+  // Dollar presets become a share quantity once the live price is known
+  const sharesFor = (dollars: number, price: number) => String(Math.max(0.0001, Number((dollars / price).toFixed(4))));
+  if (selectedDollar && livePrice && quantity !== sharesFor(selectedDollar, livePrice)) {
+    setQuantity(sharesFor(selectedDollar, livePrice));
   }
 
-  function handleSelectBasket(basket: CuratedBasket) {
-    setSymbol(basket.primarySymbol);
-    setSelectedDollar(basket.recommendedDollar);
-    const calculatedQty = Math.max(0.0001, Number((basket.recommendedDollar / basket.refPrice).toFixed(4)));
-    setQuantity(String(calculatedQty));
+  function handleSelectAsset(asset: CuratedAsset) {
+    setSymbol(asset.symbol);
+    setSelectedDollar((d) => d ?? 100);
     setDraftError(null);
   }
 
   function handleSelectDollar(dollarAmt: number) {
     setSelectedDollar(dollarAmt);
-    const price = currentRefPrice > 0 ? currentRefPrice : 100.0;
-    const calculatedQty = Math.max(0.0001, Number((dollarAmt / price).toFixed(4)));
-    setQuantity(String(calculatedQty));
     setDraftError(null);
   }
 
@@ -125,7 +91,7 @@ function TradeDesk({ clientId }: { clientId: string }) {
     }
   }
 
-  async function approve(opts?: { mfaCode?: string; fiduciaryAttested?: boolean }) {
+  async function approve(opts?: ApproveOptions): Promise<string | void> {
     if (!proposal) return;
     setTicketState("approving");
     try {
@@ -137,6 +103,11 @@ function TradeDesk({ clientId }: { clientId: string }) {
       history.reload();
       portfolio.reload();
     } catch (err) {
+      const retry = retryableStepUpReason(err);
+      if (retry) {
+        setTicketState("open");
+        return retry;
+      }
       const e = err as ApiError;
       const detail = (e.detail ?? e.message) as TradeBlockedDetail | string;
       const code = typeof detail === "object" && detail ? detail.error : "";
@@ -159,63 +130,19 @@ function TradeDesk({ clientId }: { clientId: string }) {
 
   return (
     <div className="space-y-8">
-      {/* 1. Connected Custodian & Account Banner */}
-      <div className="rounded-2xl border border-line bg-surface/70 p-5 shadow-sm sm:p-6">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-start gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-2xl shadow-inner">
-              {activeBroker.isWeBank ? "🏦" : "🦙"}
-            </div>
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-base font-bold text-ink sm:text-lg">{activeBroker.name}</span>
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  Connected & Audited
-                </span>
-                <Tag tone="neutral">{activeBroker.region}</Tag>
-              </div>
-              <p className="mt-1 text-xs text-muted sm:text-sm">
-                Category: <strong className="text-ink">{activeBroker.category}</strong> • Merkle Hash Audit Trail Active
-              </p>
-            </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface/70 px-5 py-4 shadow-xs">
+        <div>
+          <p className="text-sm font-bold text-ink">Alpaca paper-trading account</p>
+          <p className="text-xs text-muted">Simulated money. Every order needs your approval and is recorded in the audit trail.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="rounded-xl border border-line/80 bg-background/80 px-4 py-2 text-right">
+            <span className="block text-[11px] font-medium uppercase tracking-wider text-muted">Cash available</span>
+            <span className="figures text-base font-bold text-ink">{buyingPower === null ? "–" : money(buyingPower)}</span>
           </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="rounded-xl border border-line/80 bg-background/80 px-4 py-2 text-right">
-              <span className="block text-[11px] font-medium uppercase tracking-wider text-muted">Available Buying Power</span>
-              <span className="figures text-base font-bold text-ink sm:text-lg">{money(buyingPower)}</span>
-            </div>
-            <div className="rounded-xl border border-line/80 bg-background/80 px-4 py-2 text-right">
-              <span className="block text-[11px] font-medium uppercase tracking-wider text-muted">Benchmark Index</span>
-              <span className="text-sm font-semibold text-ink">{activeBenchmark.name} ({activeBenchmark.symbol})</span>
-            </div>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => {
-                setVerificationTrade(null);
-                setIsVerifyModalOpen(true);
-              }}
-              className="font-medium shrink-0"
-            >
-              🔍 Verify Custody Ledger
-            </Button>
-            <a
-              href="/app/audit"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface/80 hover:bg-surface px-3 py-1.5 text-xs font-semibold text-ink transition-colors shrink-0"
-            >
-              <span>🔗 On-Chain Audit &amp; Merkle Tree ↗</span>
-            </a>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setIsBrokerModalOpen(true)}
-              className="font-medium shrink-0"
-            >
-              🔄 Switch Broker
-            </Button>
-          </div>
+          <a href="/app/audit" className="text-xs font-semibold text-primary underline underline-offset-4">
+            View audit trail
+          </a>
         </div>
       </div>
 
@@ -249,51 +176,13 @@ function TradeDesk({ clientId }: { clientId: string }) {
           >
             {investMode === "quick" ? (
               <div className="space-y-6">
-                {/* Thematic Baskets */}
-                <div>
-                  <div className="mb-2 flex items-center justify-between">
-                    <p className="text-xs font-bold uppercase tracking-wider text-muted">
-                      Curated Thematic Baskets (1-Click)
-                    </p>
-                    <span className="text-[11px] text-muted">Pre-diversified packs</span>
-                  </div>
-                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                    {CURATED_BASKETS.map((b) => {
-                      const isSelected = symbol === b.primarySymbol;
-                      return (
-                        <button
-                          key={b.id}
-                          type="button"
-                          onClick={() => handleSelectBasket(b)}
-                          className={`flex flex-col justify-between rounded-xl border p-3 text-left transition-all ${
-                            isSelected
-                              ? "border-accent bg-accent/5 ring-1 ring-accent"
-                              : "border-line bg-surface/50 hover:border-line-strong hover:bg-surface"
-                          }`}
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <span className="text-xl">{b.icon}</span>
-                            <span className="rounded-full bg-surface px-2 py-0.5 text-[10px] font-semibold text-muted">
-                              {b.badge}
-                            </span>
-                          </div>
-                          <div className="mt-2">
-                            <p className="text-xs font-bold text-ink">{b.title}</p>
-                            <p className="mt-0.5 text-[11px] text-muted line-clamp-1">{b.subtitle}</p>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
                 {/* Popular Household Stocks */}
                 <div>
                   <div className="mb-2 flex items-center justify-between">
                     <p className="text-xs font-bold uppercase tracking-wider text-muted">
-                      Popular Household Investments
+                      Popular picks
                     </p>
-                    <span className="text-[11px] text-muted">Fractional shares available</span>
+                    <span className="text-[11px] text-muted">Fractional shares accepted</span>
                   </div>
                   <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                     {POPULAR_CURATED_ASSETS.map((a) => {
@@ -311,7 +200,6 @@ function TradeDesk({ clientId }: { clientId: string }) {
                         >
                           <span className="text-lg">{a.icon}</span>
                           <span className="mt-1 text-xs font-bold text-ink">{a.symbol}</span>
-                          <span className="figures text-[10px] text-muted">{money(a.refPrice)}</span>
                         </button>
                       );
                     })}
@@ -324,7 +212,7 @@ function TradeDesk({ clientId }: { clientId: string }) {
                     <p className="text-xs font-bold uppercase tracking-wider text-muted">
                       Select Investment Amount
                     </p>
-                    <span className="text-[11px] text-muted">Instant fractional share auto-calc</span>
+                    <span className="text-[11px] text-muted">Converted to shares at the live price</span>
                   </div>
                   <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
                     {PRESET_DOLLAR_AMOUNTS.map((amt) => {
@@ -393,8 +281,8 @@ function TradeDesk({ clientId }: { clientId: string }) {
                       <p className="text-base font-bold text-ink">{symbol} • {POPULAR_CURATED_ASSETS.find((a) => a.symbol === symbol)?.name ?? symbol}</p>
                     </div>
                     <div className="text-right">
-                      <span className="text-[11px] uppercase font-semibold text-muted">Reference Price</span>
-                      <p className="figures text-sm font-bold text-ink">{money(currentRefPrice)}</p>
+                      <span className="text-[11px] uppercase font-semibold text-muted">Last price</span>
+                      <p className="figures text-sm font-bold text-ink">{livePrice ? money(livePrice) : quote.loading ? "…" : "–"}</p>
                     </div>
                   </div>
                 </div>
@@ -403,8 +291,8 @@ function TradeDesk({ clientId }: { clientId: string }) {
               <Field
                 label="Quantity (Shares)"
                 hint={
-                  qtyOk
-                    ? `Estimated value: ${money(estimatedTotal)} (${qty(q)} shares @ ${money(currentRefPrice)})`
+                  qtyOk && estimatedTotal !== null && livePrice
+                    ? `Estimated value: ${money(estimatedTotal)} (${qty(q)} shares @ ${money(livePrice)})`
                     : "Fractional shares are accepted."
                 }
                 error={quantity && !qtyOk ? "Enter a quantity above zero." : null}
@@ -435,11 +323,11 @@ function TradeDesk({ clientId }: { clientId: string }) {
             </form>
           </Panel>
 
-          <Notice tone="neutral" title="Investor Protection & Safeguards">
+          <Notice tone="neutral" title="Safeguards">
             <ul className="mt-1 list-inside list-disc space-y-1 text-xs text-muted marker:text-muted">
-              <li><strong>Zero Discretionary Risk:</strong> The platform will never trade on your behalf without your explicit approval.</li>
-              <li><strong>Fractional Investing:</strong> You own real underlying shares regardless of dollar amount.</li>
-              <li><strong>Regulatory Compliance:</strong> Every order is checked against FINRA Rule 2111 and SEC Reg BI limits in real-time.</li>
+              <li><strong>Non-discretionary:</strong> nothing is traded without your explicit approval.</li>
+              <li><strong>Paper trading:</strong> orders use simulated money, never real funds.</li>
+              <li><strong>Pre-trade checks:</strong> suitability, concentration, AML and daily limits run before every order; orders over $1,000 also need an emailed code.</li>
             </ul>
           </Notice>
         </div>
@@ -500,7 +388,7 @@ function TradeDesk({ clientId }: { clientId: string }) {
               <span className="text-3xl block mb-2">📋</span>
               <p className="font-medium text-ink">Ready to invest?</p>
               <p className="mt-1 text-xs text-muted">
-                Pick a popular stock or curated basket above, or enter your own ticker. Click &quot;Draft Investment Proposal&quot; to review the pricing and compliance checks.
+                Pick a popular security above or enter your own ticker, then click &quot;Draft Investment Proposal&quot; to review pricing and compliance checks.
               </p>
             </div>
           )}
@@ -528,16 +416,13 @@ function TradeDesk({ clientId }: { clientId: string }) {
                     <Th numeric>Fill Price</Th>
                     <Th numeric>Total Value</Th>
                     <Th>Status</Th>
-                    <Th>Custodian Verification</Th>
+                    <Th>Order ID</Th>
                   </tr>
                 </thead>
                 <tbody>
                   {history.data.trades.map((t) => {
-                    const price = t.filled_price ?? getAssetRefPrice(t.symbol);
-                    const totalVal = price * t.qty;
-                    const isAcceptedOrFilled = t.status === "FILLED" || t.status === "ACCEPTED";
-                    const orderRef = t.broker_order_id || t.alpaca_order_id || `WBK-ORD-${t.trade_id.slice(0, 8).toUpperCase()}`;
-                    const brokerKey = t.broker || "webank";
+                    const price = t.filled_price;
+                    const isFilled = t.status === "FILLED";
                     return (
                       <Tr key={t.trade_id}>
                         <Td className="whitespace-nowrap text-muted text-xs">{dateTime(t.created_at)}</Td>
@@ -549,28 +434,15 @@ function TradeDesk({ clientId }: { clientId: string }) {
                             <span>{qty(t.qty)} {t.symbol}</span>
                           </div>
                         </Td>
-                        <Td numeric className="figures">{money(price)}</Td>
-                        <Td numeric className="figures font-medium">{money(totalVal)}</Td>
+                        <Td numeric className="figures">{price === null ? "–" : money(price)}</Td>
+                        <Td numeric className="figures font-medium">{price === null ? "–" : money(price * t.qty)}</Td>
                         <Td>
-                          <Tag tone={isAcceptedOrFilled ? "success" : "neutral"}>
-                            {t.status === "ACCEPTED" ? "Executed" : humanize(t.status)}
-                          </Tag>
-                        </Td>
-                        <Td>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-mono text-[11px] text-muted">{orderRef}</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setVerificationTrade(t);
-                                setIsVerifyModalOpen(true);
-                              }}
-                              className="inline-flex items-center gap-1 rounded bg-accent/10 hover:bg-accent/20 px-2.5 py-1 text-[11px] font-semibold text-accent transition-colors"
-                            >
-                              <span>🔍 Check on {brokerKey.toUpperCase()} ↗</span>
-                            </button>
+                          <div className="flex flex-wrap gap-1">
+                            <Tag tone={isFilled ? "success" : "neutral"}>{humanize(t.status)}</Tag>
+                            {t.simulated ? <Tag tone="warning">Simulated</Tag> : null}
                           </div>
                         </Td>
+                        <Td className="font-mono text-[11px] text-muted">{t.broker_order_id}</Td>
                       </Tr>
                     );
                   })}
@@ -581,23 +453,6 @@ function TradeDesk({ clientId }: { clientId: string }) {
         </div>
       </div>
 
-      {/* Broker & Custodian Connection Modal */}
-      <ConnectBrokerModal
-        isOpen={isBrokerModalOpen}
-        onClose={() => setIsBrokerModalOpen(false)}
-        onConnect={(broker, benchmark) => {
-          setActiveBroker(broker);
-          setActiveBenchmark(benchmark);
-        }}
-      />
-
-      {/* Custodian Verification & Execution Slip Modal */}
-      <CustodianVerificationModal
-        isOpen={isVerifyModalOpen}
-        onClose={() => setIsVerifyModalOpen(false)}
-        trade={verificationTrade}
-        brokerId={verificationTrade?.broker || activeBroker.id}
-      />
     </div>
   );
 }
@@ -607,7 +462,7 @@ export default function TradePage() {
     <>
       <PageHeader
         title="Trade & Investments"
-        lede="Invest in curated baskets, popular stocks, or custom securities with institutional custody and non-discretionary protection."
+        lede="Draft an order, review the pre-trade compliance checks, and approve it into the Alpaca paper-trading account."
       />
       <RequireProfile>
         {(id) => (

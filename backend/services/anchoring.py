@@ -1,8 +1,8 @@
 """
 backend/services/anchoring.py
 =============================
-Merkle root generation and Ethereum Sepolia testnet anchoring service.
-Features dry-run mode when unconfigured and hard reject guard for Ethereum Mainnet (Chain ID 1).
+Merkle root generation, inclusion proofs, and Ethereum Sepolia testnet anchoring.
+Nothing is sent unless an RPC URL and wallet key are configured; Ethereum Mainnet (Chain ID 1) is refused.
 """
 
 import os
@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 SEPOLIA_CHAIN_ID = 11155111
 MAINNET_CHAIN_ID = 1
+SEPOLIA_EXPLORER = "https://sepolia.etherscan.io"
 
 
 class MainnetForbiddenError(RuntimeError):
@@ -41,13 +42,15 @@ class MainnetForbiddenError(RuntimeError):
 @dataclass
 class AnchoringResult:
     merkle_root: str
-    tx_hash: str
+    tx_hash: Optional[str]  # None unless a transaction was actually sent
     block_number: Optional[int]
-    status: str  # "confirmed" | "submitted" | "dry_run" | "failed"
+    status: str  # "confirmed" | "submitted" | "not_configured" | "failed"
     chain_id: int
     timestamp: datetime
     entries_count: int
-    fisco_bcos_receipt: Optional[Dict[str, Any]] = None
+    explorer_url: Optional[str] = None
+    wallet_address: Optional[str] = None
+    error: Optional[str] = None
 
 
 def compute_merkle_root(leaf_hashes: List[str]) -> str:
@@ -118,10 +121,28 @@ def generate_merkle_proof(leaf_index: int, leaf_hashes: List[str]) -> List[Dict[
     return proof
 
 
+def verify_merkle_proof(leaf_hash: str, proof: List[Dict[str, str]], merkle_root: str) -> bool:
+    """Recomputes the root from a leaf and its inclusion proof and compares it to ``merkle_root``."""
+    node = bytes.fromhex(leaf_hash.lower().replace("0x", "").zfill(64)[:64])
+    for step in proof:
+        sibling = bytes.fromhex(step["hash"])
+        node = hashlib.sha256(node + sibling if step["position"] == "right" else sibling + node).digest()
+    return node.hex() == merkle_root.lower().replace("0x", "")
+
+
+def sepolia_tx_url(tx_hash: str) -> str:
+    return f"{SEPOLIA_EXPLORER}/tx/{tx_hash}"
+
+
 class AnchoringService:
     """
-    Dual-Ledger Anchoring Service for Ethereum Sepolia Testnet + WeBank FISCO BCOS v3 Consortium Chain.
-    Provides automated dry-run fallback and hard-rejects Ethereum Mainnet (Chain ID 1).
+    Anchors audit-trail Merkle roots on the Ethereum Sepolia testnet.
+
+    The root is written as the data payload of a zero-value transaction from the configured
+    wallet (to itself, or to AUDIT_CONTRACT_ADDRESS when set), so anyone can look the
+    transaction up on Etherscan and compare the input data with the root. Without an RPC URL
+    and a funded wallet key nothing is sent and the result says so (status "not_configured";
+    tx_hash is None). Mainnet (chain ID 1) is refused.
     """
 
     def __init__(
@@ -129,23 +150,11 @@ class AnchoringService:
         rpc_url: Optional[str] = None,
         private_key: Optional[str] = None,
         contract_address: Optional[str] = None,
-        fisco_bcos_rpc_url: Optional[str] = None,
-        fisco_bcos_group_id: Optional[str] = None,
     ):
         self.rpc_url = rpc_url or settings.sepolia_rpc_url or os.getenv("SEPOLIA_RPC_URL", "")
         self.private_key = private_key or settings.sepolia_private_key or os.getenv("SEPOLIA_PRIVATE_KEY", "")
         self.contract_address = contract_address or settings.audit_contract_address or os.getenv("AUDIT_CONTRACT_ADDRESS", "")
         self.target_chain_id = settings.sepolia_chain_id
-        self.fisco_bcos_rpc_url = (
-            fisco_bcos_rpc_url
-            or getattr(settings, "fisco_bcos_rpc_url", None)
-            or os.getenv("FISCO_BCOS_RPC_URL", "")
-        )
-        self.fisco_bcos_group_id = (
-            fisco_bcos_group_id
-            or getattr(settings, "fisco_bcos_group_id", "group0")
-            or os.getenv("FISCO_BCOS_GROUP_ID", "group0")
-        )
 
     def _is_configured(self) -> bool:
         if not HAS_WEB3 or not self.rpc_url or not self.private_key:
@@ -154,104 +163,32 @@ class AnchoringService:
             return False
         return True
 
-    def _build_fisco_bcos_receipt(
-        self,
-        merkle_root: str,
-        entries_count: int,
-        ts: datetime,
-        status: str = "dry_run",
-        tx_hash: Optional[str] = None,
-        block_number: Optional[int] = None,
-    ) -> Dict[str, Any]:
-        """Builds a WeBank FISCO BCOS v3 consortium chain + WeEvent attestation receipt."""
-        fisco_seed = f"fisco_bcos:{self.fisco_bcos_group_id}:{merkle_root}:{ts.isoformat()}"
-        fisco_tx = tx_hash or ("0x" + hashlib.sha256(fisco_seed.encode("utf-8")).hexdigest())
-        blk = block_number if block_number is not None else 184209
-        weevent_id = f"weevent-{self.fisco_bcos_group_id}-{blk}-" + hashlib.sha256(f"weevent:{merkle_root}".encode("utf-8")).hexdigest()[:12]
-        return {
-            "engine": "WeBank FISCO BCOS v3.6.0",
-            "ledger": "WeBank FISCO BCOS v3.6 Consortium Chain",
-            "group_id": self.fisco_bcos_group_id,
-            "consensus": "PBFT (4-Node Shenzhen-HK Regulatory Consortium)",
-            "validator_nodes": 4,
-            "pbft_view": 1024,
-            "merkle_root": merkle_root,
-            # None when no transaction was submitted; only populated for a real on-chain write.
-            "tx_hash": tx_hash,
-            "block_number": blk,
-            "contract_address": "0x8fB0c2498E4a17D691b973cE39A4e2F9574a9880",
-            "status": status,
-            "onchain": tx_hash is not None,
-            "entries_count": entries_count,
-            "weevent_topic": "com.webank.finfuture.audit.anchor",
-            "weevent_event_id": weevent_id,
-            "timestamp": ts.isoformat(),
-        }
-
-    async def anchor_to_fisco_bcos(self, leaf_hashes: List[str]) -> Dict[str, Any]:
-        """
-        Anchors the RFC 6962 Merkle root to a WeBank FISCO BCOS v3 / WeBASE JSON-RPC 2.0 node
-        (or returns a deterministic FISCO BCOS + WeEvent consortium receipt in sandbox mode).
-        """
-        now = datetime.now(timezone.utc)
-        merkle_root = compute_merkle_root(leaf_hashes)
-
-        if not settings.dry_run and self.fisco_bcos_rpc_url:
-            try:
-                import httpx
-
-                async with httpx.AsyncClient(timeout=8.0) as client:
-                    rpc_payload = {
-                        "jsonrpc": "2.0",
-                        "method": "getBlockNumber",
-                        "params": [self.fisco_bcos_group_id],
-                        "id": 1,
-                    }
-                    resp = await client.post(self.fisco_bcos_rpc_url, json=rpc_payload)
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        raw_blk = data.get("result", 184209)
-                        blk = int(raw_blk, 16) if isinstance(raw_blk, str) and raw_blk.startswith("0x") else int(raw_blk)
-                        # Only the node's block height is read; no anchoring transaction is
-                        # submitted yet, so the receipt is labelled "simulated", not "confirmed".
-                        return self._build_fisco_bcos_receipt(
-                            merkle_root=merkle_root,
-                            entries_count=len(leaf_hashes),
-                            ts=now,
-                            status="simulated",
-                            block_number=blk,
-                        )
-            except Exception as exc:
-                logger.warning("WeBank FISCO BCOS RPC fallback to deterministic receipt: %s", exc)
-
-        return self._build_fisco_bcos_receipt(
+    def _not_anchored(self, merkle_root: str, entries_count: int, ts: datetime, status: str, error: Optional[str] = None) -> AnchoringResult:
+        return AnchoringResult(
             merkle_root=merkle_root,
-            entries_count=len(leaf_hashes),
-            ts=now,
-            status="dry_run",
+            tx_hash=None,
+            block_number=None,
+            status=status,
+            chain_id=self.target_chain_id,
+            timestamp=ts,
+            entries_count=entries_count,
+            error=error,
         )
 
     async def anchor_hashes(self, leaf_hashes: List[str]) -> AnchoringResult:
-        """
-        Computes Merkle root and anchors it to Sepolia testnet + WeBank FISCO BCOS consortium ledger (or dry-run).
-        """
+        """Computes the Merkle root of ``leaf_hashes`` and anchors it on Sepolia when configured."""
         import asyncio
 
         now = datetime.now(timezone.utc)
         merkle_root = compute_merkle_root(leaf_hashes)
-        fisco_receipt = await self.anchor_to_fisco_bcos(leaf_hashes)
 
-        # Check configuration
         if settings.dry_run or not self._is_configured():
-            res = self._simulate_anchor(merkle_root, len(leaf_hashes), now)
-            res.fisco_bcos_receipt = fisco_receipt
-            return res
+            return self._not_anchored(merkle_root, len(leaf_hashes), now, "not_configured")
 
         def _submit_sepolia_tx() -> AnchoringResult:
             w3 = Web3(Web3.HTTPProvider(self.rpc_url))
             if not w3.is_connected():
-                logger.warning("Sepolia RPC offline. Dropping to dry-run mode.")
-                return self._simulate_anchor(merkle_root, len(leaf_hashes), now)
+                return self._not_anchored(merkle_root, len(leaf_hashes), now, "failed", "Sepolia RPC unreachable")
 
             # HARD GUARD: Never allow Mainnet execution!
             chain_id = w3.eth.chain_id
@@ -260,41 +197,31 @@ class AnchoringService:
                     "FATAL SECURITY VIOLATION: Connected to Ethereum Mainnet (Chain ID 1). "
                     "Anchoring is strictly restricted to Sepolia testnet. Aborting immediately."
                 )
-
             if chain_id != self.target_chain_id:
-                logger.warning(
-                    f"Unexpected Chain ID {chain_id} (expected {self.target_chain_id}). "
-                    "Operating in dry-run."
+                return self._not_anchored(
+                    merkle_root, len(leaf_hashes), now, "failed", f"RPC is on chain {chain_id}, not Sepolia"
                 )
-                return self._simulate_anchor(merkle_root, len(leaf_hashes), now)
 
-            # Build and send transaction
             account = Account.from_key(self.private_key)
-            nonce = w3.eth.get_transaction_count(account.address)
-            gas_price = w3.eth.gas_price
-
-            # Embed 32-byte Merkle root in transaction data payload
-            root_bytes = bytes.fromhex(merkle_root)
             tx = {
                 "chainId": chain_id,
                 "from": account.address,
                 "to": self.contract_address if self.contract_address else account.address,
                 "value": 0,
-                "nonce": nonce,
+                "nonce": w3.eth.get_transaction_count(account.address),
                 "gas": 60000,
-                "gasPrice": gas_price,
-                "data": root_bytes,
+                "gasPrice": w3.eth.gas_price,
+                "data": bytes.fromhex(merkle_root),  # the 32-byte Merkle root
             }
-
             signed_tx = w3.eth.account.sign_transaction(tx, private_key=self.private_key)
             tx_hash_bytes = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
             tx_hash = "0x" + tx_hash_bytes.hex().replace("0x", "")
 
             block_number = None
             try:
-                receipt = w3.eth.wait_for_transaction_receipt(tx_hash_bytes, timeout=15)
+                receipt = w3.eth.wait_for_transaction_receipt(tx_hash_bytes, timeout=30)
                 block_number = receipt.blockNumber
-                status = "confirmed"
+                status = "confirmed" if receipt.status == 1 else "failed"
             except Exception:
                 status = "submitted"
 
@@ -306,115 +233,67 @@ class AnchoringService:
                 chain_id=chain_id,
                 timestamp=now,
                 entries_count=len(leaf_hashes),
-                fisco_bcos_receipt=fisco_receipt,
+                explorer_url=sepolia_tx_url(tx_hash),
+                wallet_address=account.address,
             )
 
         try:
-            res = await asyncio.to_thread(_submit_sepolia_tx)
-            res.fisco_bcos_receipt = fisco_receipt
-            return res
+            return await asyncio.to_thread(_submit_sepolia_tx)
         except MainnetForbiddenError:
             raise
         except Exception as e:
-            logger.warning(f"Sepolia transaction submission error ({e}). Returning dry-run anchor.")
-            res = self._simulate_anchor(merkle_root, len(leaf_hashes), now)
-            res.fisco_bcos_receipt = fisco_receipt
-            return res
+            # Typical causes: wallet has no Sepolia ETH, bad key, RPC rate limit
+            logger.warning("Sepolia anchoring failed: %s", e)
+            return self._not_anchored(merkle_root, len(leaf_hashes), now, "failed", type(e).__name__)
 
     def get_sepolia_health(self) -> Dict[str, Any]:
-        """Queries the configured Sepolia RPC (Infura) and returns live network stats."""
+        """Reports whether anchoring is configured and the Sepolia RPC's current block height."""
         if not HAS_WEB3 or not self.rpc_url:
-            return {"configured": False, "connected": False, "provider": "none"}
+            return {"configured": False, "connected": False, "anchoring_enabled": False}
         try:
             w3 = Web3(Web3.HTTPProvider(self.rpc_url))
-            connected = w3.is_connected()
-            if connected:
-                block_num = int(w3.eth.block_number)
-                chain_id = int(w3.eth.chain_id)
-                gas_price_wei = int(w3.eth.gas_price)
-                return {
+            if w3.is_connected():
+                health = {
                     "configured": True,
                     "connected": True,
-                    "provider": "Infura Sepolia Gateway",
-                    "chain_id": chain_id,
-                    "block_number": block_num,
-                    "gas_price_gwei": round(gas_price_wei / 1e9, 4),
-                    "has_private_key": bool(self.private_key),
+                    "chain_id": int(w3.eth.chain_id),
+                    "block_number": int(w3.eth.block_number),
+                    "gas_price_gwei": float(f"{int(w3.eth.gas_price) / 1e9:.6g}"),
+                    "anchoring_enabled": self._is_configured(),
                 }
-            return {"configured": True, "connected": False, "provider": "Infura", "error": "RPC unreachable"}
+                if self.private_key:
+                    address = Account.from_key(self.private_key).address
+                    health["wallet_address"] = address
+                    health["wallet_url"] = f"{SEPOLIA_EXPLORER}/address/{address}"
+                    health["wallet_balance_eth"] = round(int(w3.eth.get_balance(address)) / 1e18, 6)
+                return health
+            return {"configured": True, "connected": False, "anchoring_enabled": False, "error": "RPC unreachable"}
         except Exception as e:
-            return {"configured": True, "connected": False, "provider": "Infura", "error": str(e)}
-
-    def _simulate_anchor(self, merkle_root: str, entries_count: int, ts: datetime) -> AnchoringResult:
-        """Generates deterministic simulated anchor transaction, querying live RPC if available."""
-        live_block = None
-        if HAS_WEB3 and self.rpc_url:
-            try:
-                w3 = Web3(Web3.HTTPProvider(self.rpc_url))
-                if w3.is_connected():
-                    live_block = int(w3.eth.block_number)
-                    logger.info("Successfully polled Infura RPC for live Sepolia block: %s", live_block)
-            except Exception as exc:
-                logger.debug("Infura live block query fallback: %s", exc)
-
-        sim_data = f"dry_run:{merkle_root}:{ts.isoformat()}"
-        sim_hash = "0x" + hashlib.sha256(sim_data.encode("utf-8")).hexdigest()
-        logger.info(f"[DRY-RUN] Merkle Root {merkle_root} anchored in simulated tx {sim_hash}")
-        return AnchoringResult(
-            merkle_root=merkle_root,
-            tx_hash=sim_hash,
-            block_number=live_block if live_block is not None else 11936605,
-            status="dry_run",
-            chain_id=self.target_chain_id,
-            timestamp=ts,
-            entries_count=entries_count,
-            fisco_bcos_receipt=self._build_fisco_bcos_receipt(merkle_root, entries_count, ts),
-        )
+            # Never echo the exception: RPC URLs usually embed the provider API key
+            logger.warning("Sepolia health check failed: %s", e)
+            return {"configured": True, "connected": False, "anchoring_enabled": False, "error": "RPC error"}
 
     async def anchor_client_audit_trail(self, db: AsyncSession, client_id: str) -> AnchoringResult:
-        """
-        Fetches all audit entries for a client, computes Merkle root, and anchors to Sepolia + WeBank FISCO BCOS.
-        """
-        stmt = select(DBAuditLog).where(DBAuditLog.client_id == client_id)
-        if hasattr(DBAuditLog, "timestamp"):
-            stmt = stmt.order_by(DBAuditLog.timestamp.asc())
-        result = await db.execute(stmt)
-        entries = result.scalars().all()
-
+        """Anchors the Merkle root of all of a client's audit entries."""
+        stmt = select(DBAuditLog).where(DBAuditLog.client_id == client_id).order_by(DBAuditLog.timestamp.asc())
+        entries = (await db.execute(stmt)).scalars().all()
         leaf_hashes = [e.entry_hash for e in entries if getattr(e, "entry_hash", None)]
         return await self.anchor_hashes(leaf_hashes)
 
-    async def anchor_client_to_fisco_bcos(self, db: AsyncSession, client_id: str) -> Dict[str, Any]:
-        """
-        Fetches all audit entries for a client and anchors the RFC 6962 Merkle root directly to WeBank FISCO BCOS v3.
-        """
-        stmt = select(DBAuditLog).where(DBAuditLog.client_id == client_id)
-        if hasattr(DBAuditLog, "timestamp"):
-            stmt = stmt.order_by(DBAuditLog.timestamp.asc())
-        result = await db.execute(stmt)
-        entries = result.scalars().all()
-
-        leaf_hashes = [e.entry_hash for e in entries if getattr(e, "entry_hash", None)]
-        return await self.anchor_to_fisco_bcos(leaf_hashes)
-
     async def verify_anchor(self, merkle_root: str, tx_hash: str) -> bool:
-        """
-        Verifies that an anchored transaction on Sepolia contains the expected Merkle root.
-        """
+        """Checks on-chain that transaction ``tx_hash`` carries ``merkle_root`` in its input data."""
         import asyncio
 
-        if not self._is_configured():
-            return tx_hash.startswith("0x") and len(tx_hash) == 66
+        if not self._is_configured() or not tx_hash:
+            return False
 
         def _verify_sepolia_tx() -> bool:
             w3 = Web3(Web3.HTTPProvider(self.rpc_url))
             if not w3.is_connected():
                 return False
-
             tx = w3.eth.get_transaction(tx_hash)
             input_data = tx.input.hex().lower().replace("0x", "")
-            expected_data = merkle_root.lower().replace("0x", "")
-            return expected_data in input_data
+            return merkle_root.lower().replace("0x", "") in input_data
 
         try:
             return await asyncio.to_thread(_verify_sepolia_tx)

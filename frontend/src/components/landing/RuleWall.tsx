@@ -17,7 +17,7 @@ interface Rule {
 /** The twelve compliance rules, in plain words. */
 const rules: Rule[] = [
   { big: "Your call", line: "Nothing is bought or sold until you say yes. Not one dollar.", tone: "solid", tilt: -2 },
-  { big: "Bad day?", line: "One bad day can't sink you. No single company ever holds more than 15% of your money.", tone: "soft", tilt: 1.5 },
+  { big: "Bad day?", line: "One bad day can't sink you. Our advice never puts more than 15% of your money in one company.", tone: "soft", tilt: 1.5 },
   { big: "Still standing", line: "We make sure you're still standing financially at all times. No one industry gets more than 30%.", tone: "outline", tilt: -1 },
   { big: "Real growth", line: "We aim to grow your money steadily, using real numbers, not wishful thinking.", tone: "accent", tilt: 2 },
   { big: "Your pace", line: "We never push more risk than you told us you can live with.", tone: "outline", tilt: 1.5 },

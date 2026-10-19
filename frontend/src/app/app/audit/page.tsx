@@ -15,7 +15,15 @@ import { useAction, useRequest } from "@/lib/useRequest";
 const statusTone: Record<string, Tone> = { PASS: "success", WARN: "warning", FAIL: "danger", BLOCK: "danger" };
 
 function actorLabel(a: string) {
-  return humanize(a.replace(/^(AGENT|SYSTEM):/, ""));
+  return humanize(a.replace(/^(AGENT|SYSTEM|USER):/, ""));
+}
+
+function EtherscanLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <a href={href} target="_blank" rel="noreferrer" className="break-all text-primary underline underline-offset-4">
+      {children}
+    </a>
+  );
 }
 
 function Audit({ clientId }: { clientId: string }) {
@@ -25,7 +33,6 @@ function Audit({ clientId }: { clientId: string }) {
   const [open, setOpen] = useState<string | null>(null);
   const [verify, setVerify] = useState<{ valid: boolean; first_invalid_entry: string | null; at: string } | null>(null);
   const [anchor, setAnchor] = useState<AnchorResult | null>(null);
-  const [fiscoReceipt, setFiscoReceipt] = useState<import("@/lib/types").FiscoBcosReceipt | null>(null);
   const [proofs, setProofs] = useState<Record<string, MerkleProofResponse>>({});
   const verifyAction = useAction(async () => {
     const r = await api.verifyAudit(clientId);
@@ -34,13 +41,7 @@ function Audit({ clientId }: { clientId: string }) {
   const anchorAction = useAction(async () => {
     const res = await api.anchorAudit(clientId);
     setAnchor(res);
-    if (res.fisco_bcos_receipt) {
-      setFiscoReceipt(res.fisco_bcos_receipt);
-    }
-  });
-  const fiscoAnchorAction = useAction(async () => {
-    const receipt = await api.anchorFiscoBcos(clientId);
-    setFiscoReceipt(receipt);
+    if (res.tx_hash) reload();
   });
   const proofAction = useAction(async (entryId: string) => {
     const res = await api.merkleProof(clientId, entryId);
@@ -50,52 +51,12 @@ function Audit({ clientId }: { clientId: string }) {
   const entries = useMemo(() => data?.entries ?? [], [data]);
   const types = useMemo(() => Array.from(new Set(entries.map((e) => e.event_type))).sort(), [entries]);
   const shown = filter === "ALL" ? entries : entries.filter((e) => e.event_type === filter);
+  const pastAnchors = useMemo(() => entries.filter((e) => e.event_type === "AUDIT_ANCHORED"), [entries]);
+  const net = network.data;
+  const anchoringEnabled = Boolean(net?.anchoring_enabled);
 
   return (
     <div className="space-y-8">
-      {/* Live Infura Sepolia Gateway Banner */}
-      <div className="rounded-2xl border border-line bg-surface/70 p-4 sm:p-5 shadow-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-3.5">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/15 text-2xl font-bold shadow-inner">
-              ⚡
-            </span>
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-bold text-ink text-sm sm:text-base">Infura Sepolia Gateway</span>
-                {network.data?.connected ? (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    Live RPC Connected
-                  </span>
-                ) : (
-                  <Tag tone="neutral">Connecting to Infura...</Tag>
-                )}
-                <Tag tone="neutral">Chain ID 11155111</Tag>
-              </div>
-              <p className="text-xs text-muted mt-0.5">
-                Active endpoint: <code className="text-[11px] font-mono text-ink">https://sepolia.infura.io/v3/0cfe...</code>
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 text-xs">
-            <div className="rounded-xl border border-line bg-background/80 px-3.5 py-2 text-right">
-              <span className="text-[11px] text-muted block uppercase tracking-wider">Live Sepolia Block</span>
-              <span className="font-mono font-bold text-ink figures">
-                {network.data?.block_number ? `#${network.data.block_number.toLocaleString()}` : "Querying Infura..."}
-              </span>
-            </div>
-            <div className="rounded-xl border border-line bg-background/80 px-3.5 py-2 text-right">
-              <span className="text-[11px] text-muted block uppercase tracking-wider">Gas Price</span>
-              <span className="font-mono font-bold text-ink figures">
-                {network.data?.gas_price_gwei ? `${network.data.gas_price_gwei} Gwei` : "–"}
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <div className="grid gap-8 xl:grid-cols-2">
         <Panel title="Verify the chain" aside={<Tag tone="neutral">SHA-256 + HMAC-SHA256</Tag>}>
           <p className="text-sm text-muted">
@@ -124,75 +85,82 @@ function Audit({ clientId }: { clientId: string }) {
           </div>
         </Panel>
 
-        <Panel title="Dual-Ledger Anchor (Sepolia + WeBank FISCO BCOS)" aside={<Tag tone="success">WeBank FISCO BCOS v3.6 + Sepolia</Tag>}>
+        <Panel
+          title="Anchor on Ethereum Sepolia"
+          aside={
+            network.loading && !net ? (
+              <Tag tone="neutral">Checking…</Tag>
+            ) : anchoringEnabled ? (
+              <Tag tone="success">Enabled</Tag>
+            ) : (
+              <Tag tone="warning">Not configured</Tag>
+            )
+          }
+        >
           <p className="text-sm text-muted">
-            Combines all entry hashes into an RFC 6962 binary Merkle tree root and anchors it simultaneously to the Ethereum Sepolia public testnet (<code>chain_id=11155111</code>) and the WeBank FISCO BCOS v3.6 consortium ledger (<code>group0</code> PBFT + WeEvent topic <code>com.webank.finfuture.audit.anchor</code>).
+            Combines every entry hash into one SHA-256 Merkle root and writes it into a Sepolia testnet transaction. Anyone can then open the
+            transaction on Etherscan and check that its input data equals the root, which proves the trail existed in this form at that time.
           </p>
-          <div className="mt-4 flex flex-wrap gap-3">
-            <Button variant="secondary" onClick={() => anchorAction.run()} pending={anchorAction.pending}>
-              Dual-Anchor (Sepolia + FISCO BCOS)
-            </Button>
-            <Button variant="quiet" onClick={() => fiscoAnchorAction.run()} pending={fiscoAnchorAction.pending}>
-              Anchor to WeBank FISCO BCOS only
+          {net?.connected ? (
+            <p className="figures mt-2 text-[13px] text-muted">
+              Sepolia block #{net.block_number?.toLocaleString()} · gas {net.gas_price_gwei} gwei
+              {net.wallet_address && net.wallet_url ? (
+                <>
+                  {" · wallet "}
+                  <EtherscanLink href={net.wallet_url}>{shortHash(net.wallet_address)}</EtherscanLink>
+                  {` (${net.wallet_balance_eth ?? 0} ETH)`}
+                </>
+              ) : null}
+            </p>
+          ) : null}
+          <div className="mt-4">
+            <Button variant="secondary" onClick={() => anchorAction.run()} pending={anchorAction.pending} disabled={!anchoringEnabled}>
+              Anchor {entries.length} entries
             </Button>
           </div>
           <div className="mt-4 space-y-4">
-            <ErrorNotice error={anchorAction.error ?? fiscoAnchorAction.error} />
-            {anchor ? (
+            {!anchoringEnabled && net ? (
+              <Notice tone="neutral" title="On-chain anchoring is off on this server">
+                It needs <code>SEPOLIA_RPC_URL</code>, <code>SEPOLIA_PRIVATE_KEY</code> (a testnet-only wallet) and a little free Sepolia ETH in
+                that wallet. Chain verification and Merkle proofs on this page work without it.
+              </Notice>
+            ) : null}
+            <ErrorNotice error={anchorAction.error} />
+            {anchor && !anchor.tx_hash ? (
+              <Notice tone="warning" title="Nothing was anchored">
+                {anchor.status === "failed"
+                  ? `The transaction could not be sent (${anchor.error ?? "unknown error"}). Check that the wallet has Sepolia ETH.`
+                  : "No wallet is configured on the server, so no transaction was sent."}
+              </Notice>
+            ) : null}
+            {anchor?.tx_hash && anchor.explorer_url ? (
               <Ledger
                 rows={[
                   {
-                    label: "Public Ledger Status",
-                    value: <Tag tone={anchor.status === "confirmed" ? "success" : anchor.status === "dry_run" ? "warning" : "neutral"}>{anchor.status === "dry_run" ? "Simulated (Deterministic)" : humanize(anchor.status)}</Tag>,
+                    label: "Status",
+                    value: <Tag tone={anchor.status === "confirmed" ? "success" : "warning"}>{humanize(anchor.status)}</Tag>,
                   },
                   { label: "Entries anchored", value: anchor.entries_count },
-                  { label: "RFC 6962 Merkle root", value: <span className="text-[13px] break-all">{anchor.merkle_root}</span> },
-                  {
-                    label: "Sepolia Transaction",
-                    value: (
-                      <a
-                        href={`https://sepolia.etherscan.io/tx/${anchor.tx_hash}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-[13px] break-all text-primary underline underline-offset-4"
-                      >
-                        {anchor.tx_hash}
-                      </a>
-                    ),
-                  },
+                  { label: "Merkle root", value: <span className="text-[13px] break-all">0x{anchor.merkle_root}</span> },
+                  { label: "Transaction", value: <EtherscanLink href={anchor.explorer_url}>{anchor.tx_hash}</EtherscanLink> },
                   { label: "Block", value: anchor.block_number ?? "Pending" },
-                  { label: "Chain ID", value: `${anchor.chain_id} (Ethereum Sepolia)` },
                 ]}
               />
             ) : null}
-            {fiscoReceipt ? (
-              <div className="rounded-xl border border-line bg-surface/70 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-2 mb-3">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-ink">
-                    WeBank FISCO BCOS v3.6 Consortium Receipt
-                  </span>
-                  {fiscoReceipt.onchain ? (
-                    <Tag tone="success">{fiscoReceipt.consensus}</Tag>
-                  ) : (
-                    <Tag tone="warning">Simulated · {fiscoReceipt.status}</Tag>
-                  )}
-                </div>
-                {!fiscoReceipt.onchain ? (
-                  <p className="mb-3 text-[13px] text-muted">
-                    No transaction was submitted to a FISCO BCOS node. The hash and event ID below are derived
-                    locally from the Merkle root and do not prove on-chain anchoring.
-                  </p>
-                ) : null}
-                <Ledger
-                  rows={[
-                    { label: "Consortium Engine", value: `${fiscoReceipt.engine} · Group ${fiscoReceipt.group_id}` },
-                    { label: "FISCO BCOS Tx Hash", value: <span className="text-[12.5px] break-all">{fiscoReceipt.tx_hash}</span> },
-                    { label: "PBFT Block / View", value: `Block #${fiscoReceipt.block_number} (View ${fiscoReceipt.pbft_view} · ${fiscoReceipt.validator_nodes} Validators)` },
-                    { label: "WeEvent Topic", value: <span className="text-[12.5px]">{fiscoReceipt.weevent_topic}</span> },
-                    { label: "WeEvent Event ID", value: <span className="text-[12.5px] font-medium text-primary">{fiscoReceipt.weevent_event_id}</span> },
-                    { label: "Consortium Contract", value: <span className="text-[12.5px] break-all">{fiscoReceipt.contract_address}</span> },
-                  ]}
-                />
+            {pastAnchors.length > 0 ? (
+              <div>
+                <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted">Previous anchors</p>
+                <ul className="space-y-1 text-[13px]">
+                  {pastAnchors.map((e) => (
+                    <li key={e.entry_id} className="flex flex-wrap gap-x-2">
+                      <span className="text-muted">{dateTime(e.timestamp)}</span>
+                      <span>{String(e.details.entries_count ?? "")} entries</span>
+                      {typeof e.details.explorer_url === "string" ? (
+                        <EtherscanLink href={e.details.explorer_url}>{shortHash(String(e.details.tx_hash ?? ""))}</EtherscanLink>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
               </div>
             ) : null}
           </div>
@@ -281,7 +249,7 @@ function Audit({ clientId }: { clientId: string }) {
                               pending={proofAction.pending}
                               onClick={() => void proofAction.run(e.entry_id)}
                             >
-                              {proof ? "Recompute Merkle Proof" : "Verify RFC 6962 Merkle Inclusion Proof"}
+                              {proof ? "Recompute Merkle proof" : "Verify Merkle inclusion proof"}
                             </Button>
                           </div>
 
@@ -289,7 +257,7 @@ function Audit({ clientId }: { clientId: string }) {
                             <div className="mt-4 rounded-xl border border-line bg-background p-4">
                               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-2.5">
                                 <p className="text-xs font-semibold tracking-wider text-ink uppercase">
-                                  RFC 6962 Cryptographic Merkle Inclusion Proof
+                                  Merkle inclusion proof
                                 </p>
                                 <Tag tone={proof.verified ? "success" : "danger"}>
                                   {proof.verified ? `VERIFIED · Leaf #${proof.leaf_index} of ${proof.total_leaves}` : "PROOF MISMATCH"}
@@ -297,32 +265,28 @@ function Audit({ clientId }: { clientId: string }) {
                               </div>
                               <dl className="figures mt-3 grid gap-x-6 gap-y-1 text-[12px] md:grid-cols-[9.5rem_1fr]">
                                 <dt className="font-sans text-muted">Algorithm</dt>
-                                <dd>RFC 6962 Binary Merkle Tree (SHA-256)</dd>
-                                <dt className="font-sans text-muted">Network</dt>
-                                <dd>{proof.network ?? "Ethereum Sepolia Testnet"} (Chain ID {proof.chain_id ?? 11155111})</dd>
-                                <dt className="font-sans text-muted">Consortium Ledger</dt>
-                                <dd>{proof.consortium_ledger ?? "WeBank FISCO BCOS v3.6 (PBFT · WeEvent Topic: com.webank.finfuture.audit.anchor)"}</dd>
-                                <dt className="font-sans text-muted">Leaf Hash (0x00)</dt>
+                                <dd>Binary Merkle tree, SHA-256 (odd nodes duplicated)</dd>
+                                <dt className="font-sans text-muted">Leaf hash</dt>
                                 <dd className="break-all">{proof.leaf_hash}</dd>
-                                <dt className="font-sans text-muted">Computed Root</dt>
+                                <dt className="font-sans text-muted">Root</dt>
                                 <dd className="break-all font-semibold text-accent">{proof.merkle_root}</dd>
                               </dl>
                               {proof.proof.length > 0 ? (
                                 <div className="mt-3">
                                   <p className="text-xs font-medium text-muted">
-                                    Sibling Audit Path ({proof.proof.length} internal node hops, 0x01 prefix):
+                                    Sibling path ({proof.proof.length} steps from leaf to root):
                                   </p>
                                   <ol className="figures mt-1.5 space-y-1 text-[11.5px] text-ink">
                                     {proof.proof.map((s, idx) => (
                                       <li key={`${s.hash}-${idx}`} className="flex flex-wrap items-center gap-2">
-                                        <span className="text-muted">Hop {idx + 1} ({s.position}):</span>
+                                        <span className="text-muted">Step {idx + 1} ({s.position}):</span>
                                         <span className="break-all">{s.hash}</span>
                                       </li>
                                     ))}
                                   </ol>
                                 </div>
                               ) : (
-                                <p className="mt-2 text-xs text-muted">Single-leaf tree (leaf hash is direct root).</p>
+                                <p className="mt-2 text-xs text-muted">Single-leaf tree: the leaf hash is the root.</p>
                               )}
                             </div>
                           ) : null}

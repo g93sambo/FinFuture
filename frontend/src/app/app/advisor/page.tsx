@@ -9,7 +9,7 @@ import type { ChatMessageAttachment, ChatSessionItem } from "@/lib/types";
 import { useAdvisor, type Connection } from "@/lib/useAdvisor";
 
 const starterPrompts = [
-  "Compare WeBank Smart Wealth & GBA Wealth Connect funds (WBKCASH, WBK6M, GBAHK, SPY)",
+  "Compare BND, AGG and SHY for a 3-year horizon",
   "What is the current mortgage rate trend and 10Y yield spread?",
   "Simulate $10M to $100M wealth plan over 10 years with $500k withdrawals",
   "Compare SPY, VTI, and QQQ factor exposures",

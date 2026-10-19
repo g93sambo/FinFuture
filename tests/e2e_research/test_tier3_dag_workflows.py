@@ -331,6 +331,9 @@ class TestDAGWorkflows:
             "user_approved": True,
             "approval_timestamp": datetime.now(timezone.utc).isoformat(),
             "paper": True,
+            # A Red-tier order: the orchestrator sets this after the emailed step-up code is accepted
+            "step_up_verified": True,
+            "fiduciary_attested": True,
         }
         res = await guard.check_trade(db=None, client_id="client_1", trade=approved_trade, profile=profile)
         assert res.passed is True

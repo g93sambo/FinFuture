@@ -11,7 +11,7 @@ from api.deps import get_container
 from core.security import get_current_user, verify_client_ownership
 from db.database import get_db
 from db.models import DBAuditLog, DBClientProfile, DBUser
-from services.anchoring import compute_merkle_root, generate_merkle_proof, get_anchoring_service
+from services.anchoring import compute_merkle_root, generate_merkle_proof, get_anchoring_service, verify_merkle_proof
 
 router = APIRouter(prefix="/api/v1", tags=["audit"])
 
@@ -82,21 +82,29 @@ async def anchor_audit(
     client_id: str,
     user: DBUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    c: AgentContainer = Depends(get_container),
 ):
+    """Anchor the Merkle root of this client's audit trail on Sepolia (when a wallet is configured).
+
+    A transaction that was actually sent is recorded as an ``AUDIT_ANCHORED`` audit entry with its
+    Etherscan link, so it can be looked up again later.
+    """
     await verify_client_ownership(user, client_id, db)
     result = await get_anchoring_service().anchor_client_audit_trail(db, client_id)
-    return result.__dict__ if hasattr(result, "__dict__") else dict(result)
-
-
-@router.post("/audit/{client_id}/anchor/fisco-bcos")
-async def anchor_audit_fisco_bcos(
-    client_id: str,
-    user: DBUser = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Anchors the client's RFC 6962 audit Merkle root to the WeBank FISCO BCOS v3 Consortium Ledger."""
-    await verify_client_ownership(user, client_id, db)
-    return await get_anchoring_service().anchor_client_to_fisco_bcos(db, client_id)
+    if result.tx_hash:
+        await c.audit.log_audit_entry(
+            db=db, client_id=client_id, event_type="AUDIT_ANCHORED", actor=f"USER:{user.id}",
+            details={
+                "merkle_root": result.merkle_root,
+                "tx_hash": result.tx_hash,
+                "explorer_url": result.explorer_url,
+                "chain_id": result.chain_id,
+                "block_number": result.block_number,
+                "entries_count": result.entries_count,
+                "status": result.status,
+            },
+        )
+    return result.__dict__
 
 
 @router.get("/audit/{client_id}/merkle-proof/{entry_id}")
@@ -136,21 +144,18 @@ async def get_entry_merkle_proof(
     return {
         "client_id": client_id,
         "entry_id": entry_id,
-        "verified": True,
+        "verified": verify_merkle_proof(leaf_hashes[idx], proof, merkle_root),
         "leaf_index": idx,
         "total_leaves": len(leaf_hashes),
         "leaf_hash": leaf_hashes[idx],
         "merkle_root": merkle_root,
         "proof": proof,
-        "chain_id": 11155111,
-        "network": "Ethereum Sepolia Testnet + WeBank FISCO BCOS v3 (group0)",
-        "consortium_ledger": "WeBank FISCO BCOS v3.6 (PBFT · WeEvent Topic: com.webank.finfuture.audit.anchor)",
     }
 
 
 @router.get("/audit/network/sepolia")
 async def get_sepolia_network_status():
-    """Polls live Sepolia RPC (Infura) to return real block height, chain ID, and connection status."""
+    """Whether Sepolia anchoring is configured, plus the RPC's live block height and the anchoring wallet."""
     return get_anchoring_service().get_sepolia_health()
 
 

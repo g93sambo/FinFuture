@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import Dict, List, Optional
 
@@ -17,6 +18,7 @@ from db.database import get_db
 from db.models import DBUser
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+logger = logging.getLogger("wealth_advisor.api.auth")
 
 # Per-account failed-login throttle (in-process; resets on restart and is not shared across instances)
 LOGIN_MAX_FAILURES = 5
@@ -65,9 +67,8 @@ async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=409, detail="Email already registered")
     except Exception as exc:
         await db.rollback()
-        import logging
-        logging.getLogger("wealth_advisor.api.auth").exception("Registration failed unexpectedly: %s", exc)
-        raise HTTPException(status_code=500, detail=f"Registration error: {str(exc)}")
+        logger.exception("Registration failed unexpectedly: %s", exc)
+        raise HTTPException(status_code=500, detail="Registration failed. Please try again.")
 
 
 class LoginRequest(BaseModel):

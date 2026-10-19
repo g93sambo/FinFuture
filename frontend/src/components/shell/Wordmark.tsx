@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-/** Equify brand wordmark with rounded emblem. `compact` hides subtitle if needed. */
+/** FinFuture brand wordmark with rounded emblem. `compact` hides subtitle if needed. */
 export function Wordmark({ href = "/", inverted = false }: { href?: string; inverted?: boolean; compact?: boolean }) {
   return (
     <Link href={href} className={`group inline-flex items-center gap-2.5 ${inverted ? "text-on-primary" : "text-ink"}`}>
@@ -27,7 +27,7 @@ export function Wordmark({ href = "/", inverted = false }: { href?: string; inve
           />
         </svg>
       </span>
-      <span className="text-[17px] font-bold tracking-tight">Equify</span>
+      <span className="text-[17px] font-bold tracking-tight">FinFuture</span>
     </Link>
   );
 }

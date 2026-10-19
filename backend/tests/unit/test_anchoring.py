@@ -59,15 +59,16 @@ def test_generate_merkle_proof():
 
 
 @pytest.mark.asyncio
-async def test_dry_run_mode_when_unconfigured():
+async def test_nothing_is_anchored_when_unconfigured():
     service = AnchoringService(rpc_url=None, private_key=None)
     hashes = ["a" * 64, "b" * 64]
     result = await service.anchor_hashes(hashes)
 
-    assert result.status == "dry_run"
+    # No wallet: no transaction, and no hash-shaped placeholder that could be mistaken for one
+    assert result.status == "not_configured"
     assert result.chain_id == SEPOLIA_CHAIN_ID
-    assert result.tx_hash.startswith("0x")
-    assert len(result.tx_hash) == 66
+    assert result.tx_hash is None
+    assert result.explorer_url is None
     assert result.entries_count == 2
     assert result.merkle_root == compute_merkle_root(hashes)
 
@@ -105,16 +106,48 @@ async def test_anchor_client_audit_trail(db_session):
     service = get_anchoring_service()
     result = await service.anchor_client_audit_trail(db_session, client_id)
 
-    assert result.status == "dry_run"
+    assert result.status == "not_configured"
     assert result.entries_count == 2
     assert result.merkle_root is not None
 
 
 @pytest.mark.asyncio
-async def test_verify_anchor_dry_run():
-    service = AnchoringService()
-    valid_tx = "0x" + "f" * 64
-    invalid_tx = "bad_tx"
+async def test_verify_anchor_requires_a_real_chain_lookup():
+    # Without a configured RPC nothing can be verified, so a well-formed hash is not "valid"
+    service = AnchoringService(rpc_url=None, private_key=None)
+    assert await service.verify_anchor("dummy_root", "0x" + "f" * 64) is False
+    assert await service.verify_anchor("dummy_root", "bad_tx") is False
 
-    assert await service.verify_anchor("dummy_root", valid_tx) is True
-    assert await service.verify_anchor("dummy_root", invalid_tx) is False
+
+@pytest.mark.asyncio
+async def test_successful_sepolia_anchor_returns_explorer_link():
+    service = AnchoringService(rpc_url="https://sepolia.example/rpc", private_key="0x" + "1" * 64)
+    mock_w3 = MagicMock()
+    mock_w3.is_connected.return_value = True
+    mock_w3.eth.chain_id = SEPOLIA_CHAIN_ID
+    mock_w3.eth.get_transaction_count.return_value = 0
+    mock_w3.eth.gas_price = 1
+    mock_w3.eth.account.sign_transaction.return_value = MagicMock(raw_transaction=b"raw")
+    mock_w3.eth.send_raw_transaction.return_value = bytes.fromhex("ab" * 32)
+    mock_w3.eth.wait_for_transaction_receipt.return_value = MagicMock(blockNumber=123, status=1)
+
+    with patch("services.anchoring.settings.dry_run", False), patch("services.anchoring.Web3", return_value=mock_w3):
+        result = await service.anchor_hashes(["c" * 64, "d" * 64])
+
+    assert result.status == "confirmed"
+    assert result.tx_hash == "0x" + "ab" * 32
+    assert result.explorer_url == "https://sepolia.etherscan.io/tx/0x" + "ab" * 32
+    assert result.block_number == 123
+    sent = mock_w3.eth.account.sign_transaction.call_args[0][0]
+    assert sent["data"] == bytes.fromhex(result.merkle_root)
+    assert sent["value"] == 0
+
+
+def test_merkle_proofs_verify_against_the_root():
+    from services.anchoring import verify_merkle_proof
+
+    leaves = [f"{i:064x}" for i in range(1, 8)]
+    root = compute_merkle_root(leaves)
+    for i, leaf in enumerate(leaves):
+        assert verify_merkle_proof(leaf, generate_merkle_proof(i, leaves), root)
+    assert not verify_merkle_proof(leaves[0], generate_merkle_proof(1, leaves), root)

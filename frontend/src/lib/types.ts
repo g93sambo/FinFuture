@@ -125,6 +125,12 @@ export interface Portfolio {
   weights: Record<string, number>;
 }
 
+export interface PortfolioHistoryPoint {
+  timestamp: string;
+  total_value: number;
+  cash: number;
+}
+
 export interface Trade {
   trade_id: string;
   client_id?: string;
@@ -134,15 +140,11 @@ export interface Trade {
   status: string;
   filled_price: number | null;
   alpaca_order_id: string | null;
-  bamboo_order_id?: string | null;
   broker?: string;
   currency?: string;
   broker_order_id?: string;
-  clearing_ref?: string;
-  audit_hash?: string;
-  full_audit_hash?: string;
-  custody_account?: string;
-  settlement_cycle?: string;
+  /** True when the fill was simulated (no broker credentials or DRY_RUN). */
+  simulated?: boolean;
   created_at: string | null;
 }
 
@@ -164,6 +166,18 @@ export interface Proposal {
   max_recommended_weight?: number;
   created_at: string;
   expires_in_seconds: number;
+}
+
+/** Response of POST /api/v1/trade/{proposal_id}/step-up: a code was emailed for this order. */
+export interface StepUpChallenge {
+  proposal_id: string;
+  delivery: "smtp" | "resend" | "console" | string;
+  destination: string;
+  expires_in_seconds: number;
+  resend_after_seconds: number;
+  max_attempts: number;
+  /** Only present when the server runs locally with OTP_DEV_ECHO=true and no email provider. */
+  dev_code?: string;
 }
 
 export interface Execution {
@@ -438,33 +452,31 @@ export interface AuditEntry {
   signature: string;
 }
 
-export interface FiscoBcosReceipt {
-  engine: string;
-  group_id: string;
-  consensus: string;
-  validator_nodes: number;
-  pbft_view: number;
-  block_number: number;
-  tx_hash: string;
-  merkle_root: string;
-  entries_count: number;
-  contract_address: string;
-  weevent_topic: string;
-  weevent_event_id: string;
-  status: string;
-  onchain?: boolean;
-  timestamp: string;
-}
-
 export interface AnchorResult {
   merkle_root: string;
-  tx_hash: string;
+  /** Null unless a transaction was actually sent to Sepolia. */
+  tx_hash: string | null;
   block_number: number | null;
-  status: "confirmed" | "submitted" | "dry_run" | "failed" | string;
+  status: "confirmed" | "submitted" | "not_configured" | "failed" | string;
   chain_id: number;
   timestamp: string;
   entries_count: number;
-  fisco_bcos_receipt?: FiscoBcosReceipt | null;
+  explorer_url: string | null;
+  wallet_address: string | null;
+  error: string | null;
+}
+
+export interface SepoliaNetwork {
+  configured: boolean;
+  connected: boolean;
+  anchoring_enabled: boolean;
+  block_number?: number;
+  chain_id?: number;
+  gas_price_gwei?: number;
+  wallet_address?: string;
+  wallet_url?: string;
+  wallet_balance_eth?: number;
+  error?: string;
 }
 
 export interface MerkleProofStep {
@@ -481,9 +493,6 @@ export interface MerkleProofResponse {
   leaf_hash: string | null;
   merkle_root: string;
   proof: MerkleProofStep[];
-  chain_id?: number;
-  network?: string;
-  consortium_ledger?: string;
 }
 
 export interface ComplianceRule {
@@ -530,36 +539,12 @@ export interface SecurityPillarItem {
   detail: string;
 }
 
-export interface WebankEcosystem {
-  consortium_chain: {
-    engine: string;
-    consensus: string;
-    group_id: string;
-    contract: string;
-    endpoint: string;
-  };
-  event_mesh: {
-    engine: string;
-    topic: string;
-    protocol: string;
-  };
-  federated_privacy: {
-    engine: string;
-    mode: string;
-    raw_pii_transmitted: boolean;
-  };
-  wealth_shelf: {
-    platform: string;
-    instruments: { symbol: string; name: string; risk_level: string }[];
-  };
-}
-
 export interface PermissionTiersResponse {
   permission_tiers: PermissionTierItem[];
   known_risks: KnownRiskItem[];
   circuit_breaker: CircuitBreakerStatus;
   security_pillars: SecurityPillarItem[];
-  webank_ecosystem?: WebankEcosystem;
+  enforced_limits?: { whitelisted_symbols?: string[] };
 }
 
 export interface Quote {

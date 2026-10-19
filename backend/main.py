@@ -7,7 +7,7 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select
@@ -126,10 +126,18 @@ async def lifespan(app: FastAPI):
     # Pre-warm market data cache fixtures for zero-dependency resilience
     await warm_market_fixtures(app.state.container.cache)
 
+    otp_channel = app.state.container.otp.sender.channel
+    if settings.environment.lower() == "production" and otp_channel in ("console", "unconfigured"):
+        logger.warning(
+            "No email provider configured (set BREVO_API_KEY, RESEND_API_KEY or SMTP_HOST): step-up codes cannot be "
+            "delivered, so Red-tier trades (> $%s or > 5%% NAV) will be refused until one is configured.",
+            f"{settings.step_up_mfa_notional_threshold_usd:,.0f}",
+        )
     logger.info(
-        "Startup complete (compliance rules seeded: %s, redis online: %s)",
+        "Startup complete (compliance rules seeded: %s, redis online: %s, OTP delivery: %s)",
         seeded,
         app.state.container.cache.is_redis_online,
+        otp_channel,
     )
     yield
     # --- SHUTDOWN ---
@@ -163,6 +171,19 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    if settings.environment.lower() == "production":
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    return response
+
 
 # Modular API routers mounted under /api/v1
 app.include_router(auth.router)

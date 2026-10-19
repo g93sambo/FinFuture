@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,7 +13,7 @@ from agents.orchestrator import AgentContainer
 from api.deps import get_container
 from core.security import get_current_user, verify_client_ownership
 from db.database import get_db
-from db.models import DBClientProfile, DBUser
+from db.models import DBClientProfile, DBPortfolioSnapshot, DBUser
 
 router = APIRouter(prefix="/api/v1", tags=["portfolio"])
 
@@ -73,6 +73,32 @@ async def get_portfolio(
     await verify_client_ownership(user, client_id, db)
     pf = await c.portfolio.get_portfolio(db, client_id, persist_snapshot=True)
     return {k: v for k, v in pf.items() if k not in ("prices", "position_qty")}
+
+
+@router.get("/portfolio/{client_id}/history")
+async def get_portfolio_history(
+    client_id: str,
+    limit: int = Query(300, ge=2, le=2000),
+    user: DBUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Recorded portfolio valuations (one snapshot per portfolio fetch or executed trade), oldest first."""
+    await verify_client_ownership(user, client_id, db)
+    rows = (
+        await db.execute(
+            select(DBPortfolioSnapshot)
+            .where(DBPortfolioSnapshot.client_id == client_id)
+            .order_by(DBPortfolioSnapshot.timestamp.desc())
+            .limit(limit)
+        )
+    ).scalars().all()
+    return {
+        "client_id": client_id,
+        "points": [
+            {"timestamp": r.timestamp.isoformat(), "total_value": r.total_value, "cash": r.cash}
+            for r in reversed(rows)
+        ],
+    }
 
 
 async def _generate_health_report(client_id: str, user: DBUser, db: AsyncSession, c: AgentContainer):

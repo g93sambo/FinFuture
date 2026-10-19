@@ -9,7 +9,6 @@ tamper-evident append-only cryptographic audit logging.
 
 from __future__ import annotations
 
-import hmac
 import json
 import logging
 import re
@@ -1259,11 +1258,11 @@ class ComplianceGuard:
         proj_w_val = float(trade.get("projected_weight", 0.0))
         tier_check = self.classify_trade_permission_tier(order_notional_usd, proj_w_val)
         if tier_check["requires_step_up_auth"]:
-            proposal_id_str = str(trade.get("proposal_id", ""))
-            expected_otp = self.compute_expected_mfa_code(proposal_id_str)
-            supplied_otp = str(trade.get("mfa_code") or "").strip()
+            # step_up_verified is set server-side only after StepUpOTPService.verify() accepts the
+            # emailed single-use code for this user and proposal (see OrchestratorAgent).
+            otp_verified = trade.get("step_up_verified") is True
             attested = bool(trade.get("fiduciary_attested", False))
-            otp_ok = hmac.compare_digest(supplied_otp, expected_otp) and attested
+            otp_ok = otp_verified and attested
             if not otp_ok:
                 violations.append(
                     ComplianceViolation(
@@ -1275,7 +1274,7 @@ class ComplianceGuard:
                             f"Red-Tier trade (notional ${order_notional_usd:,.2f}, weight {proj_w_val:.1%}) requires a valid "
                             f"6-digit Step-Up MFA OTP and fiduciary attestation."
                         ),
-                        actual_value=bool(supplied_otp),
+                        actual_value=otp_verified,
                         threshold=True,
                     )
                 )
@@ -1492,24 +1491,16 @@ class ComplianceGuard:
         "XLK", "XLF", "XLV", "XLE", "XLI", "XLY", "XLP", "XLU",
         # Global, Developed & Emerging Markets Indices
         "URTH", "ACWI", "EEM", "EFA", "ASHR", "FXI", "MCHI", "KWEB", "EWJ", "EWG", "EWU",
-        # Chinese & Hong Kong Index Benchmarks
-        "000300.SS", "2800.HK", "^GSPC", "^NDX", "^DJI", "^RUT", "^HSI",
         # US Treasury, Investment-Grade Bond & Commodity ETFs
         "BND", "AGG", "SHY", "IEF", "TLT", "TIP", "LQD", "HYG", "MUB", "GOVT", "VGSH", "VGIT", "VGLT", "BNDX",
         "GLD", "IAU", "SLV", "DBC", "USO",
-        # Regulated Digital Asset & Crypto Spot ETFs
-        "BTC", "ETH", "IBIT", "FBTC", "ETHA", "GBTC",
+        # Spot crypto ETFs
+        "IBIT", "FBTC", "ETHA", "GBTC",
         # Approved Liquid Large-Cap Equities
         "AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "NVDA", "META", "TSLA", "BRK.B", "BRK.A", "JPM", "V", "MA",
         "UNH", "JNJ", "XOM", "PG", "HD", "COST", "AVGO", "LLY", "MRK", "ABBV", "PEP", "KO", "WMT", "CRM",
         "AMD", "INTC", "NFLX", "DIS", "CSCO", "ORCL", "ADBE", "TXN", "QCOM", "HON", "UNP", "NEE", "LOW",
         "GS", "MS", "BLK", "BAC", "C", "WFC",
-        # Approved Nigerian Exchange (NGX) Equities via Bamboo Sandbox
-        "DANGCEM", "MTNN", "GTCO", "ZENITHBANK", "ACCESSCORP", "UBA", "SEPLAT", "AIRTELAFRI", "BUACEMENT",
-        "BUAFOODS", "NESTLE", "GEREGU", "TRANSPOWER", "TRANSCORP", "NGXGROUP", "FBNH", "STANBIC", "WAPCO",
-        "OKOMUOIL", "PRESCO",
-        # Approved WeBank Smart Wealth & GBA Cross-Border Wealth Connect Instruments
-        "WBKCASH", "WBK6M", "GBAHK", "WBKGLD",
     })
 
     _circuit_breaker_events: Dict[str, List[Dict[str, Any]]] = {}
@@ -1616,7 +1607,7 @@ class ComplianceGuard:
                     "whitelisted_symbols_count": len(cls.ALLOWED_TRADING_SYMBOLS),
                 },
                 "operations": [
-                    "Paper brokerage order submission (Alpaca Paper API / Bamboo Sandbox)",
+                    "Paper brokerage order submission (Alpaca Paper API)",
                     "Anchoring RFC 6962 Merkle audit roots to Ethereum Sepolia Testnet (chain_id=11155111)",
                 ],
                 "safeguards": [
@@ -1648,12 +1639,6 @@ class ComplianceGuard:
                 ],
             },
         ]
-
-    @staticmethod
-    def compute_expected_mfa_code(proposal_id: str) -> str:
-        """Computes the deterministic 6-digit Step-Up MFA code for a proposal_id."""
-        digits = "".join(ch for ch in str(proposal_id or "") if ch.isdigit())
-        return (digits[:6]).ljust(6, "4")
 
     @staticmethod
     def get_known_risk_register() -> List[Dict[str, str]]:

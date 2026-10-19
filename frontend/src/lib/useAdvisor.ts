@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { WS_URL, api, tokenStore } from "./api";
+import { WS_URL, api, retryableStepUpReason, tokenStore, type ApproveOptions } from "./api";
 import { useAuth } from "./auth";
 import type { AgentEvent, ChatMessageAttachment, ChatSessionItem } from "./types";
 
@@ -345,7 +345,7 @@ export function useAdvisor() {
   );
 
   const approve = useCallback(
-    async (proposalId: string, opts?: { mfaCode?: string; fiduciaryAttested?: boolean }) => {
+    async (proposalId: string, opts?: ApproveOptions): Promise<string | void> => {
       setProposals((p) => ({ ...p, [proposalId]: "approving" }));
       lastApproved.current = proposalId;
       setWaiting(true);
@@ -358,6 +358,12 @@ export function useAdvisor() {
         const res = await api.executeProposal(clientId, proposalId, true, opts);
         ingest(res.events);
       } catch (e) {
+        const retry = retryableStepUpReason(e);
+        if (retry) {
+          setProposals((p) => ({ ...p, [proposalId]: "open" }));
+          setWaiting(false);
+          return retry;
+        }
         setProposals((p) => ({ ...p, [proposalId]: "blocked" }));
         setWaiting(false);
         push({ from: "agent", event: { event: "error", agent: "ExecutionModule", text: (e as Error).message }, text: (e as Error).message });

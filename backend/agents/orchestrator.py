@@ -51,8 +51,8 @@ from services.cache import CacheService, get_cache_service, key_session
 from services.health_report import HealthReportService
 from services.portfolio_service import PortfolioService
 from services.context_builder import FinancialContextBuilder
+from services.otp_service import StepUpOTPService
 from agents.review_stage import ReviewStage
-from services.demo_replay import is_demo_mode_active, match_demo_response
 
 logger = logging.getLogger("wealth_advisor.agents.orchestrator")
 
@@ -228,6 +228,7 @@ class AgentContainer:
     health: HealthReportService
     portfolio: PortfolioService
     orchestrator: "OrchestratorAgent"
+    otp: Optional[StepUpOTPService] = None
 
 
 def build_container() -> AgentContainer:
@@ -248,6 +249,7 @@ def build_container() -> AgentContainer:
         health=HealthReportService(market_data_agent=market),
         portfolio=PortfolioService(execution_module=execution, market_data_agent=market),
         orchestrator=None,  # type: ignore[arg-type]
+        otp=StepUpOTPService(cache),
     )
     container.orchestrator = OrchestratorAgent(container)
     return container
@@ -494,16 +496,6 @@ class OrchestratorAgent:
             user_ev["attachments"] = attachments
         events: List[Dict[str, Any]] = [user_ev]
         stage = _normalize_stage(session.get("stage"))
-
-        # Action 10: Demo Mode Replay Check
-        if is_demo_mode_active(message):
-            clean_demo_msg = re.sub(r"^\[DEMO\]\s*", "", message, flags=re.IGNORECASE)
-            demo_match = match_demo_response(clean_demo_msg or message)
-            if demo_match:
-                events.append(await self._say(demo_match["text"], db, client_id, agent=demo_match["agent"]))
-                session["history"].append({"role": "assistant", "content": demo_match["text"]})
-                await self._save_session(session)
-                return events
 
         if stage == SessionStage.PROFILING:
             events += await self._profiling_turn(db, session, message)
@@ -1697,9 +1689,8 @@ class OrchestratorAgent:
 
         proj = await self.c.portfolio.projected_weight(db, client_id, symbol, side, qty)
 
-        is_ngx = symbol in ("DANGCEM", "MTNN", "GTCO", "ZENITHBANK", "ACCESSCORP", "UBA", "SEPLAT", "AIRTELAFRI", "BUACEMENT", "BUAFOODS", "NESTLE", "GEREGU", "TRANSPOWER", "TRANSCORP", "NGXGROUP")
-        chosen_broker = (broker or ("bamboo" if is_ngx else "alpaca")).lower()
-        chosen_currency = (currency or ("NGN" if is_ngx else "USD")).upper()
+        chosen_broker = "alpaca"
+        chosen_currency = "USD"
 
         tier_info = self.c.compliance.classify_trade_permission_tier(
             float(proj["notional_value"]), float(proj["projected_weight"])
@@ -1755,8 +1746,8 @@ class OrchestratorAgent:
         if session is not None:
             session["pending_proposal_id"] = proposal["proposal_id"]
             session["stage"] = SessionStage.PROPOSAL_REVIEW.value
-        curr_sym = "₦" if proposal.get("currency") == "NGN" else "$"
-        broker_label = "Bamboo (Live NGX & Global)" if proposal.get("broker") == "bamboo" else "Alpaca Paper Trading"
+        curr_sym = "$"
+        broker_label = "Alpaca Paper Trading"
         text = (
             f"Proposed order: {proposal['side']} {proposal['qty']:g} {proposal['symbol']} at about "
             f"{curr_sym}{proposal['price']:.2f} (~{curr_sym}{proposal['notional_value']:,.2f}) via {broker_label}. "
@@ -1782,16 +1773,12 @@ class OrchestratorAgent:
             )
         ]
 
-    async def handle_trade_approval(
-        self,
-        db: AsyncSession,
-        user_id: str,
-        proposal_id: str,
-        approved: bool,
-        session_id: Optional[str] = None,
-        mfa_code: Optional[str] = None,
-        fiduciary_attested: Optional[bool] = None,
-    ) -> List[Dict[str, Any]]:
+    async def _resolve_proposal(self, db: AsyncSession, user_id: str, proposal_id: str) -> Dict[str, Any]:
+        """Loads a live proposal owned by ``user_id``, recovering it from the audit log after a restart.
+
+        Raises TradeBlocked(DuplicateTradeError) if it was already executed, 404 if unknown or
+        expired, and 403 if it belongs to another user.
+        """
         proposal = await self.c.cache.get_json(f"proposal:{proposal_id}")
         if not proposal:
             audit_window_start = datetime.now(timezone.utc) - timedelta(seconds=PROPOSAL_TTL_SECONDS + 60)
@@ -1851,11 +1838,43 @@ class OrchestratorAgent:
 
         if not proposal:
             raise HTTPException(status_code=404, detail="Trade proposal not found or expired (15 minute window)")
-        client_id = proposal["client_id"]
 
-        profile = await self.c.profiler.get_profile(client_id, db=db)
+        profile = await self.c.profiler.get_profile(proposal["client_id"], db=db)
         if profile is None or str(profile.user_id or "") != str(user_id):
             raise HTTPException(status_code=403, detail="Proposal does not belong to this user")
+        return proposal
+
+    async def request_step_up_code(
+        self, db: AsyncSession, user_id: str, email: str, proposal_id: str
+    ) -> Dict[str, Any]:
+        """Emails a single-use step-up code for a Red-tier proposal (PERM-STEP-UP-MFA)."""
+        proposal = await self._resolve_proposal(db, user_id, proposal_id)
+        tier = self.c.compliance.classify_trade_permission_tier(
+            float(proposal.get("notional_value") or 0.0), float(proposal.get("projected_weight") or 0.0)
+        )
+        if not tier["requires_step_up_auth"]:
+            raise HTTPException(status_code=400, detail="This order does not require a verification code.")
+        challenge = await self.c.otp.issue(str(user_id), email, proposal)
+        await self.c.audit.log_audit_entry(
+            db=db, client_id=proposal["client_id"], event_type="STEP_UP_OTP_ISSUED", actor=f"USER:{user_id}",
+            details={"proposal_id": str(proposal_id), "delivery": challenge["delivery"],
+                     "destination": challenge["destination"], "expires_in_seconds": challenge["expires_in_seconds"]},
+        )
+        return challenge
+
+    async def handle_trade_approval(
+        self,
+        db: AsyncSession,
+        user_id: str,
+        proposal_id: str,
+        approved: bool,
+        session_id: Optional[str] = None,
+        mfa_code: Optional[str] = None,
+        fiduciary_attested: Optional[bool] = None,
+    ) -> List[Dict[str, Any]]:
+        proposal = await self._resolve_proposal(db, user_id, proposal_id)
+        client_id = proposal["client_id"]
+        profile = await self.c.profiler.get_profile(client_id, db=db)
 
         # Red-tier orders (> $1,000 or > 5% NAV) always need step-up confirmation. An approval
         # that arrives without it (chat "yes", WebSocket approve, bare REST call) is turned back
@@ -1866,8 +1885,8 @@ class OrchestratorAgent:
         )
         if approved and tier["requires_step_up_auth"] and mfa_code is None:
             reason = (
-                f"{tier['step_up_reason']} Open the trade ticket for this proposal and enter the "
-                "6-digit step-up code with the fiduciary attestation to approve it."
+                f"{tier['step_up_reason']} Open the trade ticket for this proposal, request the "
+                "6-digit code we email you, and confirm the attestation to approve it."
             )
             raise TradeBlocked(
                 [],
@@ -1875,6 +1894,40 @@ class OrchestratorAgent:
                 reason=reason,
                 error_type="StepUpRequiredError",
             )
+
+        # Verify the emailed code before compliance. Attestation is checked first so a missing
+        # checkbox does not burn a valid single-use code.
+        step_up_verified = False
+        if approved and tier["requires_step_up_auth"]:
+            if not fiduciary_attested:
+                reason = "Confirm the attestation on the trade ticket before submitting your verification code."
+                raise TradeBlocked(
+                    [],
+                    [_event("error", "ComplianceGuard", text=reason, error="AttestationRequiredError", proposal_id=str(proposal_id))],
+                    reason=reason,
+                    error_type="AttestationRequiredError",
+                )
+            otp_check = await self.c.otp.verify(str(user_id), str(proposal_id), str(mfa_code))
+            await self.c.audit.log_audit_entry(
+                db=db, client_id=client_id,
+                event_type="STEP_UP_OTP_VERIFIED" if otp_check.ok else "STEP_UP_OTP_FAILED",
+                actor=f"USER:{user_id}",
+                details={"proposal_id": str(proposal_id), "attempts_remaining": otp_check.attempts_remaining,
+                         "invalidated": otp_check.locked},
+            )
+            if not otp_check.ok:
+                if otp_check.locked:
+                    self.c.compliance.record_security_incident(
+                        str(user_id), f"PERM-STEP-UP-MFA: step-up code exhausted for proposal {proposal_id}",
+                        incident_type="STEP_UP_OTP_LOCKOUT",
+                    )
+                raise TradeBlocked(
+                    [],
+                    [_event("error", "ComplianceGuard", text=otp_check.reason, error="InvalidStepUpCodeError", proposal_id=str(proposal_id))],
+                    reason=otp_check.reason,
+                    error_type="InvalidStepUpCodeError",
+                )
+            step_up_verified = True
 
         approval_ts = datetime.now(timezone.utc)
         events: List[Dict[str, Any]] = []
@@ -1894,9 +1947,8 @@ class OrchestratorAgent:
             "projected_weight": proposal["projected_weight"],
             "broker": proposal.get("broker"),
             "currency": proposal.get("currency"),
-            "mfa_code": mfa_code,
+            "step_up_verified": step_up_verified,
             "fiduciary_attested": fiduciary_attested,
-            "enforce_step_up_mfa": True,
         }
         try:
             check = await self.c.compliance.check_trade(db, client_id, trade, profile)
@@ -1946,11 +1998,8 @@ class OrchestratorAgent:
             except Exception:
                 pass
 
-        curr_sym = "₦" if getattr(result, "currency", "USD") == "NGN" else "$"
-        if getattr(result, "broker", "alpaca") == "bamboo":
-            broker_msg = " via Bamboo Investment (Live)." if not result.dry_run else " via Bamboo Investment (Sandbox)."
-        else:
-            broker_msg = " (simulated paper fill)." if result.dry_run else " via Alpaca paper trading."
+        curr_sym = "$"
+        broker_msg = " (simulated paper fill)." if result.dry_run else " via Alpaca paper trading."
 
         events.append(
             await self._say(

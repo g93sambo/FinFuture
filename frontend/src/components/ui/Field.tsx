@@ -55,7 +55,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, ComponentProps<"textarea
   return <textarea ref={ref} className={`${control} py-2.5 ${className}`} {...rest} />;
 });
 
-/** Pill-style segmented toggle matching the Equify navigation and filter pills. */
+/** Pill-style segmented toggle matching the app navigation and filter pills. */
 export function Segmented<T extends string>({
   value,
   options,

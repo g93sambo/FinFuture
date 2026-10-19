@@ -2,7 +2,7 @@
 backend/services/symbol_directory.py
 ====================================
 Comprehensive symbol directory, search service, fundamentals provider,
-and FX conversion engine across US and Nigerian (NGX) equities.
+for US-listed securities.
 """
 
 from __future__ import annotations
@@ -107,109 +107,6 @@ SYMBOL_CATALOG: Dict[str, Dict[str, Any]] = {
         "52w_high": 140.0,
         "52w_low": 40.0,
     },
-    # --- Nigerian Stock Exchange (NGX) Equities ---
-    "DANGCEM": {
-        "symbol": "DANGCEM",
-        "name": "Dangote Cement Plc",
-        "asset_class": "Equity",
-        "exchange": "NGX",
-        "currency": "NGN",
-        "sector": "Industrial Goods",
-        "pe_ratio": 16.5,
-        "dividend_yield": 4.62,
-        "market_cap": 11_070_000_000_000,
-        "52w_high": 760.0,
-        "52w_low": 319.0,
-    },
-    "MTNN": {
-        "symbol": "MTNN",
-        "name": "MTN Nigeria Communications Plc",
-        "asset_class": "Equity",
-        "exchange": "NGX",
-        "currency": "NGN",
-        "sector": "Telecommunications",
-        "pe_ratio": 18.2,
-        "dividend_yield": 5.40,
-        "market_cap": 5_100_000_000_000,
-        "52w_high": 290.0,
-        "52w_low": 180.0,
-    },
-    "GTCO": {
-        "symbol": "GTCO",
-        "name": "Guaranty Trust Holding Company Plc",
-        "asset_class": "Equity",
-        "exchange": "NGX",
-        "currency": "NGN",
-        "sector": "Banking & Financial Services",
-        "pe_ratio": 3.8,
-        "dividend_yield": 7.15,
-        "market_cap": 1_420_000_000_000,
-        "52w_high": 54.0,
-        "52w_low": 34.0,
-    },
-    "ZENITHBANK": {
-        "symbol": "ZENITHBANK",
-        "name": "Zenith Bank Plc",
-        "asset_class": "Equity",
-        "exchange": "NGX",
-        "currency": "NGN",
-        "sector": "Banking & Financial Services",
-        "pe_ratio": 3.4,
-        "dividend_yield": 8.33,
-        "market_cap": 1_310_000_000_000,
-        "52w_high": 47.0,
-        "52w_low": 31.0,
-    },
-    "ACCESSCORP": {
-        "symbol": "ACCESSCORP",
-        "name": "Access Holdings Plc",
-        "asset_class": "Equity",
-        "exchange": "NGX",
-        "currency": "NGN",
-        "sector": "Banking & Financial Services",
-        "pe_ratio": 2.9,
-        "dividend_yield": 9.20,
-        "market_cap": 765_000_000_000,
-        "52w_high": 30.5,
-        "52w_low": 16.5,
-    },
-    "UBA": {
-        "symbol": "UBA",
-        "name": "United Bank for Africa Plc",
-        "asset_class": "Equity",
-        "exchange": "NGX",
-        "currency": "NGN",
-        "sector": "Banking & Financial Services",
-        "pe_ratio": 2.6,
-        "dividend_yield": 9.55,
-        "market_cap": 1_020_000_000_000,
-        "52w_high": 36.0,
-        "52w_low": 19.0,
-    },
-    "SEPLAT": {
-        "symbol": "SEPLAT",
-        "name": "Seplat Energy Plc",
-        "asset_class": "Equity",
-        "exchange": "NGX",
-        "currency": "NGN",
-        "sector": "Oil & Gas / Energy",
-        "pe_ratio": 7.2,
-        "dividend_yield": 4.10,
-        "market_cap": 2_000_000_000_000,
-        "52w_high": 3700.0,
-        "52w_low": 1500.0,
-    },
-}
-
-
-# FX Rates benchmark table (USD/NGN, NGN/USD, USD/GBP, USD/EUR)
-FX_RATES: Dict[str, float] = {
-    "USD/NGN": 1520.00,
-    "NGN/USD": 1.0 / 1520.00,
-    "USD/EUR": 0.92,
-    "EUR/USD": 1.087,
-    "USD/GBP": 0.77,
-    "GBP/USD": 1.299,
 }
 
 
@@ -238,24 +135,3 @@ def get_symbol_fundamentals(symbol: str) -> Optional[Dict[str, Any]]:
     """Get rich fundamentals for a recognized symbol."""
     sym_clean = symbol.strip().upper()
     return SYMBOL_CATALOG.get(sym_clean)
-
-
-def get_fx_conversion(base_currency: str = "USD", target_currency: str = "NGN") -> Dict[str, Any]:
-    """Retrieve FX rate and timestamp."""
-    pair = f"{base_currency.upper()}/{target_currency.upper()}"
-    rate = FX_RATES.get(pair)
-    if rate is None:
-        if base_currency.upper() == target_currency.upper():
-            rate = 1.0
-        else:
-            # Fallback estimation
-            rate = 1.0
-
-    return {
-        "base_currency": base_currency.upper(),
-        "target_currency": target_currency.upper(),
-        "rate": rate,
-        "pair": pair,
-        "as_of": datetime.now(timezone.utc).isoformat(),
-        "source": "FinFutureFXEngine",
-    }

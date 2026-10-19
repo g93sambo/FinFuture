@@ -1071,6 +1071,34 @@ async def test_trade_and_execution(
         response_body=safe_json(dup_res),
     )
 
+    # 5b. Red-tier step-up gate: an order above $1,000 needs the emailed one-time code
+    red_payload = {"client_id": client_id, "symbol": "SPY", "side": "BUY", "qty": 20.0}
+    red_res = await client.post(f"{BACKEND_BASE}/api/v1/trade/propose", headers=auth_headers, json=red_payload)
+    red_pid = (safe_json(red_res).get("proposal") or {}).get("proposal_id") if red_res.status_code == 200 else None
+    for name, extra, expected_error in (
+        ("Red-Tier Approval Without Code (403 StepUpRequired)", {}, "StepUpRequiredError"),
+        ("Red-Tier Approval With Guessed Code (403 InvalidStepUpCode)", {"mfa_code": "123456"}, "InvalidStepUpCodeError"),
+    ):
+        payload = {"client_id": client_id, "proposal_id": red_pid, "user_approved": True,
+                   "fiduciary_attested": True, **extra}
+        t0 = time.time()
+        res = await client.post(f"{BACKEND_BASE}/api/v1/trade/execute", headers=auth_headers, json=payload)
+        lat = time.time() - t0
+        body = safe_json(res)
+        error = (body.get("detail") or {}).get("error") if isinstance(body, dict) and isinstance(body.get("detail"), dict) else None
+        collector.record(
+            group="Trade & Execution",
+            name=name,
+            method="POST",
+            endpoint="/api/v1/trade/execute",
+            status_code=res.status_code,
+            latency=lat,
+            passed=(res.status_code == 403 and error == expected_error),
+            notes=f"Red-tier proposal {red_pid} refused with {error} (PERM-STEP-UP-MFA)",
+            request_body=payload,
+            response_body=body,
+        )
+
     # 6. List Client Trades: GET /api/v1/trades/{client_id} (Verifies PostgreSQL trade persistence!)
     t0 = time.time()
     res = await client.get(f"{BACKEND_BASE}/api/v1/trades/{client_id}", headers=auth_headers)

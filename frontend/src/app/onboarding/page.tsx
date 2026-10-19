@@ -11,14 +11,6 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { fixed, money } from "@/lib/format";
 import type { OnboardingData } from "@/lib/types";
-import {
-  SUPPORTED_BROKERAGES,
-  BENCHMARK_INDICES,
-  getStoredBroker,
-  setStoredBroker,
-  getStoredBenchmark,
-  setStoredBenchmark,
-} from "@/lib/custodians";
 
 const employmentOptions = [
   { value: "employed", label: "Employed", desc: "Full-time or part-time salary" },
@@ -171,13 +163,6 @@ export default function OnboardingPage() {
   const [lossCapacity, setLossCapacity] = useState("medium");
   const [pepStatus, setPepStatus] = useState(false);
   const [highRiskJurisdiction, setHighRiskJurisdiction] = useState(false);
-  const [selectedBrokerId, setSelectedBrokerId] = useState<string>("webank");
-  const [selectedBenchmarkSymbol, setSelectedBenchmarkSymbol] = useState<string>("^GSPC");
-
-  useEffect(() => {
-    setSelectedBrokerId(getStoredBroker().id);
-    setSelectedBenchmarkSymbol(getStoredBenchmark().symbol);
-  }, []);
 
   // Check auth and attempt to prefill existing profile if available
   useEffect(() => {
@@ -315,8 +300,6 @@ export default function OnboardingPage() {
     };
 
     try {
-      setStoredBroker(selectedBrokerId);
-      setStoredBenchmark(selectedBenchmarkSymbol);
       if (preferredName.trim() && typeof window !== "undefined") {
         localStorage.setItem("finfuture.user_name", preferredName.trim());
       }
@@ -931,90 +914,6 @@ export default function OnboardingPage() {
                       <div>
                         <span className="text-muted">Drawdown Reaction</span>
                         <p className="font-semibold text-ink capitalize">{drawdownReaction.replace("_", " ")}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Connected Stock Application & Benchmark Selection */}
-                  <div className="rounded-xl border border-line bg-surface/50 p-5 space-y-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-3">
-                      <div>
-                        <h3 className="text-sm font-bold text-ink">Connected Stock Application & Brokerage</h3>
-                        <p className="text-xs text-muted">
-                          Choose which stock application or custodian executes your paper and live orders.
-                        </p>
-                      </div>
-                      <span className="rounded-full bg-accent/15 px-2.5 py-0.5 text-[11px] font-bold text-accent">
-                        {SUPPORTED_BROKERAGES.length} Platforms Available
-                      </span>
-                    </div>
-
-                    <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-                      {SUPPORTED_BROKERAGES.map((b) => {
-                        const isSelected = selectedBrokerId === b.id;
-                        return (
-                          <button
-                            key={b.id}
-                            type="button"
-                            onClick={() => setSelectedBrokerId(b.id)}
-                            className={`flex flex-col items-start rounded-xl border p-3 text-left transition-all ${
-                              isSelected
-                                ? "border-accent bg-background shadow-xs ring-2 ring-accent/30"
-                                : "border-line bg-background/50 hover:bg-background"
-                            }`}
-                          >
-                            <div className="flex w-full items-center justify-between">
-                              <span className="text-xs font-bold text-ink truncate">{b.shortName}</span>
-                              {isSelected ? (
-                                <span className="h-4 w-4 rounded-full bg-accent text-[10px] font-bold text-white flex items-center justify-center">
-                                  ✓
-                                </span>
-                              ) : null}
-                            </div>
-                            <p className="mt-1 text-[11px] text-muted truncate w-full">{b.name}</p>
-                            <div className="mt-2 flex flex-wrap gap-1">
-                              {b.badges.slice(0, 1).map((bg) => (
-                                <span
-                                  key={bg}
-                                  className="rounded bg-surface px-1.5 py-0.2 text-[9.5px] font-medium text-muted border border-line/60"
-                                >
-                                  {bg}
-                                </span>
-                              ))}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    {/* Benchmark Selection */}
-                    <div className="border-t border-line/60 pt-3">
-                      <div className="mb-2 flex items-center justify-between">
-                        <span className="text-xs font-bold text-ink">Primary Performance Benchmark Index</span>
-                        <span className="text-[11px] text-muted">Hurdle baseline for portfolio comparisons</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                        {BENCHMARK_INDICES.slice(0, 4).map((idx) => {
-                          const isSelected = selectedBenchmarkSymbol === idx.symbol;
-                          return (
-                            <button
-                              key={idx.symbol}
-                              type="button"
-                              onClick={() => setSelectedBenchmarkSymbol(idx.symbol)}
-                              className={`rounded-lg border p-2 text-left transition-all ${
-                                isSelected
-                                  ? "border-accent bg-background shadow-xs ring-1 ring-accent"
-                                  : "border-line bg-background/40 hover:bg-background"
-                              }`}
-                            >
-                              <div className="flex items-center justify-between">
-                                <span className="figures text-xs font-bold text-ink">{idx.ticker}</span>
-                                <span className="text-[10px] font-semibold text-accent">+{idx.returnYtd}%</span>
-                              </div>
-                              <p className="text-[10px] text-muted truncate">{idx.name}</p>
-                            </button>
-                          );
-                        })}
                       </div>
                     </div>
                   </div>

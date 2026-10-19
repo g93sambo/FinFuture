@@ -99,7 +99,7 @@ export function LineChart({
       <figcaption className="sr-only">{title}</figcaption>
       <svg viewBox={`0 0 ${W} ${H}`} className="block h-auto w-full" role="img" aria-label={title}>
         <defs>
-          <linearGradient id="equifyLineArea" x1="0" y1="0" x2="0" y2="1">
+          <linearGradient id="lineChartArea" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.22" />
             <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.0" />
           </linearGradient>
@@ -131,7 +131,7 @@ export function LineChart({
           {yLabel}
         </text>
 
-        <path d={areaPath} fill="url(#equifyLineArea)" />
+        <path d={areaPath} fill="url(#lineChartArea)" />
         <path d={path} fill="none" className="stroke-accent" strokeWidth={2.25} strokeLinecap="round" strokeLinejoin="round" />
         {markers
           ? geo.coords.map((c, i) => <circle key={i} cx={c.cx} cy={c.cy} r={4} className="fill-accent stroke-background" strokeWidth={2} />)

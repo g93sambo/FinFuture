@@ -51,7 +51,7 @@ export default function ErrorBoundary({
       </div>
 
       <footer className="mt-12 border-t border-line pt-6 text-xs text-muted">
-        Equify Institutional Wealth Engine &bull; All client data is encrypted and backed by append-only audit trees.
+        FinFuture &bull; Every action is recorded in a signed, append-only audit trail.
       </footer>
     </div>
   );

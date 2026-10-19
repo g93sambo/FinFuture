@@ -192,7 +192,7 @@ async def submit_onboarding_profile(
         logging.getLogger("wealth_advisor.api.profile").exception("Onboarding submission failed: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Onboarding error: {str(exc)}",
+            detail="We could not save your profile. Please try again.",
         )
 
 

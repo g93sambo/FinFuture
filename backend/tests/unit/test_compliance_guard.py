@@ -19,6 +19,10 @@ from agents.compliance_guard import (
     DEFAULT_COMPLIANCE_RULES,
 )
 
+# Red-tier trades (> $1,000 or > 5% NAV) need PERM-STEP-UP-MFA; tests of other rules supply the
+# server-side verification result the orchestrator would set after a valid emailed code.
+STEP_UP_OK = {"step_up_verified": True, "fiduciary_attested": True}
+
 
 @pytest.fixture
 def compliance_guard():
@@ -290,6 +294,7 @@ async def test_reg_003_user_approval_pass(compliance_guard, mock_profile):
         "user_approved": True,
         "user_approved_at": datetime.now(timezone.utc),
         "notional_value": 5000.0,
+        **STEP_UP_OK,
     }
     res = await compliance_guard.check_trade(
         db=None, client_id="client_test_001", trade=trade, profile=mock_profile
@@ -326,6 +331,7 @@ async def test_reg_004_approval_freshness_pass(compliance_guard, mock_profile):
         "user_approved": True,
         "user_approved_at": recent_time,
         "notional_value": 1300.0,
+        **STEP_UP_OK,
     }
     res = await compliance_guard.check_trade(
         db=None, client_id="client_test_001", trade=trade, profile=mock_profile
@@ -362,6 +368,7 @@ async def test_aml_001_standard_notional_pass(compliance_guard, mock_profile):
         "notional_value": 18500.0,  # <= $100,000
         "user_approved": True,
         "user_approved_at": datetime.now(timezone.utc),
+        **STEP_UP_OK,
     }
     res = await compliance_guard.check_trade(
         db=None, client_id="client_test_001", trade=trade, profile=mock_profile
@@ -395,6 +402,7 @@ async def test_aml_001_enhanced_kyc_pass(compliance_guard, mock_profile):
         "user_approved": True,
         "user_approved_at": datetime.now(timezone.utc),
         "enhanced_kyc_approved": True,
+        **STEP_UP_OK,
     }
     res = await compliance_guard.check_trade(
         db=None, client_id="client_test_001", trade=trade, profile=mock_profile
@@ -637,9 +645,8 @@ async def test_trade_conc_001_override_with_fiduciary_attestation(compliance_gua
         "user_approved_at": datetime.now(timezone.utc),
         "projected_weight": 0.28,  # > 0.15
         "fiduciary_attested": True,  # Affirmative client waiver
-        "proposal_id": "prop-482910-demo",
-        "mfa_code": "482910",  # derived from the proposal_id digits
-        "enforce_step_up_mfa": True,
+        "proposal_id": "prop-override-demo",
+        "step_up_verified": True,  # set by the orchestrator after the emailed OTP is accepted
     }
     res = await compliance_guard.check_trade(None, "c1", trade, mock_profile)
     assert res.passed is True

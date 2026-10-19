@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -10,12 +9,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agents.execution_module import SIMULATED_PRICES
 from agents.orchestrator import AgentContainer, TradeBlocked
 from api.deps import get_container
 from core.security import get_current_user, verify_client_ownership
 from db.database import get_db
 from db.models import DBClientProfile, DBTrade, DBUser
+from services.otp_service import OTPError
 
 router = APIRouter(prefix="/api/v1", tags=["trade"])
 
@@ -25,8 +24,8 @@ class TradeProposalRequest(BaseModel):
     symbol: str = Field(min_length=1, max_length=10)
     side: str
     qty: float = Field(gt=0)
-    broker: Optional[str] = Field(default=None, description="alpaca or bamboo")
-    currency: Optional[str] = Field(default=None, description="USD or NGN")
+    broker: Optional[str] = Field(default=None, description="Ignored: orders always route to Alpaca paper")
+    currency: Optional[str] = Field(default=None, description="Ignored: orders are always USD")
 
 
 class TradeRequest(BaseModel):
@@ -34,11 +33,13 @@ class TradeRequest(BaseModel):
     symbol: Optional[str] = Field(default=None, max_length=10)
     qty: Optional[float] = Field(default=None, gt=0)
     side: Optional[str] = None
-    broker: Optional[str] = Field(default=None, description="alpaca or bamboo")
-    currency: Optional[str] = Field(default=None, description="USD or NGN")
+    broker: Optional[str] = Field(default=None, description="Ignored: orders always route to Alpaca paper")
+    currency: Optional[str] = Field(default=None, description="Ignored: orders are always USD")
     user_approved: bool = False
     proposal_id: Optional[str] = None
-    mfa_code: Optional[str] = Field(default=None, description="Step-Up 6-digit MFA OTP for Red-Tier trades")
+    mfa_code: Optional[str] = Field(
+        default=None, max_length=12, description="Step-up 6-digit code emailed via POST /trade/{proposal_id}/step-up"
+    )
     fiduciary_attested: Optional[bool] = Field(default=None, description="Non-discretionary client suitability attestation")
     autonomous: bool = Field(default=False, description="Tier 5 autonomous execution flag (hard-blocked if True)")
 
@@ -46,9 +47,36 @@ class TradeRequest(BaseModel):
 def _status_for(error_type: str) -> int:
     if error_type == "DuplicateTradeError":
         return 409
-    if error_type == "ExpiredApprovalError":
+    if error_type in ("ExpiredApprovalError", "AttestationRequiredError"):
         return 400
     return 403
+
+
+@router.post("/trade/{proposal_id}/step-up")
+async def request_step_up_code(
+    proposal_id: str,
+    user: DBUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    c: AgentContainer = Depends(get_container),
+):
+    """Email a single-use 6-digit code that authorises one Red-tier proposal (PERM-STEP-UP-MFA).
+
+    Calling again re-sends a fresh code (rate limited) and invalidates the previous one.
+    """
+    try:
+        return await c.orchestrator.request_step_up_code(db, user.id, user.email, proposal_id)
+    except OTPError as exc:
+        headers = {"Retry-After": str(exc.retry_after)} if exc.retry_after else None
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"error": exc.error_type, "reason": exc.reason, "retry_after": exc.retry_after},
+            headers=headers,
+        )
+    except TradeBlocked as blocked:
+        raise HTTPException(
+            status_code=_status_for(blocked.error_type),
+            detail={"error": blocked.error_type, "reason": blocked.reason, "proposal_id": proposal_id},
+        )
 
 
 @router.post("/trade/propose")
@@ -121,11 +149,9 @@ async def execute_trade(
 
 
 def _format_trade_dict(t: DBTrade) -> dict:
-    filled_px = t.filled_price if t.filled_price is not None else SIMULATED_PRICES.get(t.symbol, 100.0)
-    broker_name = (getattr(t, "broker", None) or "webank").lower()
-    order_id = t.alpaca_order_id or getattr(t, "bamboo_order_id", None) or f"{broker_name.upper()}-ORD-{t.id[:8].upper()}"
     created_iso = t.created_at.isoformat() if t.created_at else None
-    audit_hash = hashlib.sha256(f"{t.id}:{t.symbol}:{t.qty}:{created_iso}".encode()).hexdigest()
+    order_id = t.alpaca_order_id or f"ORD-{t.id[:8].upper()}"
+    report = t.compliance_report if isinstance(t.compliance_report, dict) else {}
     return {
         "trade_id": t.id,
         "client_id": t.client_id,
@@ -133,17 +159,13 @@ def _format_trade_dict(t: DBTrade) -> dict:
         "side": t.side,
         "qty": t.qty,
         "status": t.status,
-        "filled_price": filled_px,
-        "broker": broker_name,
-        "currency": getattr(t, "currency", "USD"),
+        "filled_price": t.filled_price,
+        "broker": "alpaca",
+        "currency": "USD",
         "alpaca_order_id": t.alpaca_order_id,
-        "bamboo_order_id": getattr(t, "bamboo_order_id", None),
         "broker_order_id": order_id,
-        "clearing_ref": f"CLR-{broker_name.upper()}-{t.id[:8].upper()}",
-        "audit_hash": f"0x{audit_hash[:16]}...{audit_hash[-8:]}",
-        "full_audit_hash": audit_hash,
-        "custody_account": f"{broker_name.upper()}-CUSTODY-01",
-        "settlement_cycle": "T+1 (SEC Rule 15c6-1 / Sandbox Instant)",
+        # A simulated fill (no Alpaca credentials or DRY_RUN) never reached a broker
+        "simulated": bool(report.get("dry_run")) or order_id.startswith("dry-run-"),
         "created_at": created_iso,
     }
 

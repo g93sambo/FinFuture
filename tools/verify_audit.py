@@ -111,7 +111,7 @@ def verify_database_chain(db_path: str, client_id: str | None = None) -> bool:
         print(f"1. Open Ethereum Sepolia Explorer: https://sepolia.etherscan.io")
         print(f"2. Inspect the anchored transaction Input Data hex payload.")
         print(f"3. Verify that Input Data matches: 0x{merkle_root}")
-        print(f"4. For WeBank: verify against FISCO BCOS WeEvent topic 'com.webank.finfuture.audit.anchor'")
+        print("   (an anchor covers the entries that existed when it was made; later entries change the root)")
         print("=======================================================\n")
         return True
     else:

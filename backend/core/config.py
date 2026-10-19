@@ -81,20 +81,6 @@ class Settings(BaseSettings):
     alpaca_api_key: Optional[str] = Field(default=None, description="Alpaca Paper API Key")
     alpaca_secret_key: Optional[str] = Field(default=None, description="Alpaca Paper Secret Key")
 
-    # --- Bamboo Investment Brokerage (Nigeria & Global) ---
-    bamboo_live_mode: bool = Field(
-        default=False,
-        description="Bamboo live investment execution flag for Nigerian and global assets."
-    )
-    bamboo_base_url: str = Field(
-        default="https://powered-by-bamboo-sandbox.investbamboo.com",
-        description="Bamboo API base URL (sandbox or production powered-by-bamboo endpoint)."
-    )
-    bamboo_app_key: Optional[str] = Field(default=None, description="Bamboo App Key identifying tenant")
-    bamboo_username: Optional[str] = Field(default=None, description="Bamboo Tenant Username")
-    bamboo_password: Optional[str] = Field(default=None, description="Bamboo Tenant Password")
-
-
     # --- Web3 & Sepolia Anchoring Guard ---
     sepolia_chain_id: int = Field(
         default=11155111,
@@ -111,18 +97,6 @@ class Settings(BaseSettings):
     audit_contract_address: Optional[str] = Field(
         default=None,
         description="Sepolia audit smart contract address"
-    )
-    fisco_bcos_rpc_url: Optional[str] = Field(
-        default=None,
-        description="WeBank FISCO BCOS v3 / WeBASE JSON-RPC endpoint for consortium audit anchoring"
-    )
-    fisco_bcos_group_id: str = Field(
-        default="group0",
-        description="WeBank FISCO BCOS consortium ledger group ID (default: group0)"
-    )
-    weevent_broker_url: Optional[str] = Field(
-        default=None,
-        description="WeBank WeEvent event-broker URL for cross-institution compliance telemetry"
     )
 
     # --- LLM & External Data Providers ---
@@ -157,6 +131,31 @@ class Settings(BaseSettings):
         gt=0,
         description="Notional threshold in USD above which step-up 6-digit MFA is required"
     )
+
+    # --- Step-Up OTP & Transactional Email ---
+    otp_delivery: str = Field(
+        default="auto",
+        description="Step-up OTP channel: auto (Brevo, else Resend, else SMTP, else console), email (fail if unconfigured), console"
+    )
+    otp_ttl_seconds: int = Field(default=300, ge=60, le=900, description="Lifetime of a step-up OTP")
+    otp_max_attempts: int = Field(default=5, ge=1, le=10, description="Wrong guesses allowed before a code is burned")
+    otp_resend_cooldown_seconds: int = Field(default=30, ge=0, description="Minimum gap between code sends")
+    otp_max_sends: int = Field(default=5, ge=1, description="Maximum codes sent per trade proposal")
+    otp_dev_echo: bool = Field(
+        default=False,
+        description="Local demos only: return the code in the API response when using console delivery. Refused in production."
+    )
+    email_from: str = Field(
+        default="FinFuture <onboarding@resend.dev>",
+        description="From address for transactional email (must be a verified sender for your provider)"
+    )
+    brevo_api_key: Optional[str] = Field(default=None, description="Brevo API key (HTTPS email delivery)")
+    resend_api_key: Optional[str] = Field(default=None, description="Resend API key (HTTPS email delivery)")
+    smtp_host: Optional[str] = Field(default=None, description="SMTP host, e.g. smtp.gmail.com")
+    smtp_port: int = Field(default=587, description="SMTP port (587 STARTTLS, 465 SSL)")
+    smtp_username: Optional[str] = Field(default=None, description="SMTP username")
+    smtp_password: Optional[str] = Field(default=None, description="SMTP password or app password")
+    smtp_use_ssl: bool = Field(default=False, description="Use implicit TLS (port 465) instead of STARTTLS")
 
     # --- Pydantic Settings Configuration ---
     model_config = SettingsConfigDict(
@@ -204,6 +203,13 @@ class Settings(BaseSettings):
             raise ValueError(
                 "CRITICAL SECURITY GUARD: SECRET_KEY and AUDIT_SECRET_KEY must be different values."
             )
+        if self.otp_dev_echo:
+            raise ValueError(
+                "CRITICAL SECURITY GUARD: OTP_DEV_ECHO returns step-up codes in API responses and is "
+                "forbidden when ENVIRONMENT=production."
+            )
+        if self.debug:
+            raise ValueError("CRITICAL SECURITY GUARD: DEBUG must be false when ENVIRONMENT=production.")
         return self
 
     @field_validator("alpaca_paper")

@@ -64,24 +64,10 @@ export const SECURITIES_DIRECTORY: SecurityRecord[] = [
   { symbol: "BRK.B", name: "Berkshire Hathaway Inc.", category: "Multi-Sector Conglomerate", assetClass: "Equity" },
   { symbol: "JPM", name: "JPMorgan Chase & Co.", category: "Diversified Global Banking", assetClass: "Equity" },
 
-  // Crypto & Regulated Spot Digital Asset ETFs
-  { symbol: "BTC", name: "Bitcoin Reserve", category: "Decentralized Digital Asset", assetClass: "Crypto" },
-  { symbol: "ETH", name: "Ethereum", category: "Smart Contract Platform", assetClass: "Crypto" },
+  // Spot crypto ETFs
   { symbol: "IBIT", name: "iShares Bitcoin Trust ETF", category: "Regulated Spot Bitcoin ETF", assetClass: "Crypto" },
   { symbol: "FBTC", name: "Fidelity Wise Origin Bitcoin Fund", category: "Regulated Spot Bitcoin ETF", assetClass: "Crypto" },
   { symbol: "ETHA", name: "iShares Ethereum Trust ETF", category: "Regulated Spot Ethereum ETF", assetClass: "Crypto" },
-
-  // WeBank Smart Wealth (微众银行财富+) & GBA Cross-Border Wealth Connect (跨境理财通)
-  { symbol: "WBKCASH", name: "WeBank Live+ Cash Management Fund (微众活期+ R1)", category: "WeBank Money Market · R1", assetClass: "Fixed Income" },
-  { symbol: "WBK6M", name: "WeBank Steady+ 180D Short-Duration Bond Note (微众稳健+ R2)", category: "WeBank Short-Duration Bond · R2", assetClass: "Fixed Income" },
-  { symbol: "GBAHK", name: "WeBank GBA Wealth Connect Multi-Asset Income ETF (跨境理财通南向通)", category: "GBA Cross-Border Multi-Asset · R2", assetClass: "Equity" },
-  { symbol: "WBKGLD", name: "WeBank Digital Gold Accumulation Trust (微众黄金 Inflation Hedge)", category: "WeBank Digital Bullion · R3", assetClass: "Commodity" },
-
-  // International / Frontier
-  { symbol: "DANGCEM", name: "Dangote Cement Plc", category: "Industrial Materials", assetClass: "Equity", currency: "NGN" },
-  { symbol: "MTNN", name: "MTN Nigeria Communications Plc", category: "Telecommunications", assetClass: "Equity", currency: "NGN" },
-  { symbol: "GTCO", name: "Guaranty Trust Holding Company Plc", category: "Commercial Banking", assetClass: "Equity", currency: "NGN" },
-  { symbol: "ZENITHBANK", name: "Zenith Bank Plc", category: "Commercial Banking", assetClass: "Equity", currency: "NGN" },
 ];
 
 export interface TickerAutocompleteProps {

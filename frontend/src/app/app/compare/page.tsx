@@ -27,14 +27,6 @@ interface PresetTheme {
 const STRATEGY_PRESETS: Record<Kind, PresetTheme[]> = {
   etfs: [
     {
-      id: "webank",
-      name: "WeBank & GBA Wealth Connect",
-      desc: "Cross-border multi-asset income, digital gold & core US equities",
-      symbols: ["GBAHK", "WBKGLD", "SPY", "VTI"],
-      icon: "🇨🇳",
-      tag: "WeBank Shelf",
-    },
-    {
       id: "us_growth",
       name: "US Growth & Tech Leaders",
       desc: "S&P 500, broad total market & Nasdaq 100 technology index",
@@ -60,14 +52,6 @@ const STRATEGY_PRESETS: Record<Kind, PresetTheme[]> = {
     },
   ],
   bonds: [
-    {
-      id: "webank_yield",
-      name: "WeBank Steady Yield & Cash",
-      desc: "Live+ cash management, 180D short notes & short-term Treasuries",
-      symbols: ["WBKCASH", "WBK6M", "BND", "SHY"],
-      icon: "🏦",
-      tag: "WeBank Wealth",
-    },
     {
       id: "us_aggregate",
       name: "US Aggregate Core Debt",
@@ -97,8 +81,6 @@ const STRATEGY_PRESETS: Record<Kind, PresetTheme[]> = {
 
 const POPULAR_CATALOG: Record<Kind, { symbol: string; name: string; tag: string }[]> = {
   etfs: [
-    { symbol: "GBAHK", name: "WeBank GBA Multi-Asset ETF", tag: "WeBank R2" },
-    { symbol: "WBKGLD", name: "WeBank Digital Gold Trust", tag: "WeBank R3" },
     { symbol: "SPY", name: "SPDR S&P 500 ETF", tag: "Large Cap" },
     { symbol: "QQQ", name: "Invesco QQQ (Nasdaq 100)", tag: "Tech Growth" },
     { symbol: "VTI", name: "Vanguard Total Stock Market", tag: "Broad US" },
@@ -109,8 +91,6 @@ const POPULAR_CATALOG: Record<Kind, { symbol: string; name: string; tag: string 
     { symbol: "VNQ", name: "Vanguard Real Estate REITs", tag: "Real Estate" },
   ],
   bonds: [
-    { symbol: "WBKCASH", name: "WeBank Live+ Cash Mgmt", tag: "WeBank R1" },
-    { symbol: "WBK6M", name: "WeBank Steady+ 180D Note", tag: "WeBank R2" },
     { symbol: "BND", name: "Vanguard Total Bond Market", tag: "Aggregate" },
     { symbol: "AGG", name: "iShares Core US Aggregate", tag: "Aggregate" },
     { symbol: "SHY", name: "1-3 Year Treasury Bond", tag: "Short Term" },
@@ -395,7 +375,7 @@ function Results({
 function Compare({ clientId }: { clientId: string }) {
   const [kind, setKind] = useState<Kind>("etfs");
   const [selectedSymbols, setSelectedSymbols] = useState<string[]>(STRATEGY_PRESETS.etfs[0].symbols);
-  const [activePresetId, setActivePresetId] = useState<string | null>("webank");
+  const [activePresetId, setActivePresetId] = useState<string | null>(STRATEGY_PRESETS.etfs[0].id);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [res, setRes] = useState<CompareResponse | null>(null);

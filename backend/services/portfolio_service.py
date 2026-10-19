@@ -31,9 +31,6 @@ FALLBACK_PRICES: Dict[str, float] = {
     "SPY": 510.50, "QQQ": 440.25, "BND": 72.40, "VTI": 260.10, "AGG": 98.50,
     "SHY": 82.20, "AAPL": 185.00, "MSFT": 420.00, "GOOGL": 175.00,
     "AMZN": 185.00, "NVDA": 125.00,
-    # Nigerian Equities (NGX)
-    "DANGCEM": 650.00, "MTNN": 240.00, "GTCO": 48.50, "ZENITHBANK": 42.00,
-    "ACCESSCORP": 21.50, "UBA": 29.80, "SEPLAT": 3400.00, "AIRTELAFRI": 2150.00,
 }
 
 

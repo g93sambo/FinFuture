@@ -412,4 +412,5 @@ async def test_merkle_anchoring_concurrent_stress(stress_session_factory):
         assert res.merkle_root is not None
         assert len(res.merkle_root) == 64
         assert res.entries_count == 10
-        assert res.status == "dry_run"
+        assert res.status == "not_configured"
+        assert res.tx_hash is None
