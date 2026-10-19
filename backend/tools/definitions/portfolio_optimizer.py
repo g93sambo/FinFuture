@@ -10,8 +10,12 @@ import time
 from typing import Optional, Dict, Any, List, Literal
 from pydantic import BaseModel, Field, field_validator
 
-from backend.tools.base import BaseTool, ToolCategory, ToolResult, ExecutionContext
-from backend.agents.allocation_engine import AllocationEngine
+try:
+    from tools.base import BaseTool, ToolCategory, ToolResult, ExecutionContext
+    from agents.allocation_engine import AllocationEngine
+except ImportError:
+    from backend.tools.base import BaseTool, ToolCategory, ToolResult, ExecutionContext
+    from backend.agents.allocation_engine import AllocationEngine
 
 
 class PortfolioOptimizerArgs(BaseModel):

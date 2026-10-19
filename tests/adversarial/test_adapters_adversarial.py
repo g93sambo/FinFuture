@@ -30,7 +30,7 @@ if _backend_root not in sys.path:
 if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
-from backend.tools.base import (
+from tools.base import (
     BaseTool,
     ToolResult,
     ExecutionContext,
@@ -40,11 +40,11 @@ from backend.tools.base import (
     ToolAuthorizationError,
     ToolValidationError,
 )
-from backend.tools.registry import (
+from tools.registry import (
     ToolRegistry,
     normalize_role,
 )
-from backend.tools.adapters import (
+from tools.adapters import (
     CircuitBreaker,
     CircuitState,
     CircuitBreakerOpenError,
@@ -576,7 +576,7 @@ class TestControlledExecutionAdapterAdversarial:
                 arguments={"query": "test"},
             )
 
-        from backend.tools.adapters import get_provenance_recorder
+        from tools.adapters import get_provenance_recorder
         recorder = get_provenance_recorder()
         recent = await recorder.get_recent(limit=1, tool_name="metric_test")
         assert len(recent) == 1

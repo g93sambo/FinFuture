@@ -720,6 +720,29 @@ class OrchestratorAgent:
             {
                 "type": "function",
                 "function": {
+                    "name": "project_price_range",
+                    "description": (
+                        "Projected price range for any stock, ETF, commodity (gold: 'XAUUSD', silver: 'XAGUSD', oil: 'WTI'), "
+                        "currency pair ('EURUSD') or crypto ('BTC') over the next N trading days, computed from real daily prices: "
+                        "last price, 68% and 95% ranges, expected move, volatility, trend, and historical moves over the same horizon. "
+                        "Use this whenever the client asks for a projection, forecast, outlook, target or expected range for a price."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "symbol": {"type": "string", "description": "e.g. 'XAUUSD', 'GLD', 'SPY', 'AAPL', 'EURUSD', 'BTC'"},
+                            "horizon_days": {
+                                "type": "integer",
+                                "description": "Trading days ahead: 5 = one week (use 7 for crypto), 21 = one month, 1 = next day",
+                            },
+                        },
+                        "required": ["symbol"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
                     "name": "get_stock_metrics",
                     "description": "Fetch real live market data, current stock price, historical period return (start price, end price, % change, high, low), 52-week range, market cap, and volume for one or more stock tickers.",
                     "parameters": {
@@ -1080,7 +1103,12 @@ class OrchestratorAgent:
             "7. MULTIMODAL FINANCIAL VISION:\n"
             "   When the user provides charts, financial statements, or screenshots, scrutinize axes, labels, and numbers directly from the visual evidence and synthesize them with quantitative precision.\n"
             "   Images the user shared earlier in this conversation are included in the history; refer back to them when asked.\n"
-            "8. ANSWER THE QUESTION ASKED:\n"
+            "8. PRICE PROJECTIONS:\n"
+            "   When asked for a projection, forecast, outlook or expected range for a price (including gold/XAUUSD, FX pairs and crypto), "
+            "call `project_price_range` first and lead with its numbers: the last price and date, the 68% and 95% ranges for the horizon, "
+            "the expected move, volatility and recent trend. Optionally add one or two concrete drivers to watch this period. "
+            "State plainly that it is a statistical range based on recent volatility, not a prediction, and that prices can move outside it. Never answer with generic commentary alone.\n"
+            "9. ANSWER THE QUESTION ASKED:\n"
             "   Answer exactly what the client asked, as concisely as the question allows. Do not substitute a general portfolio recommendation for a direct answer.\n"
             "   You cannot generate images, send email, move real money or access other websites' accounts. If asked, say so in one sentence and offer what you can do instead "
             "(for example, charts on the Markets, Allocation and Health review pages, or a comparison table here)."

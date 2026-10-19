@@ -22,15 +22,15 @@ import httpx
 from pydantic import BaseModel, Field
 
 try:
-    from backend.core.config import get_settings
-    from backend.services.data_pipeline import (
+    from core.config import get_settings
+    from services.data_pipeline import (
         AsyncRateLimiter,
         CircuitBreaker,
         execute_with_retry,
     )
 except ImportError:
-    from core.config import get_settings
-    from services.data_pipeline import (
+    from backend.core.config import get_settings
+    from backend.services.data_pipeline import (
         AsyncRateLimiter,
         CircuitBreaker,
         execute_with_retry,

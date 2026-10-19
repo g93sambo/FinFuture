@@ -26,7 +26,7 @@ from typing import (
 )
 
 try:
-    from backend.tools.base import (
+    from tools.base import (
         BaseTool,
         ToolResult,
         ExecutionContext,
@@ -38,7 +38,7 @@ try:
         ToolExecutionTimeoutError,
     )
 except ImportError:
-    from tools.base import (
+    from backend.tools.base import (
         BaseTool,
         ToolResult,
         ExecutionContext,
@@ -381,9 +381,9 @@ class ToolRegistry:
                 logger.warning(err_msg)
                 if raise_on_error:
                     try:
-                        from backend.tools.adapters import CircuitBreakerOpenError
-                    except ImportError:
                         from tools.adapters import CircuitBreakerOpenError
+                    except ImportError:
+                        from backend.tools.adapters import CircuitBreakerOpenError
                     raise CircuitBreakerOpenError(service_name=name, cooldown_remaining=getattr(cb, 'cooldown_remaining', 0.0))
                 return ToolResult(
                     tool_name=name,

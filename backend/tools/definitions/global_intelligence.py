@@ -10,8 +10,12 @@ from __future__ import annotations
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field
 
-from backend.tools.base import BaseTool, ToolCategory, ToolResult, ExecutionContext
-from backend.services.providers.global_data import GlobalDataProvider
+try:
+    from tools.base import BaseTool, ToolCategory, ToolResult, ExecutionContext
+    from services.providers.global_data import GlobalDataProvider
+except ImportError:
+    from backend.tools.base import BaseTool, ToolCategory, ToolResult, ExecutionContext
+    from backend.services.providers.global_data import GlobalDataProvider
 
 
 class CryptoMacroArgs(BaseModel):

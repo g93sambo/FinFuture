@@ -44,6 +44,34 @@ class ExecutionError(ValueError):
     pass
 
 
+KYC_ACCEPTED_SOURCES = {"salary", "business", "investments", "pension", "inheritance", "savings", "employment"}
+
+
+def describe_kyc_gap(profile: Any) -> str:
+    """Say why identity checks failed and what the client can do about it (no internal IDs)."""
+    if getattr(profile, "pep_status", False) or getattr(profile, "high_risk_jurisdiction", False):
+        return (
+            "Trading is paused while your account is reviewed: your profile declares a politically exposed person "
+            "or a high-risk jurisdiction, which needs a manual compliance review. If that was selected by mistake, "
+            "update it on the Risk profile page."
+        )
+    source = str(getattr(profile, "source_of_funds", "") or "").lower()
+    if source not in KYC_ACCEPTED_SOURCES:
+        return (
+            "Trading is paused because your source of funds could not be verified. On the Risk profile page, choose "
+            "where your money comes from (salary, business, investments, savings, pension or inheritance) and save."
+        )
+    if getattr(profile, "aml_flag", False):
+        return (
+            "Trading is paused while your account is reviewed: your declared income and assets need a manual "
+            "compliance check. Review your details on the Risk profile page."
+        )
+    return (
+        "Trading is paused because your identity checks are not complete. Review and save your details on the "
+        "Risk profile page to re-run them."
+    )
+
+
 def describe_broker_error(exc: Exception, symbol: str) -> str:
     """Turn an Alpaca API error (often a raw JSON body) into a sentence a client can act on."""
     raw = str(exc)
@@ -337,9 +365,10 @@ class ExecutionModule:
                 gate="KYC_VERIFICATION",
                 reason=f"Client profile '{client_id}' not found.",
             )
-            raise KYCUnverifiedError(f"Trade rejected: Client profile '{client_id}' not found.")
+            raise KYCUnverifiedError("Investor profile not found. Complete onboarding before placing orders.")
 
         if not getattr(profile, "kyc_verified", False):
+            user_reason = describe_kyc_gap(profile)
             await self._log_block(
                 db=db,
                 client_id=client_id,
@@ -348,11 +377,9 @@ class ExecutionModule:
                 side=side_clean,
                 qty=qty,
                 gate="KYC_VERIFICATION",
-                reason=f"KYC verification incomplete for client '{client_id}'.",
+                reason=user_reason,
             )
-            raise KYCUnverifiedError(
-                f"Trade rejected: KYC verification required. Client '{client_id}' is not KYC verified."
-            )
+            raise KYCUnverifiedError(user_reason)
 
         # Gate 4: 30-Second Double-Submit Lock
         lock_key = key_trade_lock(client_id)

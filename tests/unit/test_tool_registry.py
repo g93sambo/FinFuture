@@ -29,7 +29,7 @@ if _backend_root not in sys.path:
 if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
-from backend.tools.base import (
+from tools.base import (
     BaseTool,
     ToolResult,
     ExecutionContext,
@@ -40,12 +40,12 @@ from backend.tools.base import (
     ToolValidationError,
     ToolExecutionTimeoutError,
 )
-from backend.tools.registry import (
+from tools.registry import (
     ToolRegistry,
     normalize_role,
     ROLE_NORMALIZATION_MAP,
 )
-from backend.tools.adapters import (
+from tools.adapters import (
     CircuitBreaker,
     CircuitState,
     CircuitBreakerOpenError,
@@ -62,7 +62,7 @@ from backend.tools.adapters import (
     redact_sensitive_data,
     compute_sha256_hash,
 )
-from backend.tools.definitions import (
+from tools.definitions import (
     MarketQuoteTool,
     MarketQuoteArgs,
     MacroIndicatorsTool,

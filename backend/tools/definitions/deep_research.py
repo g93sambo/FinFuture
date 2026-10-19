@@ -16,24 +16,24 @@ from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field
 
 try:
-    from backend.tools.base import BaseTool, ToolCategory, ToolResult, ExecutionContext
-    from backend.research.task_graph import TaskGraph, AnalystRole
-    from backend.services.evidence_ledger import EvidenceLedger
-    from backend.services.report_builder import render_institutional_markdown_report
-    from backend.api.routes.ws import ws_manager
-    from backend.services.financial_engineering import (
-        solve_required_return,
-        generate_10year_cash_flow_table,
-        run_explicit_stress_tests,
-        compare_three_institutional_portfolios,
-    )
-except ImportError:
     from tools.base import BaseTool, ToolCategory, ToolResult, ExecutionContext
     from research.task_graph import TaskGraph, AnalystRole
     from services.evidence_ledger import EvidenceLedger
     from services.report_builder import render_institutional_markdown_report
     from api.routes.ws import ws_manager
     from services.financial_engineering import (
+        solve_required_return,
+        generate_10year_cash_flow_table,
+        run_explicit_stress_tests,
+        compare_three_institutional_portfolios,
+    )
+except ImportError:
+    from backend.tools.base import BaseTool, ToolCategory, ToolResult, ExecutionContext
+    from backend.research.task_graph import TaskGraph, AnalystRole
+    from backend.services.evidence_ledger import EvidenceLedger
+    from backend.services.report_builder import render_institutional_markdown_report
+    from backend.api.routes.ws import ws_manager
+    from backend.services.financial_engineering import (
         solve_required_return,
         generate_10year_cash_flow_table,
         run_explicit_stress_tests,

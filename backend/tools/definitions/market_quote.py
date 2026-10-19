@@ -10,8 +10,12 @@ import time
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field, field_validator
 
-from backend.tools.base import BaseTool, ToolCategory, ToolResult, ExecutionContext
-from backend.services.providers.equities import EquitiesProvider
+try:
+    from tools.base import BaseTool, ToolCategory, ToolResult, ExecutionContext
+    from services.providers.equities import EquitiesProvider
+except ImportError:
+    from backend.tools.base import BaseTool, ToolCategory, ToolResult, ExecutionContext
+    from backend.services.providers.equities import EquitiesProvider
 
 
 class MarketQuoteArgs(BaseModel):

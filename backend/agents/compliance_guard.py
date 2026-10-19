@@ -285,6 +285,9 @@ DEFAULT_COMPLIANCE_RULES: Dict[str, Dict[str, Any]] = {
     },
 }
 
+# "not / no / never / isn't / without / cannot be ... guaranteed": a negated phrase within a few words
+_NEGATION_BEFORE = re.compile(r"\b(not|no|never|isn't|is not|aren't|without|cannot be|can't be|nothing is)\b(\s+\w+){0,2}\s*$")
+
 STANDARD_DISCLOSURE_TEXT = (
     "Investing involves risk, including possible loss of principal. "
     "Past performance is no guarantee of future results."
@@ -1337,11 +1340,19 @@ class ComplianceGuard:
         violations: List[str] = []
         text_lower = text.lower()
 
-        # REG-001: Prohibited language scanning
+        # REG-001: Prohibited language scanning. A disclaimer ("not guaranteed", "no guarantee") and the
+        # finance term "risk-free rate" are the opposite of a promise, so those uses are not violations.
         for phrase in self._prohibited_phrases:
             pattern = r"(?i)\b" + re.escape(phrase) + r"\b"
-            if re.search(pattern, text_lower):
+            for m in re.finditer(pattern, text_lower):
+                before = text_lower[max(0, m.start() - 30):m.start()]
+                after = text_lower[m.end():m.end() + 12]
+                if _NEGATION_BEFORE.search(before):
+                    continue
+                if phrase in ("risk-free", "risk free") and re.match(r"\s*(interest\s+)?rates?\b", after):
+                    continue
                 violations.append(f"REG-001 Prohibited promotional language detected: '{phrase}'")
+                break
 
         # REG-002: Mandatory risk disclosure verification
         has_disclosure = False

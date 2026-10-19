@@ -8,52 +8,33 @@ from __future__ import annotations
 
 from typing import Optional, TYPE_CHECKING
 
-try:
-    from backend.tools.definitions.market_quote import MarketQuoteTool, MarketQuoteArgs
-    from backend.tools.definitions.macro_indicators import MacroIndicatorsTool, MacroIndicatorsArgs
-    from backend.tools.definitions.treasury_yield_curve import TreasuryYieldCurveTool, TreasuryYieldCurveArgs
-    from backend.tools.definitions.asset_screener import AssetScreenerTool, AssetScreenerArgs
-    from backend.tools.definitions.wealth_simulation import WealthSimulationTool, WealthSimulationArgs
-    from backend.tools.definitions.portfolio_optimizer import PortfolioOptimizerTool, PortfolioOptimizerArgs
-    from backend.tools.definitions.tax_strategy import TaxStrategyTool, TaxStrategyArgs
-    from backend.tools.definitions.global_intelligence import CryptoMacroTool, CryptoMacroArgs, SovereignMacroTool, SovereignMacroArgs
-    from backend.tools.definitions.web_intelligence import SearchFinancialWebTool, SearchFinancialWebArgs, FetchWebPageTool, FetchWebPageArgs
-    from backend.tools.definitions.market_analytics import (
-        StockMetricsTool,
-        StockMetricsArgs,
-        CompanyFinancialsTool,
-        CompanyFinancialsArgs,
-        StockPredictionsTool,
-        StockPredictionsArgs,
-        SectorPerformanceTool,
-        SectorPerformanceArgs,
-        AssetComparisonTool,
-        AssetComparisonArgs,
-    )
-    from backend.tools.definitions.portfolio_tools import GetPortfolioTool, GetPortfolioArgs, GetPortfolioHealthTool, GetPortfolioHealthArgs
-    from backend.tools.definitions.deep_research import DeepResearchTool, DeepResearchArgs
-    from backend.tools.definitions.legal_statutes import SearchLegalStatutesTool, LegalStatuteArgs
-    from backend.tools.definitions.black_litterman_tool import BlackLittermanAllocationTool, BlackLittermanArgs
-except ImportError:
-    from .tax_strategy import TaxStrategyTool, TaxStrategyArgs
-    from .global_intelligence import CryptoMacroTool, CryptoMacroArgs, SovereignMacroTool, SovereignMacroArgs
-    from .web_intelligence import SearchFinancialWebTool, SearchFinancialWebArgs, FetchWebPageTool, FetchWebPageArgs
-    from .market_analytics import (
-        StockMetricsTool,
-        StockMetricsArgs,
-        CompanyFinancialsTool,
-        CompanyFinancialsArgs,
-        StockPredictionsTool,
-        StockPredictionsArgs,
-        SectorPerformanceTool,
-        SectorPerformanceArgs,
-        AssetComparisonTool,
-        AssetComparisonArgs,
-    )
-    from .portfolio_tools import GetPortfolioTool, GetPortfolioArgs, GetPortfolioHealthTool, GetPortfolioHealthArgs
-    from .deep_research import DeepResearchTool, DeepResearchArgs
-    from .legal_statutes import SearchLegalStatutesTool, LegalStatuteArgs
-    from .black_litterman_tool import BlackLittermanAllocationTool, BlackLittermanArgs
+# Relative imports work whether the app runs from backend/ (Render, Docker) or from the repository root
+from .market_quote import MarketQuoteTool, MarketQuoteArgs
+from .macro_indicators import MacroIndicatorsTool, MacroIndicatorsArgs
+from .treasury_yield_curve import TreasuryYieldCurveTool, TreasuryYieldCurveArgs
+from .asset_screener import AssetScreenerTool, AssetScreenerArgs
+from .wealth_simulation import WealthSimulationTool, WealthSimulationArgs
+from .portfolio_optimizer import PortfolioOptimizerTool, PortfolioOptimizerArgs
+from .tax_strategy import TaxStrategyTool, TaxStrategyArgs
+from .global_intelligence import CryptoMacroTool, CryptoMacroArgs, SovereignMacroTool, SovereignMacroArgs
+from .web_intelligence import SearchFinancialWebTool, SearchFinancialWebArgs, FetchWebPageTool, FetchWebPageArgs
+from .market_analytics import (
+    StockMetricsTool,
+    StockMetricsArgs,
+    CompanyFinancialsTool,
+    CompanyFinancialsArgs,
+    StockPredictionsTool,
+    StockPredictionsArgs,
+    SectorPerformanceTool,
+    SectorPerformanceArgs,
+    AssetComparisonTool,
+    AssetComparisonArgs,
+)
+from .portfolio_tools import GetPortfolioTool, GetPortfolioArgs, GetPortfolioHealthTool, GetPortfolioHealthArgs
+from .deep_research import DeepResearchTool, DeepResearchArgs
+from .legal_statutes import SearchLegalStatutesTool, LegalStatuteArgs
+from .black_litterman_tool import BlackLittermanAllocationTool, BlackLittermanArgs
+from .price_projection import PriceProjectionTool, PriceProjectionArgs
 
 if TYPE_CHECKING:
     try:
@@ -104,6 +85,8 @@ __all__ = [
     "LegalStatuteArgs",
     "BlackLittermanAllocationTool",
     "BlackLittermanArgs",
+    "PriceProjectionTool",
+    "PriceProjectionArgs",
     "register_core_tools",
 ]
 
@@ -142,3 +125,4 @@ def register_core_tools(registry: Optional[ToolRegistry] = None) -> None:
     registry.register(DeepResearchTool())
     registry.register(SearchLegalStatutesTool())
     registry.register(BlackLittermanAllocationTool())
+    registry.register(PriceProjectionTool())

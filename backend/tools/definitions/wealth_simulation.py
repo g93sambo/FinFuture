@@ -11,16 +11,28 @@ import asyncio
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field
 
-from backend.tools.base import BaseTool, ToolCategory, ToolResult, ExecutionContext
-from backend.services.financial_engineering import (
-    solve_required_return,
-    generate_10year_cash_flow_table,
-    generate_stochastic_variable_cycle_table,
-    run_reproducible_monte_carlo,
-    run_explicit_stress_tests,
-    get_fiduciary_institutional_portfolio,
-    compare_three_institutional_portfolios,
-)
+try:
+    from tools.base import BaseTool, ToolCategory, ToolResult, ExecutionContext
+    from services.financial_engineering import (
+        solve_required_return,
+        generate_10year_cash_flow_table,
+        generate_stochastic_variable_cycle_table,
+        run_reproducible_monte_carlo,
+        run_explicit_stress_tests,
+        get_fiduciary_institutional_portfolio,
+        compare_three_institutional_portfolios,
+    )
+except ImportError:
+    from backend.tools.base import BaseTool, ToolCategory, ToolResult, ExecutionContext
+    from backend.services.financial_engineering import (
+        solve_required_return,
+        generate_10year_cash_flow_table,
+        generate_stochastic_variable_cycle_table,
+        run_reproducible_monte_carlo,
+        run_explicit_stress_tests,
+        get_fiduciary_institutional_portfolio,
+        compare_three_institutional_portfolios,
+    )
 
 
 class WealthSimulationArgs(BaseModel):

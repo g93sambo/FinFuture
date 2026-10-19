@@ -22,8 +22,8 @@ try:
     from tools.definitions.tax_strategy import TaxStrategyTool, TaxStrategyArgs
     from tools.registry import ToolRegistry
 except ImportError:
-    from backend.tools.definitions.tax_strategy import TaxStrategyTool, TaxStrategyArgs
-    from backend.tools.registry import ToolRegistry
+    from tools.definitions.tax_strategy import TaxStrategyTool, TaxStrategyArgs
+    from tools.registry import ToolRegistry
 
 
 def test_calculate_nigerian_personal_income_tax():

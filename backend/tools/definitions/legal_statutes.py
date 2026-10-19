@@ -12,11 +12,11 @@ from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field
 
 try:
-    from backend.tools.base import BaseTool, ToolCategory, ToolResult, ExecutionContext
-    from backend.services.legal_knowledge import retrieve_statutes
-except ImportError:
     from tools.base import BaseTool, ToolCategory, ToolResult, ExecutionContext
     from services.legal_knowledge import retrieve_statutes
+except ImportError:
+    from backend.tools.base import BaseTool, ToolCategory, ToolResult, ExecutionContext
+    from backend.services.legal_knowledge import retrieve_statutes
 
 
 class LegalStatuteArgs(BaseModel):

@@ -14,11 +14,11 @@ from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field
 
 try:
-    from backend.tools.base import BaseTool, ToolCategory, ToolResult, ExecutionContext
-    from backend.services.black_litterman import compute_black_litterman, ResearchView
-except ImportError:
     from tools.base import BaseTool, ToolCategory, ToolResult, ExecutionContext
     from services.black_litterman import compute_black_litterman, ResearchView
+except ImportError:
+    from backend.tools.base import BaseTool, ToolCategory, ToolResult, ExecutionContext
+    from backend.services.black_litterman import compute_black_litterman, ResearchView
 
 
 class ViewInput(BaseModel):

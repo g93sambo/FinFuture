@@ -14,13 +14,13 @@ from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field
 
 try:
-    from backend.tools.base import BaseTool, ToolCategory, ToolResult, ExecutionContext
-    from backend.agents.market_data import MarketDataAgent
-    from backend.services.sanitizer import sanitize_untrusted_text
-except ImportError:
     from tools.base import BaseTool, ToolCategory, ToolResult, ExecutionContext
     from agents.market_data import MarketDataAgent
     from services.sanitizer import sanitize_untrusted_text
+except ImportError:
+    from backend.tools.base import BaseTool, ToolCategory, ToolResult, ExecutionContext
+    from backend.agents.market_data import MarketDataAgent
+    from backend.services.sanitizer import sanitize_untrusted_text
 
 logger = logging.getLogger("wealth_advisor.tools.web_intelligence")
 

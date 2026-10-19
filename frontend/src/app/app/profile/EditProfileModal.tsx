@@ -179,8 +179,8 @@ export function EditProfileModal({ isOpen, onClose, profile, onSaved }: EditProf
                   <option value="inheritance">Inheritance / Windfall</option>
                   <option value="savings">Accumulated Savings</option>
                   <option value="pension">Pension / Retirement</option>
-                  <option value="other">Other</option>
                 </Select>
+                <p className="mt-1 text-[11px] text-muted">Used for identity and anti-money-laundering checks before trading.</p>
               </div>
             </div>
           </div>

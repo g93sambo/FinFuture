@@ -97,7 +97,7 @@ class TestContractInterfaces:
             try:
                 from tools.base import BaseTool  # type: ignore
             except ImportError:
-                from backend.tools.base import BaseTool  # type: ignore
+                from tools.base import BaseTool  # type: ignore
             assert hasattr(BaseTool, "name")
             assert hasattr(BaseTool, "description")
             assert hasattr(BaseTool, "args_schema")
@@ -123,7 +123,7 @@ class TestContractInterfaces:
             try:
                 from tools.registry import ToolRegistry  # type: ignore
             except ImportError:
-                from backend.tools.registry import ToolRegistry  # type: ignore
+                from tools.registry import ToolRegistry  # type: ignore
             reg = ToolRegistry()
             assert hasattr(reg, "register")
             assert hasattr(reg, "get_tool")

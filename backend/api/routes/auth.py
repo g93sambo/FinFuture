@@ -8,7 +8,7 @@ from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -60,9 +60,42 @@ def _too_many(detail: str, retry_after: float) -> HTTPException:
     )
 
 
+PASSWORD_MIN_LENGTH = 10
+# Exact matches (case-insensitive) of the most common passwords that pass the length/character rules
+COMMON_PASSWORDS = {
+    "password12", "password123", "password1234", "passw0rd123", "qwerty12345", "qwertyuiop1", "1q2w3e4r5t",
+    "abc1234567", "abcd123456", "iloveyou123", "welcome123", "letmein123", "admin12345", "football123",
+    "monkey12345", "dragon12345", "sunshine123", "princess123", "trustno1234", "baseball123", "superman123",
+    "1234567890a", "a1234567890", "123456789a", "q1w2e3r4t5", "finfuture1", "finfuture123",
+}
+
+
+def password_problem(password: str, email: str = "") -> Optional[str]:
+    """Return a user-facing reason the password is too weak, or None. Mirrored on the register page."""
+    if len(password) < PASSWORD_MIN_LENGTH:
+        return f"Use at least {PASSWORD_MIN_LENGTH} characters."
+    if not any(c.isalpha() for c in password) or not any(c.isdigit() for c in password):
+        return "Include at least one letter and one number."
+    if len(set(password.lower())) < 4:
+        return "Use a less repetitive password."
+    if password.lower() in COMMON_PASSWORDS:
+        return "That password is too common. Choose something less predictable."
+    name = email.split("@", 1)[0].lower()
+    if len(name) >= 4 and name in password.lower():
+        return "Don't include your email name in the password."
+    return None
+
+
 class RegisterRequest(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=8, max_length=72)
+    password: str = Field(max_length=72)
+
+    @model_validator(mode="after")
+    def strong_password(self) -> "RegisterRequest":
+        problem = password_problem(self.password, str(self.email))
+        if problem:
+            raise ValueError(problem)
+        return self
 
 
 class TokenResponse(BaseModel):

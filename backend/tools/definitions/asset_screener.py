@@ -10,8 +10,12 @@ import time
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field
 
-from backend.tools.base import BaseTool, ToolCategory, ToolResult, ExecutionContext
-from backend.services.providers.screener import AssetScreenerProvider
+try:
+    from tools.base import BaseTool, ToolCategory, ToolResult, ExecutionContext
+    from services.providers.screener import AssetScreenerProvider
+except ImportError:
+    from backend.tools.base import BaseTool, ToolCategory, ToolResult, ExecutionContext
+    from backend.services.providers.screener import AssetScreenerProvider
 
 
 class AssetScreenerArgs(BaseModel):

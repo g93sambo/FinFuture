@@ -27,7 +27,7 @@ const blockedTitles: Record<string, string> = {
   ComplianceViolationError: "Compliance rules stopped this order",
   DuplicateTradeError: "Another order was placed less than 30 seconds ago",
   ExpiredApprovalError: "The approval window has passed",
-  KYCUnverifiedError: "Your identity checks are not complete",
+  KYCUnverifiedError: "Trading is paused for your account",
   UnapprovedTradeError: "The order was not approved",
 };
 

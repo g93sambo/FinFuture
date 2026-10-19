@@ -10,6 +10,17 @@ import { Field, Input } from "@/components/ui/Field";
 import { PasswordInput } from "@/components/ui/PasswordInput";
 import { useAuth } from "@/lib/auth";
 
+/** Mirrors password_problem() in backend/api/routes/auth.py; the server also rejects common passwords. */
+function passwordProblem(password: string, email: string): string | null {
+  if (password.length < 10) return "Use at least 10 characters.";
+  if (password.length > 72) return "Use 72 characters or fewer.";
+  if (!/[a-z]/i.test(password) || !/\d/.test(password)) return "Include at least one letter and one number.";
+  if (new Set(password.toLowerCase()).size < 4) return "Use a less repetitive password.";
+  const name = email.split("@")[0]?.toLowerCase() ?? "";
+  if (name.length >= 4 && password.toLowerCase().includes(name)) return "Don't include your email name in the password.";
+  return null;
+}
+
 function RegisterForm() {
   const { register, status } = useAuth();
   const router = useRouter();
@@ -27,7 +38,7 @@ function RegisterForm() {
     if (status === "authenticated") router.replace("/onboarding");
   }, [status, router]);
 
-  const pwError = password && password.length < 8 ? "Use at least 8 characters." : password.length > 72 ? "Use 72 characters or fewer." : null;
+  const pwError = password ? passwordProblem(password, email) : null;
   const confirmError = confirm && confirm !== password ? "The two passwords do not match." : null;
 
   async function submit(e: React.FormEvent) {
@@ -57,7 +68,7 @@ function RegisterForm() {
       <Field label="Email">
         {(p) => <Input {...p} type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />}
       </Field>
-      <Field label="Password" hint="8 to 72 characters." error={pwError}>
+      <Field label="Password" hint="At least 10 characters, with a letter and a number. Avoid common passwords." error={pwError}>
         {(p) => (
           <PasswordInput {...p} autoComplete="new-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
         )}

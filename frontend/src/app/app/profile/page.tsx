@@ -306,7 +306,11 @@ function Profile({ clientId }: { clientId: string }) {
               ]}
             />
             {!p.kyc_verified ? (
-              <p className="mt-3 text-[13px] text-danger">Orders are refused until KYC is verified.</p>
+              <p className="mt-3 text-[13px] text-danger">
+                {p.pep_status || p.high_risk_jurisdiction
+                  ? "Trading is paused: a politically exposed person or high-risk jurisdiction declaration needs a manual compliance review. If it was selected by mistake, edit your profile."
+                  : "Trading is paused until these checks pass. Edit your profile, choose your source of funds (salary, business, investments, savings, pension or inheritance) and save to re-run them."}
+              </p>
             ) : null}
           </Panel>
 

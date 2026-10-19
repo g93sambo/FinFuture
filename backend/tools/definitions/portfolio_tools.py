@@ -12,15 +12,15 @@ from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field
 
 try:
-    from backend.tools.base import BaseTool, ToolCategory, ToolResult, ExecutionContext
-    from backend.services.portfolio_service import PortfolioService
-    from backend.services.health_report import HealthReportService
-    from backend.db.database import AsyncSessionLocal
-except ImportError:
     from tools.base import BaseTool, ToolCategory, ToolResult, ExecutionContext
     from services.portfolio_service import PortfolioService
     from services.health_report import HealthReportService
     from db.database import AsyncSessionLocal
+except ImportError:
+    from backend.tools.base import BaseTool, ToolCategory, ToolResult, ExecutionContext
+    from backend.services.portfolio_service import PortfolioService
+    from backend.services.health_report import HealthReportService
+    from backend.db.database import AsyncSessionLocal
 
 logger = logging.getLogger("wealth_advisor.tools.portfolio_tools")
 

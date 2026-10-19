@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { dateTime, money, pct, qty } from "@/lib/format";
 import { api, type ApproveOptions } from "@/lib/api";
 import type { Execution, Proposal, StepUpChallenge } from "@/lib/types";
@@ -64,8 +65,27 @@ export function ProposalTicket({
   const [attested, setAttested] = useState(false);
   const [stepUpError, setStepUpError] = useState<string | null>(null);
   const [sentAt, setSentAt] = useState(0);
+  const [confirming, setConfirming] = useState(false);
   const resendIn = useSecondsLeft(challenge?.resend_after_seconds ?? 0, sentAt);
   const codeExpiresIn = useSecondsLeft(challenge?.expires_in_seconds ?? 0, sentAt);
+
+  // A different order loaded into this ticket starts from a clean slate (no code, attestation or errors)
+  useEffect(() => {
+    setStepUpOpen(false);
+    setChallenge(null);
+    setMfaCode("");
+    setAttested(false);
+    setStepUpError(null);
+    setSentAt(0);
+    setConfirming(false);
+  }, [proposal.proposal_id]);
+
+  useEffect(() => {
+    if (!confirming) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setConfirming(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [confirming]);
 
   const actionable = (state === "open" || state === "approving" || state === "rejecting") && !expired && (onApprove || onReject);
   const status =
@@ -102,6 +122,12 @@ export function ProposalTicket({
       void sendCode();
       return;
     }
+    // Large orders get a final "are you sure?" summary before anything is sent
+    if (isRedTier && !confirming) {
+      setConfirming(true);
+      return;
+    }
+    setConfirming(false);
     setStepUpError(null);
     const retry = await onApprove?.(
       isRedTier ? { mfaCode: mfaCode.trim(), fiduciaryAttested: attested } : { fiduciaryAttested: true },
@@ -247,6 +273,44 @@ export function ProposalTicket({
           </span>
         </div>
       ) : null}
+
+      {confirming && actionable && typeof document !== "undefined"
+        ? createPortal(
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-ink/40 p-4"
+          onClick={() => setConfirming(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={`confirm-${proposal.proposal_id}`}
+            className="w-full max-w-md rounded-card border border-line bg-background p-5 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id={`confirm-${proposal.proposal_id}`} className="text-base font-semibold text-ink">
+              Confirm this order
+            </h2>
+            <p className="mt-2 text-sm text-ink">
+              {proposal.side === "BUY" ? "Buy" : "Sell"} <strong>{qty(proposal.qty)} {proposal.symbol}</strong> for about{" "}
+              <strong className="figures">{money(proposal.notional_value)}</strong> at market. It will be{" "}
+              <strong className="figures">{pct(proposal.projected_weight)}</strong> of your portfolio afterwards.
+            </p>
+            <p className="mt-2 text-xs text-muted">
+              Once sent to the broker the order cannot be cancelled from FinFuture. Prices can move before it fills.
+            </p>
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <Button size="sm" variant="secondary" onClick={() => setConfirming(false)}>
+                Go back
+              </Button>
+              <Button size="sm" autoFocus onClick={() => void handlePrimaryApprove()} pending={state === "approving"}>
+                Yes, place order
+              </Button>
+            </div>
+          </div>
+        </div>,
+          document.body,
+        )
+        : null}
     </div>
   );
 }

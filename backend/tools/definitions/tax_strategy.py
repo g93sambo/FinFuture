@@ -13,11 +13,11 @@ from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field
 
 try:
-    from backend.tools.base import BaseTool, ToolCategory, ToolResult, ExecutionContext
-    from backend.services.tax_engineering import optimize_full_nigerian_tax_strategy
-except ImportError:
     from tools.base import BaseTool, ToolCategory, ToolResult, ExecutionContext
     from services.tax_engineering import optimize_full_nigerian_tax_strategy
+except ImportError:
+    from backend.tools.base import BaseTool, ToolCategory, ToolResult, ExecutionContext
+    from backend.services.tax_engineering import optimize_full_nigerian_tax_strategy
 
 
 class TaxStrategyArgs(BaseModel):

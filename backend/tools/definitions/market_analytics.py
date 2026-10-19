@@ -13,13 +13,13 @@ from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field
 
 try:
-    from backend.tools.base import BaseTool, ToolCategory, ToolResult, ExecutionContext
-    from backend.agents.market_data import MarketDataAgent
-    from backend.agents.product_comparison import ProductComparisonAgent
-except ImportError:
     from tools.base import BaseTool, ToolCategory, ToolResult, ExecutionContext
     from agents.market_data import MarketDataAgent
     from agents.product_comparison import ProductComparisonAgent
+except ImportError:
+    from backend.tools.base import BaseTool, ToolCategory, ToolResult, ExecutionContext
+    from backend.agents.market_data import MarketDataAgent
+    from backend.agents.product_comparison import ProductComparisonAgent
 
 logger = logging.getLogger("wealth_advisor.tools.market_analytics")
 

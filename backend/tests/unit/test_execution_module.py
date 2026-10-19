@@ -210,7 +210,8 @@ async def test_execute_trade_kyc_unverified_rejected(db_session, execution_modul
             approval_timestamp=now,
             dry_run=True,
         )
-    assert "KYC verification required" in str(exc_info.value)
+    assert "Trading is paused" in str(exc_info.value)
+    assert "client_unverified_99" not in str(exc_info.value)  # no internal IDs in user-facing text
 
 
 @pytest.mark.asyncio

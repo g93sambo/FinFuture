@@ -503,7 +503,7 @@ async def test_stress_unverified_kyc_client_scenarios(
                 approval_timestamp=now,
                 dry_run=True,
             )
-    assert "not KYC verified" in str(exc1.value)
+    assert "Trading is paused" in str(exc1.value) and "kyc_false_client" not in str(exc1.value)
 
     # Scenario 2: Non-existent client
     with pytest.raises(KYCUnverifiedError) as exc2:
