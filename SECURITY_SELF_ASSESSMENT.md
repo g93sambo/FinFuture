@@ -1,128 +1,157 @@
-# Security & Compliance Self-Assessment Report (Deliverable #05)
+# FinFuture — Security Self-Assessment Report (Deliverable 05)
 
-**Competition Track:** 2026 8th FinTechathon — International Track · Topic B: Wealth Advisory Agent ("AI as a Financial Participant")  
-**System Name:** FinFuture — Non-Discretionary Multi-Agent Wealth Advisory System (`wealth_agent`)  
-**Operating Mandate:** Strictly **Non-Discretionary, Human-in-the-Loop** Advisory & Execution (Autonomous Execution Hard-Disabled in Code)  
-**Security Architecture Standard:** Code-Enforced 5-Tier Permission Model + Deterministic 12-Rule Compliance Firewall + Anonymized LLM Context + RFC 6962 On-Chain Audit Trail
+**Competition:** 2026 8th FinTechathon — International Track · **Topic B: Wealth Advisory Agent**
+**System:** FinFuture — a non-discretionary, human-in-the-loop multi-agent wealth advisory platform
+**Scope of this report:** permission-tier implementation and known-risk list, as required by the submission checklist
+**Code reviewed:** `main` at commit `3bb9824` (2026-10-18) · Companion document: [`docs/TECHNICAL_DOCUMENTATION.md`](docs/TECHNICAL_DOCUMENTATION.md)
 
----
-
-## 1. Executive Summary
-
-Financial AI agents must never operate as unchecked autonomous traders over client capital. Relying on LLM system prompts alone for fiduciary compliance, arithmetic, or execution gating is fragile due to prompt injection, hallucinated figures, and non-deterministic reasoning.
-
-FinFuture enforces a **strictly non-discretionary, human-in-the-loop architecture** where **the model writes the words, deterministic code supplies the numbers, and no trade can ever execute without explicit human approval under code-enforced limits**:
-
-1. **Strictly Non-Discretionary Mandate (Autonomous Execution Hard-Disabled):** The agent cannot execute trades autonomously. Every order requires an explicit client approval click (`user_approved=True`), and autonomous execution (`TIER_5_AUTONOMOUS_DISABLED`) is hard-disabled in both startup configuration (`core/config.py:guard_autonomous_execution_disabled`) and runtime compliance gates (`PERM-TIER-5`).
-2. **Code-Enforced 5-Tier Permission Model:** Rather than a binary allow/deny toggle, FinFuture enforces five distinct operational tiers in code (`TIER_1_READ_ONLY`, `TIER_2_ADVISE`, `TIER_3_PROPOSE_TRADE`, `TIER_4_EXECUTE_WITH_APPROVAL`, and `TIER_5_AUTONOMOUS_DISABLED`), with hard per-trade caps (`$100,000`), rolling 24-hour daily caps (`$250,000`), a 134-symbol vetted instrument whitelist, and a step-up confirmation gate above `$1,000` or `5%` NAV (a **demonstration** OTP, not production MFA — see `RISK-07`).
-3. **Transparent External API & LLM Data Privacy Architecture:** Market, macro, and filing providers (`Yahoo Finance`, `FRED`, `SEC EDGAR`) receive **only ticker symbols or series IDs**. By contrast, the external LLM inference API (`OpenAI` / `Gemini`) necessarily receives the advisory and profiling dialogue (including financial parameters such as age, income/net worth, risk score, and horizon). To protect client privacy, FinFuture strips direct PII (names, emails, phone numbers, SSN/BVN/NIN, account numbers) via `ComplianceGuard.redact_sensitive_data()` before every LLM request and replaces `client_id` / `full_name` with a one-way SHA-256 pseudonym (`ANON-XXXXXXXX`).
-4. **12-Rule Pre-Execution Compliance Firewall & Anomaly Circuit Breaker:** Every recommendation and trade ticket is validated by `ComplianceGuard` (`backend/agents/compliance_guard.py`). An automated Anomaly Circuit Breaker trips to `OPEN_LOCKED` for 15 minutes if $\ge 3$ security or compliance violations occur within 60 seconds.
-5. **Cryptographic Auditability & On-Chain Anchoring:** Every state transition is recorded in an append-only SHA-256 hash chain signed with HMAC-SHA256, compiled into an **RFC 6962 Binary Merkle Tree**, and can be anchored to the **Ethereum Sepolia Testnet (`chain_id=11155111`)** with individual Merkle inclusion proofs verifiable in the UI. Anchoring returns a labelled `dry_run` receipt unless RPC credentials are configured (see `RISK-09`).
+> **Operating mandate.** FinFuture advises and proposes; it never trades on its own. Every order needs a person to approve it, it is checked by deterministic code outside the language model, and it can only reach a **paper-trading** broker endpoint. Live-money endpoints and autonomous execution are refused at application start-up.
 
 ---
 
-## 2. Five-Tier Permission Implementation (Enforced in Code)
+## 1. Executive summary
 
-Implemented in `backend/agents/compliance_guard.py` (`get_permission_tier_catalog()`, `classify_trade_permission_tier()`, `check_trade()`), `backend/agents/orchestrator.py` (`create_trade_proposal()`, `handle_trade_approval()`), and `backend/api/routes/trade.py`, and exposed via `GET /api/v1/compliance/permission-tiers`:
+| Control | Status | Where |
+| :--- | :--- | :--- |
+| Autonomous execution (Tier 5) hard-disabled | Enforced at start-up, API and compliance layer | `core/config.py`, `api/routes/trade.py`, `ComplianceGuard.check_trade` |
+| Paper trading only | Start-up refuses live Alpaca URLs and `ALPACA_PAPER=false` | `core/config.py` |
+| Testnet only | Start-up refuses any chain ID other than Sepolia (11155111) | `core/config.py` |
+| 12 compliance rules + 5 permission gates | Pure Python, runs outside the LLM | `agents/compliance_guard.py` |
+| Per-trade cap \$100k, rolling 24 h cap \$250k, 129-symbol whitelist | Enforced on every execution | `ComplianceGuard.check_trade` |
+| Tenant isolation | Ownership check on every client-scoped route and WebSocket | `core/security.verify_client_ownership`, `api/routes/ws.py` |
+| Prompt-injection defence | Input pattern scan + isolation of external content | `check_input_safety`, `services/sanitizer.py` |
+| PII minimisation towards the LLM | Regex redaction + `ANON-XXXXXXXX` pseudonym | `redact_sensitive_data`, `services/context_builder.py` |
+| Tamper-evident audit trail | SHA-256 hash chain + HMAC + RFC 6962 Merkle proofs | `services/audit_logger.py`, `services/anchoring.py` |
 
-| Tier ID | Badge | Permission Scope | Code-Enforced Limits & Thresholds | Permitted Operations | Enforcement Module & Gate |
+**Our overall assessment:** the design is safe for its intended scope, a **sandbox with paper money**. The hard boundaries (no autonomous trading, no live broker, no mainnet) are enforced at start-up and cannot be switched off at runtime. Several controls are **demonstration-grade** and would need hardening before real client money was involved. The most important are the step-up confirmation (§5, `RISK-07`, `RISK-14`), approval being a client-asserted flag (`RISK-15`), default signing secrets (`RISK-08`) and the FISCO BCOS receipt (`RISK-16`). We list them openly in §5 rather than describing them as fully mitigated.
+
+---
+
+## 2. Permission-tier implementation
+
+The tiers are declared in `ComplianceGuard.get_permission_tier_catalog()` and served live at `GET /api/v1/compliance/permission-tiers`. Tiers are not just labels: each is backed by a specific code path that the tier below cannot reach.
+
+| Tier | Badge | What it may do | What stops it doing more |
+| :--- | :--- | :--- | :--- |
+| **`TIER_1_READ_ONLY`** | GREEN | Quotes, history, FRED macro, Treasury curve, SEC EDGAR filings, own portfolio and audit reads | Read-only tools in `ToolRegistry`. Provider calls carry tickers, CIKs or series IDs only. |
+| **`TIER_2_ADVISE`** | GREEN | Risk profiling, 6-factor product comparison, Black–Litterman / CVaR allocation, Monte Carlo, tax analysis, research reports | These modules return data only and have no broker client. Outbound text passes `REG-001` (no guarantee language) and `REG-002` (risk disclosure). |
+| **`TIER_3_PROPOSE_TRADE`** | YELLOW | Stage an unsigned `TradeProposal` with a 15-minute TTL (`PROPOSAL_TTL_SECONDS = 900`) | `Orchestrator.create_trade_proposal()` makes no broker call. It refuses a locked circuit breaker (HTTP 423) and non-whitelisted symbols (HTTP 403) before staging. |
+| **`TIER_4_EXECUTE_WITH_APPROVAL`** | RED | Submit an approved order to Alpaca **Paper** or the Bamboo sandbox | Runs only through `handle_trade_approval()`, then `check_trade()`, then `ExecutionModule.execute_trade()`. The gates are listed below. |
+| **`TIER_5_AUTONOMOUS_DISABLED`** | DISABLED | Nothing | 1. `ALLOW_AUTONOMOUS_EXECUTION=true` raises at start-up (`guard_autonomous_execution_disabled`). 2. `autonomous=true` on `/trade/execute` returns HTTP 403 and records a security incident. 3. `PERM-TIER-5` blocks in `check_trade`. |
+
+### 2.1 Tier 4 execution gates (in order)
+
+1. **Ownership:** `verify_client_ownership` on the request, and the proposal's `client_id` must belong to the caller (HTTP 403 otherwise).
+2. **Proposal freshness:** the proposal must exist and be at most 15 minutes old. Since commit `e7e217d` it can be recovered from the audit log after a server restart.
+3. **Replay protection:** a proposal already executed is rejected with `DuplicateTradeError` (HTTP 409). This is checked in the cache, then in `TRADE_EXECUTED` audit entries.
+4. **`REG-003` explicit approval:** `user_approved=True` with an approval timestamp.
+5. **`REG-004` KYC flag:** the profile must have `kyc_verified=True`.
+6. **`AML-001` per-trade cap:** notional must not exceed **\$100,000** (`MAX_SINGLE_TRADE_NOTIONAL_USD`).
+7. **`PERM-CAP-DAILY`:** the prior 24 h of `trades` plus this order must not exceed **\$250,000** (`MAX_DAILY_TRADE_NOTIONAL_USD`).
+8. **`PERM-WHITELIST`:** the symbol must be in `ALLOWED_TRADING_SYMBOLS`, a frozen set of **129** symbols (US ETFs and large caps, bond and commodity ETFs, NGX equities, WeBank shelf products).
+9. **`PERM-CIRCUIT-BREAKER`:** three or more blocked attempts within 60 s lock the client for 15 minutes (`OPEN_LOCKED`).
+10. **`PERM-STEP-UP-MFA`:** orders over \$1,000 or over 5 % of NAV need a 6-digit code and a fiduciary attestation. This gate is demonstration-grade; see `RISK-07` and `RISK-14`.
+11. **`SUIT-*` / `CONC-*` / `AML-002`:** suitability, concentration and churn rules.
+12. **30-second double-submit lock:** a cache lock, plus a durable check since `e7e217d` that rejects an identical client, symbol and side committed in the last 30 s.
+13. **Paper-only broker:** the base URL was already validated at start-up.
+
+Every pass, block and execution is written to the hash-chained audit log.
+
+### 2.2 Compliance rule catalogue (`DEFAULT_COMPLIANCE_RULES`)
+
+| ID | Rule | ID | Rule |
+| :--- | :--- | :--- | :--- |
+| `SUIT-001` | Asset risk within client's calibrated tolerance | `REG-001` | No guaranteed-return language |
+| `SUIT-002` | Horizon gate for illiquid/long-duration assets | `REG-002` | Mandatory risk disclosure |
+| `SUIT-003` | Liquidity buffer preserved post-trade | `REG-003` | Explicit human approval |
+| `CONC-001` | Single stock ≤ 15 % NAV | `REG-004` | KYC verified |
+| `CONC-002` | Single ETF ≤ 40 % NAV | `AML-001` | Per-trade notional ≤ \$100k |
+| `CONC-003` | Single sector ≤ 35 % NAV | `AML-002` | > 3 round trips per symbol / 24 h blocked |
+
+Permission gates: `PERM-TIER-5`, `PERM-CIRCUIT-BREAKER`, `PERM-WHITELIST`, `PERM-CAP-DAILY`, `PERM-STEP-UP-MFA`.
+
+---
+
+## 3. Data that leaves the backend
+
+| Destination | What is sent | Control |
+| :--- | :--- | :--- |
+| Yahoo Finance, FRED, SEC EDGAR, Finnhub | Ticker symbols, CIKs, series IDs | Typed tool argument schemas; no client fields exist on these calls |
+| LLM API (OpenAI-compatible) | Up to the last 8 dialogue turns plus a suitability snippet (age, horizon, risk score, liquid net worth, buffer months, holdings weights) | `redact_sensitive_data()` strips e-mails, phone numbers, SSN/BVN/NIN/TIN, card/account numbers, IBANs, API keys and bearer tokens, and "my name is …" names. `client_id` and name are replaced by `ANON-` plus a truncated SHA-256. |
+| Alpaca Paper / Bamboo sandbox | `(symbol, side, qty, type, time_in_force)` | Paper-only URL guard; no identity or profile data |
+| Sepolia / FISCO BCOS (optional) | Merkle root only | No entry content leaves the system |
+
+**Residual exposure (honest view):** the LLM provider still receives financial attributes and free-text dialogue. Regex redaction does not catch every form of PII. For example, a name given without "my name is", a street address, or an employer name would be sent. See `RISK-04`.
+
+---
+
+## 4. Prompt-injection and output controls
+
+- **User input (`RULE-09`):** `check_input_safety()` matches system-prompt overrides, compliance-bypass requests, "execute without approval" instructions, jailbreak/DAN phrasing and HTML/script payloads. Matches are blocked and count towards the circuit breaker.
+- **External content:** `services/sanitizer.py` strips HTML and scripts, normalises Unicode and neutralises delimiter collisions. It wraps web and filing text in `<untrusted_external_content>` before the model sees it.
+- **Structural defence:** even a fully successful injection can at most produce text or a *proposal*. The LLM has no tool that executes a trade. Execution requires the separate approval call and the deterministic gates in §2.1.
+- **Output:** `check_text_output()` applies `REG-001`/`REG-002`. The three-reviewer stage (suitability, devil's advocate, numeric consistency) re-checks advice before delivery.
+
+---
+
+## 5. Known-risk register
+
+Severity describes the **current sandbox deployment** (paper money, test chain). "Production" severity is what the risk would become with real client funds.
+
+| ID | Risk | Sandbox | Production | Current mitigation | Remediation before real money |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **`TIER_1_READ_ONLY`** | `GREEN` | **Read-Only Market & Portfolio Data** | `max_notional_usd = $0`; `can_mutate_state = False`; `can_stage_proposal = False` | Fetch quotes & history (`MarketDataService`), FRED macro & yield curves, SEC EDGAR XBRL/10-K filings, read portfolio & verify Merkle proofs | `ToolRegistry` read-only role permissions + `sanitizer.py` XML isolation on external text |
-| **`TIER_2_ADVISE`** | `GREEN` | **Advise, Profile & Simulate** | `max_notional_usd = $0`; `can_stage_proposal = False`; `can_execute_trade = False` | Risk profiling (`RiskProfiler`), 6-factor ETF/Bond comparison (`ProductComparator`), Black-Litterman/CVaR & Student-$t$ Monte Carlo (`AllocationEngine`), 3-reviewer verification loop | Deterministic Python quant engines + `RULE-11` guarantee filter + `RULE-12` mandatory risk disclosure |
-| **`TIER_3_PROPOSE_TRADE`** | `YELLOW` | **Propose Trade (Draft Unsigned Ticket)** | `proposal_ttl = 900s (15m)`; `symbol_whitelist_enforced = True`; `can_execute_trade = False` | Draft unsigned `TradeProposal` (`create_trade_proposal`), pre-compute post-trade portfolio weight & notional, classify execution verification requirements | `Orchestrator.create_trade_proposal()` enforces `PERM-CIRCUIT-BREAKER` (HTTP 423) and `PERM-WHITELIST` (HTTP 403) before staging; zero broker API calls |
-| **`TIER_4_EXECUTE_WITH_APPROVAL`** | `RED` | **Execute with Human Approval Under Hard Limits** | • **Per-Trade Cap:** `$100,000.00` (`AML-001`)<br>• **Daily 24h Cap:** `$250,000.00` (`PERM-CAP-DAILY`)<br>• **Step-Up Confirmation Threshold:** `> $1,000` or `> 5%` NAV (`PERM-STEP-UP-MFA`, demo-grade — `RISK-07`)<br>• **Whitelist:** 134 vetted symbols (`PERM-WHITELIST`)<br>• **Idempotency:** 30s lock | Submit approved paper order to Alpaca Paper (`paper-api.alpaca.markets`) or Bamboo Sandbox after human approval and 12-rule compliance pass | `ComplianceGuard.check_trade()` + `ExecutionModule.execute_trade()` enforce `REG-003` (`user_approved=True`), 15-min TTL, 30s lock, `$100k` single cap, `$250k` 24h cap, 134-symbol whitelist, and 6-digit step-up confirmation code + attestation (demo-grade, `RISK-07`) |
-| **`TIER_5_AUTONOMOUS_DISABLED`** | `DISABLED` | **Autonomous / Discretionary Execution (Hard-Disabled)** | `allow_autonomous_execution = False` (immutable startup + runtime invariant) | **None.** Unattended, background, scheduled, or agent-initiated order execution without live per-trade human sign-off is forbidden | 1. `core/config.py`: `guard_autonomous_execution_disabled` refuses startup if enabled<br>2. `api/routes/trade.py`: HTTP 403 on `autonomous=True`<br>3. `ComplianceGuard.check_trade()`: `PERM-TIER-5` hard block |
+| **RISK-01** | LLM fabricates prices, yields or statistics | Low | Medium | All figures come from deterministic Python. Statutes come from `legal_knowledge.py`. A numeric-consistency reviewer checks output. | Per-figure provenance check on final text |
+| **RISK-02** | Direct or indirect prompt injection | Low | Medium | `RULE-09` pattern scan and `<untrusted_external_content>` isolation. The LLM cannot execute trades. | Classifier-based detection; pattern lists are bypassable by paraphrase |
+| **RISK-03** | Excessive or unauthorised order execution | Low | Medium | Tier 5 disabled, caps, whitelist, 30 s lock, circuit breaker | See RISK-14, RISK-15, RISK-17 |
+| **RISK-04** | Financial attributes and unredacted PII sent to LLM provider | Medium | High | Regex redaction and SHA-256 pseudonym | Self-hosted or zero-retention model endpoint; NER-based redaction |
+| **RISK-05** | Stale or unavailable market data | Low | Medium | Provider fallback chain with `live` / `cached` / `fallback` provenance tags. Fixtures are isolated under a fallback key in production. | Staleness threshold that blocks proposals |
+| **RISK-06** | Audit log tampering | Low (chain) | Medium | Hash chain, HMAC, Merkle proofs; ORM hooks reject UPDATE/DELETE | See RISK-08, RISK-16, RISK-18 |
+| **RISK-07** | Step-up "MFA" is not a second factor | Low | **High** | The code is derived from digits in the `proposal_id`. A fixed code `482910` is always accepted. The UI computes the expected code client-side. | Server-issued one-time challenge bound to TOTP/WebAuthn; remove the static code |
+| **RISK-08** | Default `SECRET_KEY` / `AUDIT_SECRET_KEY` | Low if overridden | **High** if not | `.env` is git-ignored and the deployment guide requires overriding both. There is no start-up check. | Refuse to start in `ENVIRONMENT=production` when a default value is detected |
+| **RISK-09** | Sepolia anchoring may be `dry_run` | Medium | Medium | Receipts carry `status`; mainnet is rejected; `dry_run` is labelled | Record real Sepolia transaction hashes as execution evidence |
+| **RISK-10** | JWT in `localStorage`, no revocation | Medium | High | React output escaping, server-side sanitisation, 60-minute expiry | `HttpOnly` / `SameSite` cookie, CSP header, revocation list |
+| **RISK-11** | No inbound rate limiting or login lockout | Medium | High | bcrypt slows offline cracking; JWT required on client data | Per-IP and per-account throttling on `/auth/*` and chat |
+| **RISK-12** | KYC/AML is self-declared | Medium | **High** | Unverified profiles are blocked by `REG-004` | Identity-verification provider |
+| **RISK-13** | Shared state in process memory (Redis optional; live `/health` shows `redis: false`) | Medium | Medium | Since `e7e217d`: a durable 30 s duplicate check in PostgreSQL, and proposal recovery from the audit log after restart. **Circuit-breaker state is still in memory.** It resets on restart and is not shared across instances. | Redis or a PostgreSQL-backed circuit breaker |
+| **RISK-14** | **Step-up gate is opt-in on the API.** `enforce_step_up_mfa` is only set when the request includes `mfa_code` or `fiduciary_attested`. A direct `POST /trade/execute` that omits both fields skips `PERM-STEP-UP-MFA` for a Red-tier order. | Low | **High** | Caps, whitelist, approval flag and audit still apply. On Red-tier orders the web UI always sends both fields, and it auto-fills the expected code if the user leaves the box empty. | Always enforce when `classify_trade_permission_tier()` returns RED, regardless of request fields |
+| **RISK-15** | **"Human approval" is a client-asserted flag.** `user_approved=true` is a request field. `/trade/execute` also accepts `symbol+side+qty` and proposes and executes in one call. Any holder of a valid JWT, such as a script or stolen token, can therefore "approve". | Low | **High** | Requires an authenticated owner. The approval timestamp is audited and every gate in §2.1 still runs. | Separate approval step bound to a fresh second-factor challenge; remove the one-call propose+execute path |
+| **RISK-16** | **FISCO BCOS receipt can say `confirmed` without a transaction.** When `FISCO_BCOS_RPC_URL` is set, `anchor_to_fisco_bcos()` only calls `getBlockNumber`. It then returns `status="confirmed"` with a SHA-256-derived `tx_hash` and WeEvent ID. No root is written on-chain. | Medium | **High** | No RPC is configured on the live deployment, so receipts are `dry_run` | Submit a real transaction to `AuditAnchorConsortium.sol`, or label the receipt `simulated`. Do not present it as on-chain proof. |
+| **RISK-17** | **Circuit breaker is self-resettable.** `POST /compliance/circuit-breaker/reset` lets any authenticated user clear their own lock immediately. | Low | Medium | Endpoint exists for the demo console | Restrict to an admin role, or remove it |
+| **RISK-18** | Append-only is enforced in the ORM, not the database | Low | Medium | The hash chain and HMAC detect edits (`/audit/{id}/verify`). Anyone with the HMAC key and DB access could rewrite the chain consistently. | DB role without UPDATE/DELETE on `audit_log`; rely on real external anchoring (RISK-16) |
+| **RISK-19** | CORS allows any `https://*.vercel.app` origin with credentials | Low | Medium | Auth uses bearer tokens, not cookies, so cross-origin reads still need the token | Pin the exact production origin |
+| **RISK-20** | DB fallbacks scan only the 50 / 100 most recent global audit entries | Low | Low | Correct for low traffic | Index and filter by `proposal_id`. Under load a valid proposal may 404 after restart, or a replay may be missed if the cache is also lost. |
+
+`GET /api/v1/compliance/permission-tiers` currently serves `RISK-01` to `RISK-06` from `get_known_risk_register()`. `RISK-07` to `RISK-20` come from this review and are not yet in the endpoint.
+
+### 5.1 Priority fixes (smallest change, largest risk reduction)
+
+1. **RISK-14:** enforce step-up whenever the tier is RED. This is a one-line change in `handle_trade_approval`.
+2. **RISK-08:** add a production start-up validator for default secrets.
+3. **RISK-16:** relabel FISCO receipts that have no transaction as `simulated`.
+4. **RISK-17:** remove or admin-gate the circuit-breaker reset.
+5. **RISK-07 / RISK-15:** replace the derived code with a server-issued TOTP challenge bound to the approval.
 
 ---
 
-## 3. External API & LLM Data Privacy Architecture
+## 6. Verification evidence
 
-A rigorous security assessment must distinguish between **market data APIs** and **external LLM inference APIs**:
+| Check | Result |
+| :--- | :--- |
+| Security and compliance unit suites (`test_compliance_guard`, `test_challenger_m4_compliance`, `test_challenger_m5_security`, `test_security`, `test_permission_tiers_and_privacy`, `test_audit_logger`) | **208 / 208 passed** (local run, 2026-10-19) |
+| Full Python suite (`backend/tests`, `tests`) | **898 passed, 8 failed** of 906. See the technical documentation §6 for the failing tests and their cause. |
+| Live production run against Render and Vercel (2026-10-18) | 57 / 57 operations passed; `evidence/LIVE_VERIFICATION_REPORT.md` |
 
-| External Service Class | Providers Used | What Data Leaves the Backend | Privacy & Security Mitigation Enforced in Code |
-| :--- | :--- | :--- | :--- |
-| **Market, Macro & Filing APIs** | Yahoo Finance, FRED, SEC EDGAR, Finnhub | **Only public ticker symbols (`SPY`, `BND`), CIK numbers, or macro series IDs.** Zero client profile, balance, or conversation data is ever transmitted. | Enforced by typed tool schemas (`GetStockQuoteArgs`, `GetMacroIndicatorsArgs`) in `backend/tools/`. |
-| **External LLM Inference API** | OpenAI / Gemini (`AsyncOpenAI` client in `orchestrator.py` and `risk_profiler.py`) | Receives **redacted user messages** (up to the last 8 turns) and an **anonymized suitability context snippet** containing numerical financial parameters (`age`, `risk_score`, `investment_horizon_years`, `liquid_net_worth`, `liquidity_buffer_months`, and portfolio ticker weights) required for advisory synthesis and onboarding extraction. | **1. Pre-LLM Direct PII Redaction (`ComplianceGuard.redact_sensitive_data()`):** Strips self-reported names, email addresses, phone numbers, SSN/BVN/NIN national IDs, credit/debit card numbers, IBANs, and API/bearer tokens from user text and chat history in `orchestrator.py` before calling `client.chat.completions.create()`.<br>**2. Cryptographic Pseudonymization (`context_builder.py`):** `ClientFinancialContext.to_system_prompt_snippet()` replaces `client_id` and `name` with a one-way SHA-256 pseudonym (`ANON-XXXXXXXX`) under `[ANONYMIZED CLIENT SUITABILITY CONTEXT — DIRECT PII REDACTED]`.<br>**3. Local Deterministic Scoring:** Risk scoring and portfolio math run locally in Python, never in the LLM. |
-| **Broker Execution Sandbox** | Alpaca Paper Trading (`paper-api.alpaca.markets`), Bamboo Sandbox | Receives only `(symbol, side, qty, type="market", time_in_force="day")` for approved paper orders. | Paper-only endpoint guard (`ExecutionModule`) + zero transmission of client identity or financial profile to the broker API. |
+Reproduce:
 
----
+```bash
+PYTHONPATH=backend:. python -m pytest \
+  backend/tests/unit/test_compliance_guard.py backend/tests/unit/test_challenger_m4_compliance.py \
+  backend/tests/unit/test_challenger_m5_security.py backend/tests/unit/test_security.py \
+  backend/tests/unit/test_permission_tiers_and_privacy.py backend/tests/unit/test_audit_logger.py -q
+```
 
-## 4. Five Mandatory Competition Security Pillars
+**Interactive checks for judges:**
 
-| Pillar ID | Competition Requirement | Architectural Implementation | Verification Endpoint / Module |
-| :--- | :--- | :--- | :--- |
-| **PILLAR-1** | **Prompt Injection Defense** | Two-stage pre-LLM input firewall (`RULE-09`) scanning for jailbreaks, system-prompt overrides, role-play hijacks, and compliance-bypass instructions, plus `<untrusted_external_content>` XML sandboxing (`sanitizer.py`) on all web/filing text. | `ComplianceGuard.check_input_safety()` · `POST /api/v1/compliance/check-input` |
-| **PILLAR-2** | **Sensitive Data Redaction & LLM Anonymization** | Regex + token-boundary redaction (`RULE-10`) stripping names, emails, SSN/BVN/NIN, card numbers, IBANs, phone numbers, and secrets before persistence or external LLM calls, paired with `ANON-XXXXXXXX` SHA-256 pseudonymization. | `ComplianceGuard.redact_sensitive_data()` · `ClientFinancialContext.to_system_prompt_snippet()` |
-| **PILLAR-3** | **5-Tier Least-Privilege Permission Model** | Explicit 5-tier permission enforcement (`TIER_1_READ_ONLY` to `TIER_5_AUTONOMOUS_DISABLED`) with code-enforced `$100k` per-trade cap, `$250k` daily cap, 134-symbol whitelist, and autonomous execution hard-disabled. | `GET /api/v1/compliance/permission-tiers` · `ComplianceGuard.check_trade()` |
-| **PILLAR-4** | **Human-in-the-Loop Confirmation & Circuit Breaker** | Every trade requires a 15-minute cryptographic `proposal_id`, explicit human approval, a Step-Up 6-digit confirmation code + attestation for Red-tier trades (`> $1,000` or `> 5%` NAV; demo-grade, `RISK-07`), and an **Anomaly Circuit Breaker** that locks execution after $\ge 3$ blocked attempts in 60s. | `TradeTicket.tsx` · `POST /api/v1/compliance/circuit-breaker/simulate` |
-| **PILLAR-5** | **Dual-Ledger Auditability (Ethereum Sepolia + WeBank FISCO BCOS v3.6)** | Append-only SHA-256 hash chain + HMAC-SHA256 signatures + RFC 6962 binary Merkle tree root that **can be anchored** to **Ethereum Sepolia (`chain_id=11155111`)** and a **WeBank FISCO BCOS v3.6 node (`group0`; WeEvent topic `com.webank.finfuture.audit.anchor`)** when RPC endpoints are configured, with per-entry inclusion proofs. Unconfigured deployments return a labelled `dry_run` receipt (`RISK-09`). | `POST /api/v1/audit/{client_id}/anchor/fisco-bcos` · `GET /api/v1/audit/{client_id}/merkle-proof/{entry_id}` |
-
----
-
-## 5. Deterministic Compliance Firewall & Permission Gate Catalog
-
-All rules execute deterministically in `backend/agents/compliance_guard.py`:
-
-### A. 12 Core Regulatory Rules (`DEFAULT_COMPLIANCE_RULES`)
-1. **`SUIT-001` Risk Score Alignment:** Blocks any asset whose volatility exceeds the client's calibrated risk tolerance ceiling (incorporating behavioral reveal calibration).
-2. **`SUIT-002` Investment Horizon Gate:** Blocks illiquid or long-duration instruments when the client's investment horizon is short ($\le 3$ years).
-3. **`SUIT-003` Liquidity Buffer Preservation:** Requires preserving at least 3 months of emergency cash buffer (`5%–10%` NAV) post-trade.
-4. **`CONC-001` Single-Stock Concentration Limit:** Caps any single equity position at `15%` of total portfolio NAV.
-5. **`CONC-002` Single-ETF Concentration Limit:** Caps any single ETF position at `40%` of total portfolio NAV.
-6. **`CONC-003` Sector Concentration Limit:** Caps any single GICS sector at `35%` of total portfolio NAV.
-7. **`REG-001` No Guarantee Language:** Scans outbound advisory text and blocks any phrase implying guaranteed returns or risk-free equity gains.
-8. **`REG-002` Risk Disclosure Required:** Appends mandatory MiFID II / SEC Reg BI / CSRC risk disclosures to advisory outputs.
-9. **`REG-003` Non-Discretionary Approval Required:** Blocks any trade execution lacking explicit human approval (`user_approved=True`) and valid approval timestamp.
-10. **`REG-004` KYC Verification Gate:** Blocks trade execution for any profile where `kyc_verified` is `False`.
-11. **`AML-001` Per-Trade Notional Cap:** Blocks any single order exceeding **`$100,000.00`** (`MAX_SINGLE_TRADE_NOTIONAL_USD`) without enhanced KYC approval.
-12. **`AML-002` Rapid Round-Trip Churn Detection:** Blocks >3 round-trip orders on the same symbol within a rolling 24-hour window.
-
-### B. 5 Additional Code-Enforced Permission Gates (`check_trade()`)
-- **`PERM-TIER-5` (Autonomous Execution Disabled):** Hard-blocks any trade where `autonomous=True` or `execution_mode="autonomous"`.
-- **`PERM-CIRCUIT-BREAKER` (Anomaly Lock Gate):** Hard-blocks proposal staging and execution when the client's Anomaly Circuit Breaker is in `OPEN_LOCKED`.
-- **`PERM-WHITELIST` (Approved Symbol Whitelist):** Hard-blocks any ticker not in the 134-symbol vetted universe (`ALLOWED_TRADING_SYMBOLS`).
-- **`PERM-CAP-DAILY` (Rolling 24-Hour Daily Notional Cap):** Queries `DBTrade` over the prior 24 hours and blocks execution if `prior_24h_notional + current_notional > $250,000.00` (`MAX_DAILY_TRADE_NOTIONAL_USD`).
-- **`PERM-STEP-UP-MFA` (Red-Tier Step-Up Confirmation & Attestation Gate):** Requires a 6-digit confirmation code and the fiduciary-attestation checkbox on Red-tier orders (`notional > $1,000` or `projected_weight > 5%`). **Scope note:** the code is derived from the `proposal_id` (and a fixed demo code is also accepted), so this is a deliberate *friction-and-attestation* gate for the sandbox, **not** independent second-factor authentication. See `RISK-07`.
-
----
-
-## 6. Known-Risk Register & Mitigation Matrix
-
-Exposed live via `GET /api/v1/compliance/permission-tiers` (`get_known_risk_register()` in `backend/agents/compliance_guard.py`):
-
-| Risk ID | Category | Known Risk Description | Residual Severity | Engineering Mitigation Implemented |
-| :--- | :--- | :--- | :--- | :--- |
-| **`RISK-01`** | **LLM Hallucination & Unverified Financial Claims** | Generative models may fabricate market prices, yields, Sharpe ratios, or statutory tax citations if allowed to answer from weights. | `LOW` | All numerical figures are computed by deterministic Python engines (`AllocationEngine`, `ProductComparator`, `PortfolioService`), statutory clauses are retrieved from `legal_knowledge.py`, and outbound text is screened by `NumericConsistencyReviewer` and `ComplianceGuard`. |
-| **`RISK-02`** | **Prompt Injection & Indirect Web Poisoning** | Malicious user prompts or poisoned SEC/web text could attempt to hijack agent instructions or bypass compliance rules. | `LOW` | Untrusted external content is stripped of scripts/HTML and isolated inside `<untrusted_external_content>` XML tags (`sanitizer.py`), user prompts pass `check_input_safety()` (`RULE-09`), and `ComplianceGuard` runs outside the LLM in pure Python. |
-| **`RISK-03`** | **Unauthorized or Excessive Order Execution** | An agent or compromised session might attempt autonomous execution, out-of-universe meme-stock trades, or excessive daily volume. | `LOW` | Enforced 5-Tier Permission Model: Tier 5 autonomous mode is hard-disabled in config and code (`PERM-TIER-5`); Tier 4 enforces `$100k` per-trade cap (`AML-001`), `$250k` 24h daily cap (`PERM-CAP-DAILY`), 134-symbol whitelist (`PERM-WHITELIST`), 30s idempotency lock, and step-up confirmation (`PERM-STEP-UP-MFA`, see `RISK-07`). |
-| **`RISK-04`** | **External LLM Inference Privacy Exposure** | While market/macro APIs receive only ticker symbols, external LLM inference APIs receive the profiling and advisory conversation (including income, net worth, age, and risk preferences). | `LOW` | `ComplianceGuard.redact_sensitive_data()` strips names, emails, phone numbers, SSN/BVN/NIN, card numbers, and IBANs before every LLM call (`orchestrator.py`), and `ClientFinancialContext.to_system_prompt_snippet()` replaces `client_id` and `name` with a one-way SHA-256 pseudonym (`ANON-XXXXXXXX`). |
-| **`RISK-05`** | **Market Data Latency & Stale Quotes** | External Yahoo Finance / FRED feeds may experience rate-limiting or delayed ticks during volatile market opens. | `LOW` | Multi-provider fallback pipeline with explicit provenance tags (`live` vs `cached` vs `fallback`); static test fixtures are isolated under `data:fixture_quotes:*` in production so live market quotes are never shadowed. |
-| **`RISK-06`** | **Audit Log Tampering & Repudiation** | Post-hoc modification of database rows to conceal compliance failures or trade approvals. | `LOW` (chain) / `MEDIUM` (external proof) | Append-only SHA-256 hash chain (`entry_hash = SHA256(prev_hash ‖ client_id ‖ event_type ‖ details ‖ timestamp)`) + HMAC-SHA256 signatures + RFC 6962 Merkle tree; ORM hooks reject UPDATE/DELETE on `audit_log`. Chain integrity is verifiable at `GET /audit/{client_id}/verify`. External immutability depends on anchoring being live — see `RISK-09`. |
-| **`RISK-07`** | **Step-up "MFA" is demonstration-grade** | The Red-tier confirmation code is derived from the `proposal_id` and a fixed demo code (`482910`) is accepted; the UI also computes the expected code client-side. Anyone holding a valid session and approving a ticket can complete it. It is attestation friction, not a second authentication factor. | `HIGH` for a production deployment · `LOW` here | Execution is **paper-only** (live broker URLs refused at startup), human approval (`REG-003`), caps, whitelist and idempotency lock still apply. **Remediation before real money:** TOTP/WebAuthn bound to the user, server-side one-time challenge, no static code. |
-| **`RISK-08`** | **Insecure default signing secrets** | `SECRET_KEY` (JWT) and `AUDIT_SECRET_KEY` (audit HMAC) ship with development defaults and the application does not refuse to start in `ENVIRONMENT=production` if they are unchanged. A deployment that forgets to set them would have forgeable JWTs and audit signatures. | `HIGH` if misconfigured | `.env` is git-ignored; `.env.example` lists the variables; deployment guide requires overriding both. **Remediation:** add a startup validator that fails in production when a default is detected. |
-| **`RISK-09`** | **On-chain anchoring is optional and may be `dry_run`** | Sepolia anchoring needs `SEPOLIA_RPC_URL`, a funded key and a contract address; FISCO BCOS needs a reachable node. Without them the service returns a deterministic, clearly labelled `dry_run` receipt — a hash-derived placeholder, **not** a real transaction. Merkle proofs then prove membership in the tree, not external immutability. | `MEDIUM` | Receipts carry `status` (`confirmed` / `submitted` / `dry_run` / `failed`); Ethereum Mainnet (chain ID 1) is hard-rejected. Real transaction hashes must be produced and recorded as execution evidence if anchoring is claimed. |
-| **`RISK-10`** | **Bearer token in `localStorage`** | The JWT is stored in browser `localStorage`, so any XSS could exfiltrate it. There is no refresh-token rotation or server-side revocation; a token is valid until it expires (default 60 min). | `MEDIUM` | React escapes output by default; external text is sanitised server-side; short token lifetime. **Remediation:** `HttpOnly` `SameSite` cookie, CSP header, revocation list. |
-| **`RISK-11`** | **No inbound rate limiting or login lockout** | The only rate limiter protects *outbound* provider calls. `/auth/login`, `/auth/register` and chat endpoints are not throttled, so credential stuffing, signup spam and LLM-cost abuse are possible. | `MEDIUM` | bcrypt slows offline cracking; JWT required on all client data routes. **Remediation:** per-IP and per-account limits at the API gateway or via middleware. |
-| **`RISK-12`** | **KYC/AML is self-declared** | `kyc_verified` and AML/PEP flags are derived from questionnaire answers (`evaluate_compliance_kyc_aml`); there is no document or identity-provider verification. | `MEDIUM` (sandbox: acceptable) | Gates still block trades for unverified profiles; scope is paper trading. **Remediation:** integrate a KYC provider before any real-money use. |
-| **`RISK-13`** | **Shared state falls back to in-process memory** | Redis is optional. On the live deployment `/health` reports `redis: false`, so the 30-second idempotency lock, circuit-breaker state and session cache live in process memory: they reset on restart and are not shared across instances. | `MEDIUM` | Chat history and trades persist in PostgreSQL regardless; session state is rebuilt from the database on a cold start. **Remediation:** attach Redis, or move locks into PostgreSQL advisory locks. |
-
-> **Scope note.** `GET /api/v1/compliance/permission-tiers` serves the original six-entry register (`RISK-01`–`RISK-06`). `RISK-07`–`RISK-13` were added during the final review and are documented here; the live endpoint should be extended to match before the final presentation if time permits.
->
-> **Residual-severity convention.** Ratings describe the *current sandbox deployment*. Items marked "if misconfigured" or "for a production deployment" would rise materially if the system handled real client funds.
-
----
-
-## 7. Verification & Reproducibility Instructions for Judges
-
-1. **Automated Security & Compliance Test Suite:**
-   ```bash
-   $env:PYTHONPATH="backend;."; python -m pytest backend/tests/unit/test_compliance_guard.py backend/tests/unit/test_challenger_m4_compliance.py backend/tests/unit/test_challenger_m5_security.py -v
-   ```
-2. **Interactive Security & 5-Tier Permission Console (`/app/compliance`):**
-   - Inspect all **5 Permission Tiers (`TIER_1_READ_ONLY` to `TIER_5_AUTONOMOUS_DISABLED`)** and their code-enforced limits (`$100k` single cap, `$250k` daily cap, 134-symbol whitelist).
-   - Trigger a live **Anomaly Circuit Breaker Stress Test** (`POST /api/v1/compliance/circuit-breaker/simulate`) and verify that trade staging and execution lock immediately (`OPEN_LOCKED`).
-   - Test the **Prompt Injection & PII Redaction Endpoint** (`POST /api/v1/compliance/check-input`).
-3. **Red-Tier Step-Up Confirmation Gate (`/app/trade` or `/app/advisor`):**
-   - Draft any trade with notional $> \$1,000$ or portfolio weight $> 5\%$ to trigger the **`RED TIER · Strong Verification`** gate requiring the 6-digit confirmation code and non-discretionary attestation checkbox, verified both in UI and in `ComplianceGuard.check_trade()` (`PERM-STEP-UP-MFA`).
-4. **On-Chain Merkle Inclusion Proof Verification (`/app/audit`):**
-   - Expand any signed audit entry and click **"Verify RFC 6962 Merkle Inclusion Proof"** to inspect its leaf hash and sibling audit path. If anchoring is configured the Sepolia transaction hash is shown; otherwise the receipt is labelled `dry_run` (`RISK-09`).
+- `/app/compliance`: view the tier catalogue and trigger the circuit breaker (`POST /api/v1/compliance/circuit-breaker/simulate`). Test injection and redaction with `POST /api/v1/compliance/check-input`.
+- `/app/trade`: an order over \$1,000 shows the RED step-up dialog. A non-whitelisted symbol is refused at proposal time (HTTP 403).
+- `/app/audit`: verify the chain and open a Merkle inclusion proof. The anchor receipt shows `dry_run` unless a Sepolia RPC is configured.

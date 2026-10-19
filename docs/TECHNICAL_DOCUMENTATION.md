@@ -88,7 +88,14 @@ flowchart TD
 - **ADVICE_GENERATION** — free-form advisory with tool calls (quotes, comparisons, allocation, tax, research).
 - **PROPOSAL_REVIEW** — a staged `TradeProposal` awaits approve/reject.
 
-### 2.4 Backend module map
+### 2.4 Restart resilience
+
+Proposals and locks live in Redis when it is available, otherwise in process memory. Two database fallbacks (commit `e7e217d`) keep the trade path correct across a restart:
+
+- **Proposal recovery:** if a `proposal_id` is not in the cache, `handle_trade_approval` looks it up in recent `TRADE_PROPOSED` audit entries. It accepts the proposal only if it is still inside the 15-minute TTL.
+- **Replay rejection:** an already-executed proposal is found in `TRADE_EXECUTED` audit entries and rejected with `DuplicateTradeError` (HTTP 409). Separately, `ExecutionModule` rejects an identical client, symbol and side committed in the last 30 s.
+
+### 2.5 Backend module map
 
 | Path | Responsibility |
 | :--- | :--- |
@@ -96,12 +103,12 @@ flowchart TD
 | `backend/api/routes/` | `auth`, `session`, `chat`, `profile`, `compare`, `portfolio`, `trade`, `audit`, `market`, `compliance`, `research`, `ws`, `asyncapi` |
 | `backend/agents/` | `orchestrator`, `risk_profiler`, `product_comparison`, `allocation_engine`, `behavioral_bias`, `review_stage`, `compliance_guard`, `execution_module`, `market_data` |
 | `backend/services/` | `financial_engineering`, `black_litterman`, `audit_logger`, `anchoring`, `sanitizer`, `evidence_ledger`, `context_builder`, `portfolio_service`, `data_pipeline`, providers (`equities`, `macro`, `treasury`, `sec_edgar`, `screener`, `bamboo`, …) |
-| `backend/tools/` | `ToolRegistry`, adapters (retry/backoff/circuit breaker), 14 tool definitions |
+| `backend/tools/` | `ToolRegistry`, adapters (retry/backoff/circuit breaker), 16 tool definitions |
 | `backend/research/` | `task_graph` (DAG), `memory` (tenant-isolated), `verification` (self-check loop) |
 | `backend/db/` | SQLAlchemy models, async engine, Alembic migrations |
 | `frontend/src/app/app/*` | Advisor chat, allocation, compare, markets, trade, audit, compliance, health, profile |
 
-### 2.5 Data model (`backend/db/models.py`)
+### 2.6 Data model (`backend/db/models.py`)
 
 | Table | Purpose |
 | :--- | :--- |
@@ -143,7 +150,7 @@ Each product is scored 0–100 on six factors: **expense ratio, tracking error, 
 
 | Function | Method |
 | :--- | :--- |
-| `run_reproducible_monte_carlo` | 10,000-path multivariate **Student-t (ν = 5)** simulation with Cholesky-correlated shocks and a fixed seed, so a result can be re-derived |
+| `run_reproducible_monte_carlo` | 10,000-path multivariate **Student-t (ν = 5)** simulation with variance-normalised, Cholesky-correlated shocks and a fixed seed (`42`), so a result can be re-derived |
 | `solve_required_return` | Bisection root-finder for the return needed to reach a target with periodic withdrawals |
 | `generate_10year_cash_flow_table` | Deterministic year-by-year balance recursion |
 | `run_explicit_stress_tests` | Named macro shocks (stagflation, GFC-style, rate shock) with recovery trajectories |
@@ -184,7 +191,8 @@ A declarative task graph dispatches eight specialist roles (macro, financial, in
 
 - **12 rules:** `SUIT-001..003`, `CONC-001..003`, `REG-001..004`, `AML-001..002`.
 - **Permission gates:** `PERM-TIER-5`, `PERM-CIRCUIT-BREAKER`, `PERM-WHITELIST`, `PERM-CAP-DAILY`, `PERM-STEP-UP-MFA`.
-- **Limits:** per-trade \$100,000; rolling 24 h \$250,000; symbol whitelist (`ALLOWED_TRADING_SYMBOLS`); 15-minute approval freshness; 30-second double-submit lock.
+- **Limits:** per-trade \$100,000; rolling 24 h \$250,000; 129-symbol whitelist (`ALLOWED_TRADING_SYMBOLS`); 15-minute approval freshness; 30-second double-submit lock (cache lock plus a durable PostgreSQL check on client + symbol + side).
+- **Step-up confirmation:** orders over \$1,000 or 5 % of NAV need a 6-digit code and an attestation. The code is derived from the `proposal_id`, so this is demonstration-grade friction, not a second factor (see `RISK-07` and `RISK-14` in the self-assessment).
 - **Circuit breaker:** ≥ 3 violations within 60 s locks execution for 15 minutes.
 
 ### 4.4 Prompt-injection and privacy controls
@@ -197,7 +205,7 @@ A declarative task graph dispatches eight specialist roles (macro, financial, in
 - `entry_hash = SHA-256(prev_hash ‖ client_id ‖ event_type ‖ canonical_details ‖ timestamp)`, starting from a 64-zero genesis hash.
 - Each entry is signed with HMAC-SHA-256; the chain can be re-verified with `GET /api/v1/audit/{client_id}/verify` or `tools/verify_audit.py`.
 - Entries are batched into an RFC 6962 Merkle tree; inclusion proofs are served at `/audit/{client_id}/merkle-proof/{entry_id}`.
-- **Anchoring:** the Merkle root can be written to Ethereum Sepolia and a FISCO BCOS node. Mainnet (chain ID 1) is hard-rejected. With no RPC endpoint configured the service returns a clearly labelled `dry_run` receipt — see the self-assessment for what that does and does not prove.
+- **Anchoring:** the Merkle root can be written to Ethereum Sepolia (a real signed transaction when `SEPOLIA_RPC_URL`, key and contract are configured). Mainnet (chain ID 1) is hard-rejected. The FISCO BCOS path currently only checks the node's block height and builds a hash-derived receipt; it does not yet submit a transaction (`RISK-16`). With no RPC endpoint configured both paths return a labelled `dry_run` receipt.
 
 ### 4.6 Execution safety
 Paper trading only: the Alpaca base URL is validated at startup and live endpoints are refused. `ALLOW_AUTONOMOUS_EXECUTION` must be `false` or the application will not start.
@@ -230,14 +238,23 @@ Full machine-readable specs: `GET /openapi.json` (REST) and the AsyncAPI documen
 | Research E2E | `tests/e2e_research/` | Four-tier requirement-driven DAG tests |
 | Live production | `evidence/` (see the evidence guide) | Zero-mock run against the deployed Render and Vercel apps |
 
+Local run of the full Python suite (2026-10-19, `backend/tests` + `tests`): **898 passed, 8 failed (906 total)**. The security and compliance suites pass in full (208 / 208). The failures, with their causes:
+
+| Test | Cause |
+| :--- | :--- |
+| `e2e/test_full_flow::test_audit_chain_verifies_then_detects_tampering`, `e2e/test_spec_scenarios::test_s07_…tamper_check` | The test opens the SQLite file by path to tamper with it, but the app wrote to a different database file (`no such table: audit_log`). This is a test-harness problem, not a chain-verification failure. |
+| `test_challenger_m4_execution` (3 tests: TTL release, cross-client stress, approval-freshness boundary) | The tests mock the clock or the cache lock. The durable 30 s duplicate check added in `e7e217d` reads the real `trades` table and real time, so it rejects the follow-up order. The tests need updating for the new check. |
+| `test_black_litterman::test_black_litterman_bullish_view_shifts_weight_positively` | `services/black_litterman.py:124` converts a 1-element array with `float()`. Recent NumPy versions reject this. **Real bug:** pin NumPy or use `.item()`. |
+| `e2e_research/test_tier3_dag_workflows::test_non_discretionary_paper_trading_guard` | The test expects a different rule ID, but `PERM-WHITELIST` now blocks the test symbol first. The assertion is out of date; the block itself is correct. |
+| `integration/test_data_layer_challenger::test_duplicate_symbols_in_get_history_reveals_bug` | Adversarial "challenger" test written to expose a known edge case: duplicate symbols passed to `get_history`. |
+
 Live production run (2026-10-18): **57 / 57 operations passed, 0 HTTP 500s**, covering auth, chat persistence in PostgreSQL, trade execution and 30 s duplicate lock, compliance, audit-chain verification, frontend assets and WebSocket handshake. Raw telemetry: `evidence/live_e2e_results.json`.
 
 Reproduce locally:
 
 ```powershell
 $env:PYTHONPATH="backend;."
-python -m pytest backend/tests/unit -q
-python -m pytest tests/e2e_research -q
+python -m pytest backend/tests tests -q
 ```
 
 ---
