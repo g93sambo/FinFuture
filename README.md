@@ -21,7 +21,7 @@ FinFuture is a **non-discretionary, human-in-the-loop** multi-agent wealth advis
 | 03 | Demo video (≤ 5 min) | Submitted through the competition portal |
 | 04 | Source code with README, deployment instructions and test cases | This repository: [Quickstart](#quickstart), [Deployment](#deployment), [Tests](#tests) |
 | 05 | Security self-assessment: permission tiers and known-risk list | [`SECURITY_SELF_ASSESSMENT.md`](SECURITY_SELF_ASSESSMENT.md) |
-| 06 | Execution evidence: sandbox operation logs | [`evidence/`](evidence/) and [`docs/EXECUTION_EVIDENCE_GUIDE.md`](docs/EXECUTION_EVIDENCE_GUIDE.md) |
+| 06 | Execution evidence: sandbox operation logs | [`evidence/`](evidence/) |
 
 ---
 
