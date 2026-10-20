@@ -21,7 +21,7 @@ FinFuture is a **non-discretionary, human-in-the-loop** multi-agent wealth advis
 | 03 | Demo video (≤ 5 min) | Submitted through the competition portal |
 | 04 | Source code with README, deployment instructions and test cases | This repository: [Quickstart](#quickstart), [Deployment](#deployment), [Tests](#tests) |
 | 05 | Security self-assessment: permission tiers and known-risk list | [`SECURITY_SELF_ASSESSMENT.md`](SECURITY_SELF_ASSESSMENT.md) |
-| 06 | Execution evidence: sandbox operation logs | The app's **Audit trail** page: a signed, hash-chained log of every profile change, compliance check and paper trade |
+| 06 | Execution evidence: sandbox operation logs | [`evidence/live_e2e_results.json`](evidence/live_e2e_results.json) (live run with the hash-chained audit entries) and the app's **Audit trail** page |
 
 ---
 
@@ -217,6 +217,7 @@ To recompute the root yourself, run `python tools/verify_audit.py`. A root cover
 backend/        FastAPI app: agents/, api/routes/, services/, research/, tools/, db/, tests/
 frontend/       Next.js 14 app (App Router, Tailwind)
 docs/           Technical documentation
+evidence/       Live-run results with the audit hash-chain proof
 tests/          Requirement-driven end-to-end research suites
 tools/          Audit-chain verification utility
 ```

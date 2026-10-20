@@ -8,7 +8,6 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select
 
@@ -202,15 +201,6 @@ app.include_router(asyncapi.router)
 @app.get("/", tags=["health"])
 async def root():
     return {"status": "ok", "service": settings.app_name, "version": settings.app_version}
-
-
-@app.get("/chat", include_in_schema=False)
-async def chat_ui():
-    if settings.environment.lower() == "production":
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail="Debug chat UI is disabled in production.")
-    html_file = Path(__file__).resolve().parent / "chat_client.html"
-    return HTMLResponse(content=html_file.read_text(encoding="utf-8"))
 
 
 @app.get("/health", tags=["health"])

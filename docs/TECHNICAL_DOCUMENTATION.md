@@ -90,7 +90,7 @@ flowchart TD
 
 ### 2.4 Restart resilience
 
-Proposals and locks live in Redis when it is available, otherwise in process memory. Two database fallbacks keep the trade path correct across a restart. Both query audit entries inside the proposal TTL window (15 min + 60 s skew margin). They were added in `e7e217d`, but a variable-shadowing bug stopped them running until the 2026-10-19 fix. A regression test now covers both.
+Proposals and locks live in Redis when it is available, otherwise in process memory. Two database fallbacks keep the trade path correct across a restart. Both query audit entries inside the proposal TTL window (15 min + 60 s skew margin). A regression test covers both.
 
 - **Proposal recovery:** if a `proposal_id` is not in the cache, `handle_trade_approval` looks it up in recent `TRADE_PROPOSED` audit entries. It accepts the proposal only if it is still inside the 15-minute TTL.
 - **Replay rejection:** an already-executed proposal is found in `TRADE_EXECUTED` audit entries and rejected with `DuplicateTradeError` (HTTP 409). Separately, `ExecutionModule` rejects an identical client, symbol and side committed in the last 30 s.
@@ -239,22 +239,11 @@ Full machine-readable specs: `GET /openapi.json` (REST) and the AsyncAPI documen
 | Unit | `backend/tests/unit/` | Compliance rules, execution gates, quant maths, audit chain, security, orchestrator |
 | Adversarial | `backend/tests/unit/test_challenger_*`, `tests/adversarial/` | Injection, concurrency, boundary and tamper cases |
 | Research E2E | `tests/e2e_research/` | Four-tier requirement-driven DAG tests |
+| Live production | `evidence/live_e2e_results.json` | Zero-mock run against the deployed Render and Vercel apps, including the audit hash chain (`entry_hash` / `prev_hash`) and its verification |
 
-Local run of the full Python suite (2026-10-19, after the step-up OTP change; `backend/tests`, `tests/e2e_research`, `tests/unit` and the committed `tests/adversarial` suites): **921 passed, 0 failed**. This includes `test_step_up_otp.py` (15 tests: randomness, digest-only storage, single use, user binding, attempt limit, resend throttling, expiry, fail-closed production delivery and the orchestrator gate).
+Local run of the Python suite as CI runs it (2026-10-20; `backend/tests`, `tests/e2e_research`, `tests/unit`): **930 passed, 0 failed**. This includes `test_step_up_otp.py` (15 tests: randomness, digest-only storage, single use, user binding, attempt limit, resend throttling, expiry, fail-closed production delivery and the orchestrator gate).
 
-An earlier run the same day had 8 failures. They were fixed as follows:
-
-| Test | Cause | Fix |
-| :--- | :--- | :--- |
-| `test_black_litterman::test_black_litterman_bullish_view_shifts_weight_positively` | **Real bug:** `services/black_litterman.py` called `float()` on a 1×1 array, which NumPy 2.x rejects | Use `.item()` |
-| `integration/test_data_layer_challenger::…duplicate_symbols…` | **Real bug:** `get_history(["SPY", "SPY"])` built a duplicate column and crashed | Symbols are deduplicated; the test now asserts the fixed behaviour |
-| `test_challenger_m4_execution` (3 tests) | The tests shared one in-memory SQLite connection across concurrent sessions. They also expired only the cache lock, not the durable 30 s database check. | File-backed test DB; tests also expire the durable check |
-| `e2e/test_full_flow::…tamper…`, `e2e/test_spec_scenarios::test_s07_…` | A second conftest changes `DATABASE_URL` after the app connected, so the tests tampered with the wrong file | Tests read the path from the live engine |
-| `e2e_research/test_tier3_dag_workflows::test_non_discretionary_paper_trading_guard` | Used symbol `VT`, which `PERM-WHITELIST` correctly blocks | Uses `VTI` |
-
-Fixing those also exposed two silent production bugs in `agents/orchestrator.py`. A local variable `desc` shadowed `sqlalchemy.desc`, which disabled the restart fallbacks (§2.4). `asyncio` was never imported, so the LLM's parallel tool dispatch raised `NameError` and was swallowed as "Agentic chat turn failed". Both are fixed.
-
-Live production run (2026-10-18, before the 2026-10-19 fixes): **57 / 57 operations passed, 0 HTTP 500s**, covering auth, chat persistence in PostgreSQL, trade execution and 30 s duplicate lock, compliance, audit-chain verification, frontend assets and WebSocket handshake.
+Live production run (2026-10-18): **57 / 57 operations passed, 0 HTTP 500s**, covering auth, chat persistence in PostgreSQL, trade execution and 30 s duplicate lock, compliance, audit-chain verification, frontend assets and WebSocket handshake. Raw results, including the hash-chained audit entries: `evidence/live_e2e_results.json`.
 
 Reproduce locally:
 
