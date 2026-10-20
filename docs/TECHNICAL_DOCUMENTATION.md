@@ -239,7 +239,6 @@ Full machine-readable specs: `GET /openapi.json` (REST) and the AsyncAPI documen
 | Unit | `backend/tests/unit/` | Compliance rules, execution gates, quant maths, audit chain, security, orchestrator |
 | Adversarial | `backend/tests/unit/test_challenger_*`, `tests/adversarial/` | Injection, concurrency, boundary and tamper cases |
 | Research E2E | `tests/e2e_research/` | Four-tier requirement-driven DAG tests |
-| Live production | `evidence/` (see the evidence guide) | Zero-mock run against the deployed Render and Vercel apps |
 
 Local run of the full Python suite (2026-10-19, after the step-up OTP change; `backend/tests`, `tests/e2e_research`, `tests/unit` and the committed `tests/adversarial` suites): **921 passed, 0 failed**. This includes `test_step_up_otp.py` (15 tests: randomness, digest-only storage, single use, user binding, attempt limit, resend throttling, expiry, fail-closed production delivery and the orchestrator gate).
 
@@ -255,7 +254,7 @@ An earlier run the same day had 8 failures. They were fixed as follows:
 
 Fixing those also exposed two silent production bugs in `agents/orchestrator.py`. A local variable `desc` shadowed `sqlalchemy.desc`, which disabled the restart fallbacks (§2.4). `asyncio` was never imported, so the LLM's parallel tool dispatch raised `NameError` and was swallowed as "Agentic chat turn failed". Both are fixed.
 
-Live production run (2026-10-18, before the 2026-10-19 fixes): **57 / 57 operations passed, 0 HTTP 500s**, covering auth, chat persistence in PostgreSQL, trade execution and 30 s duplicate lock, compliance, audit-chain verification, frontend assets and WebSocket handshake. Raw telemetry: `evidence/live_e2e_results.json`.
+Live production run (2026-10-18, before the 2026-10-19 fixes): **57 / 57 operations passed, 0 HTTP 500s**, covering auth, chat persistence in PostgreSQL, trade execution and 30 s duplicate lock, compliance, audit-chain verification, frontend assets and WebSocket handshake.
 
 Reproduce locally:
 

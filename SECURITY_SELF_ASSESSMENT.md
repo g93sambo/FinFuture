@@ -161,7 +161,7 @@ Severity describes the **current sandbox deployment** (paper money, test chain).
 | Security and compliance unit suites (`test_compliance_guard`, `test_challenger_m4_compliance`, `test_challenger_m5_security`, `test_security`, `test_permission_tiers_and_privacy`, `test_audit_logger`, `test_config`) | **all passed** (local run, 2026-10-19), including new regression tests for RISK-07, -08, -11, -14 and -17, and `test_step_up_otp.py` for the emailed one-time code |
 | Full Python suite (`backend/tests`, `tests`) | **921 / 921 passed** (local run, 2026-10-19, after the step-up OTP change and the removal of non-working features). Frontend `tsc --noEmit` and ESLint are clean |
 | Live HTTP run of the OTP flow (local server, 2026-10-19) | No code → 403 `StepUpRequiredError`; the old derived code → rejected; resend within 30 s → 429; wrong code → 403 with attempts left; missing attestation → 400 without consuming the code; correct code → filled; replay → 409. Each step appears in the audit chain. |
-| Live production run against Render and Vercel (2026-10-18) | 57 / 57 operations passed; `evidence/LIVE_VERIFICATION_REPORT.md` |
+| Live production run against Render and Vercel (2026-10-18) | 57 / 57 operations passed |
 
 Reproduce:
 

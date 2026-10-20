@@ -21,7 +21,7 @@ FinFuture is a **non-discretionary, human-in-the-loop** multi-agent wealth advis
 | 03 | Demo video (≤ 5 min) | Submitted through the competition portal |
 | 04 | Source code with README, deployment instructions and test cases | This repository: [Quickstart](#quickstart), [Deployment](#deployment), [Tests](#tests) |
 | 05 | Security self-assessment: permission tiers and known-risk list | [`SECURITY_SELF_ASSESSMENT.md`](SECURITY_SELF_ASSESSMENT.md) |
-| 06 | Execution evidence: sandbox operation logs | [`evidence/`](evidence/) |
+| 06 | Execution evidence: sandbox operation logs | The app's **Audit trail** page: a signed, hash-chained log of every profile change, compliance check and paper trade |
 
 ---
 
@@ -187,7 +187,6 @@ Focused suites:
 | Step-up OTP | `python -m pytest backend/tests/unit/test_step_up_otp.py -q` |
 | Compliance, permission tiers, security | `python -m pytest backend/tests/unit/test_compliance_guard.py backend/tests/unit/test_challenger_m4_compliance.py backend/tests/unit/test_challenger_m5_security.py backend/tests/unit/test_permission_tiers_and_privacy.py backend/tests/unit/test_config.py -q` |
 | Advisor quality evals | `python -m pytest backend/tests/evals -q` |
-| Live deployment (writes `evidence/`) | `python evidence/test_live_e2e.py` |
 | Production hardening (attachments, auth throttles, tenant checks, public routes) | `python -m pytest backend/tests/unit/test_production_hardening.py -q` |
 | Frontend checks | `cd frontend && npm run check:prod && npm run lint && npm run typecheck && npm run build` |
 
@@ -217,8 +216,7 @@ To recompute the root yourself, run `python tools/verify_audit.py`. A root cover
 ```
 backend/        FastAPI app: agents/, api/routes/, services/, research/, tools/, db/, tests/
 frontend/       Next.js 14 app (App Router, Tailwind)
-docs/           Technical documentation, execution-evidence guide, development notes
-evidence/       Live-deployment operation logs and the script that produces them
+docs/           Technical documentation
 tests/          Requirement-driven end-to-end research suites
 tools/          Audit-chain verification utility
 ```
