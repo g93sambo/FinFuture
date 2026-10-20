@@ -124,6 +124,11 @@ const specificGoalTags = [
   { id: "tax_optimization", label: "Tax Efficiency" },
 ];
 
+/** Shown in place of a slider's value until the client moves it. */
+function NotSet() {
+  return <span className="text-xs font-medium text-muted">Not set: drag or tap the slider</span>;
+}
+
 const THUMB_PX = 16; // native range thumb width; its centre travels from 8px to (width - 8px)
 
 /** Tick labels placed exactly under the slider positions of their values (not evenly spaced). */
@@ -160,27 +165,28 @@ export default function OnboardingPage() {
     }
     return "";
   });
-  const [age, setAge] = useState<number>(32);
-  const [employmentStatus, setEmploymentStatus] = useState("employed");
-  const [dependents, setDependents] = useState(0);
-  const [sourceOfFunds, setSourceOfFunds] = useState("salary");
+  // Every answer starts blank (null / ""): new clients fill in their own figures and choices.
+  const [age, setAge] = useState<number | null>(null);
+  const [employmentStatus, setEmploymentStatus] = useState("");
+  const [dependents, setDependents] = useState<number | null>(null);
+  const [sourceOfFunds, setSourceOfFunds] = useState("");
 
-  const [annualIncome, setAnnualIncome] = useState<number>(120000);
-  const [liquidAssets, setLiquidAssets] = useState<number>(50000);
-  const [monthlyExpenses, setMonthlyExpenses] = useState<number>(4000);
-  const [existingDebts, setExistingDebts] = useState<number>(10000);
+  const [annualIncome, setAnnualIncome] = useState<number | null>(null);
+  const [liquidAssets, setLiquidAssets] = useState<number | null>(null);
+  const [monthlyExpenses, setMonthlyExpenses] = useState<number | null>(null);
+  const [existingDebts, setExistingDebts] = useState<number | null>(null);
 
-  const [primaryGoal, setPrimaryGoal] = useState("growth");
-  const [investmentHorizonYears, setInvestmentHorizonYears] = useState(10);
-  const [targetReturn, setTargetReturn] = useState(7.5);
-  const [liquidityNeeds, setLiquidityNeeds] = useState("medium");
-  const [specificGoals, setSpecificGoals] = useState<string[]>(["wealth_accumulation"]);
+  const [primaryGoal, setPrimaryGoal] = useState("");
+  const [investmentHorizonYears, setInvestmentHorizonYears] = useState<number | null>(null);
+  const [targetReturn, setTargetReturn] = useState<number | null>(null);
+  const [liquidityNeeds, setLiquidityNeeds] = useState("");
+  const [specificGoals, setSpecificGoals] = useState<string[]>([]);
 
-  const [riskToleranceScore, setRiskToleranceScore] = useState(7.0);
-  const [drawdownReaction, setDrawdownReaction] = useState("hold");
-  const [monitoringFrequency, setMonitoringFrequency] = useState("monthly");
-  const [investmentExperience, setInvestmentExperience] = useState("intermediate");
-  const [lossCapacity, setLossCapacity] = useState("medium");
+  const [riskToleranceScore, setRiskToleranceScore] = useState<number | null>(null);
+  const [drawdownReaction, setDrawdownReaction] = useState("");
+  const [monitoringFrequency, setMonitoringFrequency] = useState("");
+  const [investmentExperience, setInvestmentExperience] = useState("");
+  const [lossCapacity, setLossCapacity] = useState("");
   const [pepStatus, setPepStatus] = useState(false);
   const [highRiskJurisdiction, setHighRiskJurisdiction] = useState(false);
 
@@ -218,7 +224,7 @@ export default function OnboardingPage() {
           }
         })
         .catch(() => {
-          // No existing profile, keep sensible defaults
+          // No existing profile: the form stays blank
         });
     }
   }, [status, router]);
@@ -228,12 +234,22 @@ export default function OnboardingPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [step]);
 
-  // Derived metrics for live feedback
-  const reserveMonths = monthlyExpenses > 0 ? liquidAssets / monthlyExpenses : 0;
-  const dtiRatio = annualIncome > 0 ? (existingDebts / annualIncome) * 100 : 0;
+  // Derived metrics for live feedback (null until the inputs they need are filled in)
+  const reserveMonths = liquidAssets !== null && monthlyExpenses ? liquidAssets / monthlyExpenses : null;
+  const dtiRatio = existingDebts !== null && annualIncome ? (existingDebts / annualIncome) * 100 : null;
 
   // Approximate live suitability calculation matching backend logic
   const estimatedTier = (() => {
+    if (
+      riskToleranceScore === null ||
+      investmentHorizonYears === null ||
+      reserveMonths === null ||
+      !lossCapacity ||
+      !primaryGoal ||
+      !investmentExperience
+    ) {
+      return null;
+    }
     let s_h = 2.0;
     if (investmentHorizonYears >= 20) s_h = 10.0;
     else if (investmentHorizonYears >= 10) s_h = 8.5;
@@ -241,7 +257,7 @@ export default function OnboardingPage() {
     else if (investmentHorizonYears >= 2) s_h = 4.0;
 
     let s_lc = lossCapacity === "high" ? 9.0 : lossCapacity === "low" ? 2.5 : 6.0;
-    if (reserveMonths < 3.0 && monthlyExpenses > 0) s_lc = Math.min(s_lc, 3.0);
+    if (reserveMonths < 3.0) s_lc = Math.min(s_lc, 3.0);
 
     let s_g = 6.0;
     if (primaryGoal === "capital_preservation") s_g = 2.0;
@@ -269,20 +285,65 @@ export default function OnboardingPage() {
     setSpecificGoals((prev) => (prev.includes(id) ? prev.filter((g) => g !== id) : [...prev, id]));
   }
 
+  /** Names of the answers this step still needs, in the order they appear. */
+  function missingAnswers(): string[] {
+    const missing: [boolean, string][] =
+      step === 1
+        ? [
+            [age === null, "your age"],
+            [dependents === null, "number of dependents"],
+            [!employmentStatus, "employment status"],
+            [!sourceOfFunds, "source of funds"],
+          ]
+        : step === 2
+          ? [
+              [annualIncome === null, "annual income"],
+              [liquidAssets === null, "cash and savings"],
+              [monthlyExpenses === null, "monthly living costs"],
+              [existingDebts === null, "existing debts (enter 0 if none)"],
+            ]
+          : step === 3
+            ? [
+                [!primaryGoal, "investment objective"],
+                [investmentHorizonYears === null, "investment horizon"],
+                [targetReturn === null, "target annual return"],
+                [!liquidityNeeds, "liquidity needs"],
+              ]
+            : step === 4
+              ? [
+                  [riskToleranceScore === null, "risk tolerance score"],
+                  [!drawdownReaction, "reaction to a 20% drop"],
+                  [!investmentExperience, "investment experience"],
+                  [!lossCapacity, "capacity for loss"],
+                  [!monitoringFrequency, "how often you check your portfolio"],
+                ]
+              : [];
+    return missing.filter(([isMissing]) => isMissing).map(([, label]) => label);
+  }
+
   function validateStep(): boolean {
     setError(null);
-    if (step === 1) {
-      if (!age || age < 18) {
-        setError("Under regulatory requirements, advisory clients must be at least 18 years old.");
-        return false;
-      }
-    } else if (step === 2) {
-      if (annualIncome < 0 || liquidAssets < 0 || monthlyExpenses < 0 || existingDebts < 0) {
-        setError("Financial values cannot be negative numbers.");
-        return false;
-      }
+    const missing = missingAnswers();
+    if (missing.length) {
+      setError(`Please answer: ${missing.join(", ")}.`);
+      return false;
+    }
+    if (step === 1 && (age ?? 0) < 18) {
+      setError("Under regulatory requirements, advisory clients must be at least 18 years old.");
+      return false;
+    }
+    if (step === 2 && !monthlyExpenses) {
+      setError("Monthly living costs must be more than $0.");
+      return false;
     }
     return true;
+  }
+
+  /** Parses a money/number input: "" clears the answer, negatives are clamped to 0. */
+  function parseAmount(raw: string): number | null {
+    if (raw === "") return null;
+    const n = parseFloat(raw);
+    return Number.isFinite(n) ? Math.max(0, n) : null;
   }
 
   function next() {
@@ -297,24 +358,39 @@ export default function OnboardingPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!validateStep()) return;
+    // Steps 1-4 each validated their answers before moving on
+    if (
+      age === null ||
+      dependents === null ||
+      annualIncome === null ||
+      liquidAssets === null ||
+      monthlyExpenses === null ||
+      existingDebts === null ||
+      riskToleranceScore === null ||
+      investmentHorizonYears === null ||
+      targetReturn === null
+    ) {
+      setError("Some answers are missing. Go back and complete each step.");
+      return;
+    }
     setLoading(true);
     setError(null);
 
     const payload: OnboardingData = {
-      age: Number(age),
+      age,
       employment_status: employmentStatus,
-      dependents: Number(dependents),
-      annual_income: Number(annualIncome),
-      liquid_assets: Number(liquidAssets),
-      monthly_expenses: Number(monthlyExpenses),
-      existing_debts: Number(existingDebts),
+      dependents,
+      annual_income: annualIncome,
+      liquid_assets: liquidAssets,
+      monthly_expenses: monthlyExpenses,
+      existing_debts: existingDebts,
       investment_experience: investmentExperience,
-      risk_tolerance_score: Number(riskToleranceScore),
-      investment_horizon_years: Number(investmentHorizonYears),
+      risk_tolerance_score: riskToleranceScore,
+      investment_horizon_years: investmentHorizonYears,
       liquidity_needs: liquidityNeeds,
       loss_capacity: lossCapacity,
       primary_goal: primaryGoal,
-      target_return: Number(targetReturn),
+      target_return: targetReturn,
       specific_goals: specificGoals,
       drawdown_reaction: drawdownReaction,
       monitoring_frequency: monitoringFrequency,
@@ -435,9 +511,9 @@ export default function OnboardingPage() {
                           type="number"
                           min={18}
                           max={110}
-                          value={age === 0 ? "" : age}
-                          placeholder="32"
-                          onChange={(e) => setAge(e.target.value === "" ? 0 : parseInt(e.target.value) || 0)}
+                          value={age ?? ""}
+                          placeholder="Your age in years"
+                          onChange={(e) => setAge(e.target.value === "" ? null : parseInt(e.target.value) || null)}
                           required
                         />
                       )}
@@ -528,9 +604,9 @@ export default function OnboardingPage() {
                           type="number"
                           step={1000}
                           min={0}
-                          value={annualIncome === 0 ? "" : annualIncome}
-                          placeholder="120000"
-                          onChange={(e) => setAnnualIncome(e.target.value === "" ? 0 : Math.max(0, parseFloat(e.target.value) || 0))}
+                          value={annualIncome ?? ""}
+                          placeholder="Amount in USD"
+                          onChange={(e) => setAnnualIncome(parseAmount(e.target.value))}
                           required
                         />
                       )}
@@ -543,9 +619,9 @@ export default function OnboardingPage() {
                           type="number"
                           step={1000}
                           min={0}
-                          value={liquidAssets === 0 ? "" : liquidAssets}
-                          placeholder="50000"
-                          onChange={(e) => setLiquidAssets(e.target.value === "" ? 0 : Math.max(0, parseFloat(e.target.value) || 0))}
+                          value={liquidAssets ?? ""}
+                          placeholder="Amount in USD"
+                          onChange={(e) => setLiquidAssets(parseAmount(e.target.value))}
                           required
                         />
                       )}
@@ -558,9 +634,9 @@ export default function OnboardingPage() {
                           type="number"
                           step={100}
                           min={0}
-                          value={monthlyExpenses === 0 ? "" : monthlyExpenses}
-                          placeholder="4000"
-                          onChange={(e) => setMonthlyExpenses(e.target.value === "" ? 0 : Math.max(0, parseFloat(e.target.value) || 0))}
+                          value={monthlyExpenses ?? ""}
+                          placeholder="Amount in USD"
+                          onChange={(e) => setMonthlyExpenses(parseAmount(e.target.value))}
                           required
                         />
                       )}
@@ -573,9 +649,9 @@ export default function OnboardingPage() {
                           type="number"
                           step={500}
                           min={0}
-                          value={existingDebts === 0 ? "" : existingDebts}
-                          placeholder="10000"
-                          onChange={(e) => setExistingDebts(e.target.value === "" ? 0 : Math.max(0, parseFloat(e.target.value) || 0))}
+                          value={existingDebts ?? ""}
+                          placeholder="0 if none"
+                          onChange={(e) => setExistingDebts(parseAmount(e.target.value))}
                           required
                         />
                       )}
@@ -588,20 +664,38 @@ export default function OnboardingPage() {
                     <div className="mt-3 grid gap-4 sm:grid-cols-2">
                       <div className="rounded-lg border border-line bg-background p-3.5">
                         <span className="text-xs text-muted">Emergency Reserve Runway</span>
-                        <p className="figures text-xl font-bold text-ink">{fixed(reserveMonths, 1)} months</p>
-                        <p className={`mt-1 text-[11.5px] ${reserveMonths < 3.0 ? "text-danger font-medium" : "text-success"}`}>
-                          {reserveMonths < 3.0
-                            ? "⚠️ Below 3 months: Reg BI caps risk to protect your short-term cash flow."
-                            : "✓ Healthy buffer: Exceeds 3-month liquidity safety guideline."}
-                        </p>
+                        {reserveMonths === null ? (
+                          <>
+                            <p className="figures text-xl font-bold text-muted">—</p>
+                            <p className="mt-1 text-[11.5px] text-muted">Enter your savings and monthly costs.</p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="figures text-xl font-bold text-ink">{fixed(reserveMonths, 1)} months</p>
+                            <p className={`mt-1 text-[11.5px] ${reserveMonths < 3.0 ? "text-danger font-medium" : "text-success"}`}>
+                              {reserveMonths < 3.0
+                                ? "⚠️ Below 3 months: Reg BI caps risk to protect your short-term cash flow."
+                                : "✓ Healthy buffer: Exceeds 3-month liquidity safety guideline."}
+                            </p>
+                          </>
+                        )}
                       </div>
 
                       <div className="rounded-lg border border-line bg-background p-3.5">
                         <span className="text-xs text-muted">Debt-to-Income (DTI)</span>
-                        <p className="figures text-xl font-bold text-ink">{fixed(dtiRatio, 1)}%</p>
-                        <p className="mt-1 text-[11.5px] text-muted">
-                          {dtiRatio > 40 ? "Elevated debt obligations considered in loss capacity." : "Moderate/healthy leverage profile."}
-                        </p>
+                        {dtiRatio === null ? (
+                          <>
+                            <p className="figures text-xl font-bold text-muted">—</p>
+                            <p className="mt-1 text-[11.5px] text-muted">Enter your income and debts.</p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="figures text-xl font-bold text-ink">{fixed(dtiRatio, 1)}%</p>
+                            <p className="mt-1 text-[11.5px] text-muted">
+                              {dtiRatio > 40 ? "Elevated debt obligations considered in loss capacity." : "Moderate/healthy leverage profile."}
+                            </p>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -650,12 +744,16 @@ export default function OnboardingPage() {
                       <label htmlFor="horizon-slider" className="text-sm font-medium text-ink">
                         Investment Horizon
                       </label>
-                      <span className="figures text-base font-bold text-accent">
-                        {investmentHorizonYears} {investmentHorizonYears === 1 ? "year" : "years"}
-                        <span className="ml-1.5 text-xs font-normal text-muted">
-                          ({investmentHorizonYears <= 3 ? "Short" : investmentHorizonYears <= 10 ? "Medium" : investmentHorizonYears <= 20 ? "Long" : "Generational"})
+                      {investmentHorizonYears === null ? (
+                        <NotSet />
+                      ) : (
+                        <span className="figures text-base font-bold text-accent">
+                          {investmentHorizonYears} {investmentHorizonYears === 1 ? "year" : "years"}
+                          <span className="ml-1.5 text-xs font-normal text-muted">
+                            ({investmentHorizonYears <= 3 ? "Short" : investmentHorizonYears <= 10 ? "Medium" : investmentHorizonYears <= 20 ? "Long" : "Generational"})
+                          </span>
                         </span>
-                      </span>
+                      )}
                     </div>
                     <input
                       id="horizon-slider"
@@ -663,9 +761,10 @@ export default function OnboardingPage() {
                       min={1}
                       max={35}
                       step={1}
-                      value={investmentHorizonYears}
+                      value={investmentHorizonYears ?? 18}
                       onChange={(e) => setInvestmentHorizonYears(parseInt(e.target.value))}
-                      className="mt-3 w-full accent-accent cursor-pointer"
+                      onPointerUp={(e) => setInvestmentHorizonYears(parseInt(e.currentTarget.value))}
+                      className={`mt-3 w-full cursor-pointer accent-accent ${investmentHorizonYears === null ? "opacity-40" : ""}`}
                     />
                     <SliderScale
                       min={1}
@@ -685,12 +784,16 @@ export default function OnboardingPage() {
                       <label htmlFor="return-slider" className="text-sm font-medium text-ink">
                         Target Annual Return
                       </label>
-                      <span className="figures text-base font-bold text-accent">
-                        {fixed(targetReturn, 1)}% / yr
-                        <span className="ml-1.5 text-xs font-normal text-muted">
-                          ({targetReturn <= 4 ? "Preserve" : targetReturn <= 8 ? "Market Avg" : targetReturn <= 12 ? "Growth" : "Alpha"})
+                      {targetReturn === null ? (
+                        <NotSet />
+                      ) : (
+                        <span className="figures text-base font-bold text-accent">
+                          {fixed(targetReturn, 1)}% / yr
+                          <span className="ml-1.5 text-xs font-normal text-muted">
+                            ({targetReturn <= 4 ? "Preserve" : targetReturn <= 8 ? "Market Avg" : targetReturn <= 12 ? "Growth" : "Alpha"})
+                          </span>
                         </span>
-                      </span>
+                      )}
                     </div>
                     <input
                       id="return-slider"
@@ -698,9 +801,10 @@ export default function OnboardingPage() {
                       min={3.0}
                       max={15.0}
                       step={0.5}
-                      value={targetReturn}
+                      value={targetReturn ?? 9}
                       onChange={(e) => setTargetReturn(parseFloat(e.target.value))}
-                      className="mt-3 w-full accent-accent cursor-pointer"
+                      onPointerUp={(e) => setTargetReturn(parseFloat(e.currentTarget.value))}
+                      className={`mt-3 w-full cursor-pointer accent-accent ${targetReturn === null ? "opacity-40" : ""}`}
                     />
                     <SliderScale
                       min={3}
@@ -782,7 +886,11 @@ export default function OnboardingPage() {
                         </label>
                         <p className="text-xs text-muted">From 1 (maximum capital preservation) to 10 (maximum volatility tolerance).</p>
                       </div>
-                      <span className="figures text-xl font-bold text-accent">{fixed(riskToleranceScore, 1)} / 10</span>
+                      {riskToleranceScore === null ? (
+                        <NotSet />
+                      ) : (
+                        <span className="figures text-xl font-bold text-accent">{fixed(riskToleranceScore, 1)} / 10</span>
+                      )}
                     </div>
 
                     <input
@@ -791,14 +899,17 @@ export default function OnboardingPage() {
                       min={1.0}
                       max={10.0}
                       step={0.5}
-                      value={riskToleranceScore}
+                      value={riskToleranceScore ?? 5.5}
                       onChange={(e) => setRiskToleranceScore(parseFloat(e.target.value))}
-                      className="mt-4 w-full accent-accent"
+                      onPointerUp={(e) => setRiskToleranceScore(parseFloat(e.currentTarget.value))}
+                      className={`mt-4 w-full cursor-pointer accent-accent ${riskToleranceScore === null ? "opacity-40" : ""}`}
                     />
 
                     <div className="mt-2.5 flex items-center justify-between border-t border-line pt-2 text-xs">
                       <span className="font-semibold text-ink">
-                        {riskToleranceScore <= 2.5
+                        {riskToleranceScore === null
+                          ? "Move the slider to choose your score."
+                          : riskToleranceScore <= 2.5
                           ? "Conservative: Minimum equity, prioritizes cash and treasuries."
                           : riskToleranceScore <= 4.5
                             ? "Moderate Conservative: Defensive allocation with light equity participation."
@@ -923,7 +1034,7 @@ export default function OnboardingPage() {
                     <div className="flex flex-wrap items-center justify-between gap-4 border-b border-line pb-4">
                       <div>
                         <span className="text-xs uppercase tracking-wider text-muted">Assigned Suitability Tier</span>
-                        <h3 className="text-2xl font-bold text-accent">{estimatedTier}</h3>
+                        <h3 className="text-2xl font-bold text-accent">{estimatedTier ?? "–"}</h3>
                       </div>
                       <div className="text-right">
                         <span className="text-xs text-muted">Risk Tolerance</span>
@@ -996,12 +1107,13 @@ export default function OnboardingPage() {
                   </Link>
                 )}
 
+                {/* Distinct keys: if React reused one button, the click that opens step 5 would also submit the form */}
                 {step < 5 ? (
-                  <Button type="button" onClick={next}>
+                  <Button key="next" type="button" onClick={next}>
                     Continue to Step {step + 1} →
                   </Button>
                 ) : (
-                  <Button type="submit" pending={loading}>
+                  <Button key="submit" type="submit" pending={loading}>
                     Save & Complete Risk Profile
                   </Button>
                 )}
@@ -1016,9 +1128,11 @@ export default function OnboardingPage() {
 
               <div className="mt-4 border-b border-line pb-4">
                 <span className="text-xs text-muted">Estimated Suitability Tier</span>
-                <p className="text-xl font-bold text-accent">{estimatedTier}</p>
+                <p className={`text-xl font-bold ${estimatedTier ? "text-accent" : "text-muted"}`}>{estimatedTier ?? "Not yet known"}</p>
                 <p className="mt-1 text-[11.5px] text-muted">
-                  Calibrated from horizon ({investmentHorizonYears}y), stated tolerance ({fixed(riskToleranceScore, 1)}), and financial capacity.
+                  {estimatedTier
+                    ? `Calibrated from horizon (${investmentHorizonYears}y), stated tolerance (${fixed(riskToleranceScore, 1)}), and financial capacity.`
+                    : "Appears once you have answered the financial, goal and risk questions."}
                 </p>
               </div>
 
@@ -1026,7 +1140,7 @@ export default function OnboardingPage() {
                 <div className="flex justify-between">
                   <span className="text-muted">Age & Status:</span>
                   <span className="font-medium text-ink capitalize">
-                    {age} yrs, {employmentStatus}
+                    {age === null ? "–" : `${age} yrs`}, {employmentStatus || "–"}
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -1043,21 +1157,21 @@ export default function OnboardingPage() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted">Emergency Cushion:</span>
-                  <span className={`figures font-medium ${reserveMonths < 3.0 ? "text-danger" : "text-success"}`}>
+                  <span className={`figures font-medium ${reserveMonths === null ? "text-muted" : reserveMonths < 3.0 ? "text-danger" : "text-success"}`}>
                     {fixed(reserveMonths, 1)} months
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted">Primary Goal:</span>
-                  <span className="font-medium text-ink capitalize">{primaryGoal.replace("_", " ")}</span>
+                  <span className="font-medium text-ink capitalize">{primaryGoal ? primaryGoal.replace("_", " ") : "–"}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted">Investment Horizon:</span>
-                  <span className="figures font-medium text-ink">{investmentHorizonYears} years</span>
+                  <span className="figures font-medium text-ink">{investmentHorizonYears === null ? "–" : `${investmentHorizonYears} years`}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted">Experience Level:</span>
-                  <span className="font-medium text-ink capitalize">{investmentExperience}</span>
+                  <span className="font-medium text-ink capitalize">{investmentExperience || "–"}</span>
                 </div>
               </div>
 

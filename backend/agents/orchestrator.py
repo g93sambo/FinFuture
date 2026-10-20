@@ -236,6 +236,8 @@ def build_container() -> AgentContainer:
     audit = get_audit_logger()
     market = MarketDataAgent()
     execution = ExecutionModule(cache_service=cache, audit_logger=audit)
+    portfolio = PortfolioService(execution_module=execution, market_data_agent=market)
+    execution.portfolio = portfolio  # per-client cash/holdings check before each order
     container = AgentContainer(
         cache=cache,
         audit=audit,
@@ -247,7 +249,7 @@ def build_container() -> AgentContainer:
         comparison=ProductComparisonAgent(market_data_agent=market),
         execution=execution,
         health=HealthReportService(market_data_agent=market),
-        portfolio=PortfolioService(execution_module=execution, market_data_agent=market),
+        portfolio=portfolio,
         orchestrator=None,  # type: ignore[arg-type]
         otp=StepUpOTPService(cache),
     )

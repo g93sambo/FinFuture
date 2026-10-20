@@ -121,7 +121,7 @@ function Overview({ clientId }: { clientId: string }) {
 
       <div className="flex flex-wrap items-center justify-between gap-4">
         <p className="text-xs text-muted">
-          {pf.source === "alpaca_paper" ? "Alpaca paper-trading account" : "Paper-trading ledger"} · Profile:{" "}
+          Your paper-trading account (simulated money, orders sent to Alpaca paper) · Profile:{" "}
           <span className="font-semibold text-ink">{profile.suitability_category ?? "Not set"}</span>
         </p>
         <div className="flex flex-wrap items-center gap-2.5">

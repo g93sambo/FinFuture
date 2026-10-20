@@ -243,6 +243,8 @@ class ExecutionModule:
         self.secret_key = secret_key or getattr(settings, "alpaca_secret_key", "") or os.getenv("ALPACA_SECRET_KEY", "")
         self.cache_service = cache_service or get_cache_service()
         self.audit_logger = audit_logger or get_audit_logger()
+        # Set by the container: PortfolioService for the per-client cash/holdings gate
+        self.portfolio: Any = None
 
         # 3. Client Initialization with Graceful DRY_RUN Fallback
         is_global_dry_run = getattr(settings, "dry_run", False)
@@ -381,6 +383,43 @@ class ExecutionModule:
             )
             raise KYCUnverifiedError(user_reason)
 
+        # Gate 3b: the client's own cash and holdings. All clients share one Alpaca paper
+        # account, so the broker's buying-power check alone would let one client spend another's money.
+        est_price: Optional[float] = None
+        portfolio_service = getattr(self, "portfolio", None)
+        if portfolio_service is not None:
+            pf = await portfolio_service.get_portfolio(db, client_id)
+            est_price = await portfolio_service.market_price(symbol_clean) or pf["prices"].get(symbol_clean)
+            shortfall: Optional[str] = None
+            if side_clean == "BUY" and est_price:
+                available = pf["cash"] - pf.get("reserved_cash", 0.0)
+                cost = float(qty) * est_price
+                if cost > available + 0.01:
+                    shortfall = (
+                        f"Not enough cash for this order: it costs about ${cost:,.2f} and you have "
+                        f"${max(available, 0.0):,.2f} available."
+                    )
+            elif side_clean == "SELL":
+                held = pf["position_qty"].get(symbol_clean, 0.0) - pf.get("reserved_qty", {}).get(symbol_clean, 0.0)
+                if float(qty) > held + 1e-9:
+                    shortfall = (
+                        f"You can sell at most {max(held, 0.0):g} shares of {symbol_clean}; this order is for {float(qty):g}."
+                        if held > 1e-9
+                        else f"You do not hold any {symbol_clean} shares to sell."
+                    )
+            if shortfall:
+                await self._log_block(
+                    db=db,
+                    client_id=client_id,
+                    proposal_id=proposal_id,
+                    symbol=symbol_clean,
+                    side=side_clean,
+                    qty=qty,
+                    gate="CLIENT_BALANCE",
+                    reason=shortfall,
+                )
+                raise ExecutionError(shortfall)
+
         # Gate 4: 30-Second Double-Submit Lock
         lock_key = key_trade_lock(client_id)
         lock_acquired = await self.cache_service.acquire_lock(lock_key, timeout_seconds=TTL_TRADE_LOCK)
@@ -458,7 +497,11 @@ class ExecutionModule:
 
                 # For paper trading and accepted orders, ensure filled price and qty reflect the executed order
                 # so the client receipt and order history are immediately transparent instead of showing blank/zero.
-                filled_price = raw_filled_price if raw_filled_price is not None else SIMULATED_PRICES.get(symbol_clean, SIMULATED_PRICES.get("DEFAULT", 100.0))
+                # Until the order fills, record the live quote as the estimate; PortfolioService
+                # replaces it with the real average fill price when it syncs the order.
+                filled_price = raw_filled_price if raw_filled_price is not None else (
+                    est_price or SIMULATED_PRICES.get(symbol_clean, SIMULATED_PRICES.get("DEFAULT", 100.0))
+                )
                 filled_qty = raw_filled_qty if raw_filled_qty > 0 else float(qty)
                 total_price = filled_price * filled_qty
                 cand_time = getattr(order, "filled_at", None) or getattr(order, "submitted_at", None)
