@@ -4,11 +4,11 @@ import { useState } from "react";
 import Link from "next/link";
 import { BulletBars } from "@/components/charts/BulletBars";
 import { RequireProfile } from "@/components/shell/RequireProfile";
-import { Button, ButtonLink } from "@/components/ui/Button";
+import { Button } from "@/components/ui/Button";
 import { ErrorNotice, Loading, Notice, Tag } from "@/components/ui/Feedback";
 import { Ledger, PageHeader, Panel } from "@/components/ui/Layout";
 import { api } from "@/lib/api";
-import { dateTime, fixed, humanize, money, pct } from "@/lib/format";
+import { dateTime, fixed, humanize, money, pct, shortRef } from "@/lib/format";
 import { useRequest } from "@/lib/useRequest";
 import { EditProfileModal } from "./EditProfileModal";
 
@@ -317,7 +317,7 @@ function Profile({ clientId }: { clientId: string }) {
           <Panel title="Record">
             <Ledger
               rows={[
-                { label: "Client reference", value: <span className="text-[0.9375rem]">{p.client_id}</span> },
+                { label: "Client reference", value: <span className="figures text-[0.9375rem]" title={p.client_id}>{shortRef(p.client_id)}</span> },
                 { label: "Created", value: dateTime(p.created_at) },
                 { label: "Last updated", value: dateTime(p.updated_at) },
               ]}
@@ -345,8 +345,7 @@ export default function ProfilePage() {
     <>
       <PageHeader
         title="Risk profile"
-        lede="What the profiler recorded about you, Stated vs. Revealed behavioral calibration, and interactive scenario stress-probes."
-        actions={<ButtonLink href="/onboarding" variant="secondary">Update / Retake questionnaire</ButtonLink>}
+        lede="What the profiler recorded about you, how your stated risk tolerance compares with your behaviour, and scenario practice questions."
       />
       <RequireProfile>{(id) => <Profile clientId={id} />}</RequireProfile>
     </>

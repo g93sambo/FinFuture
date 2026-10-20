@@ -14,8 +14,13 @@ import { useAction, useRequest } from "@/lib/useRequest";
 
 const statusTone: Record<string, Tone> = { PASS: "success", WARN: "warning", FAIL: "danger", BLOCK: "danger" };
 
+const UUID = /^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i;
+
+/** A user ID as the actor is the signed-in client; agents and forms get readable names. */
 function actorLabel(a: string) {
-  return humanize(a.replace(/^(AGENT|SYSTEM|USER):/, ""));
+  const name = a.replace(/^(AGENT|SYSTEM|USER):/, "");
+  if (UUID.test(name)) return "You";
+  return humanize(name.split(":")[0]);
 }
 
 function EtherscanLink({ href, children }: { href: string; children: React.ReactNode }) {
@@ -65,7 +70,7 @@ function Audit({ clientId }: { clientId: string }) {
           </p>
           <div className="mt-4">
             <Button variant="secondary" onClick={() => verifyAction.run()} pending={verifyAction.pending}>
-              Verify {entries.length} entries
+              Verify {entries.length} {entries.length === 1 ? "entry" : "entries"}
             </Button>
           </div>
           <div className="mt-4 space-y-3">
@@ -115,7 +120,7 @@ function Audit({ clientId }: { clientId: string }) {
           ) : null}
           <div className="mt-4">
             <Button variant="secondary" onClick={() => anchorAction.run()} pending={anchorAction.pending} disabled={!anchoringEnabled}>
-              Anchor {entries.length} entries
+              Anchor {entries.length} {entries.length === 1 ? "entry" : "entries"}
             </Button>
           </div>
           <div className="mt-4 space-y-4">

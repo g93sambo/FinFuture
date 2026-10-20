@@ -8,7 +8,7 @@ import { ErrorNotice, Skeleton, Tag } from "@/components/ui/Feedback";
 import { PageHeader, Panel } from "@/components/ui/Layout";
 import { Table, Td, Th, Tr } from "@/components/ui/Table";
 import { api } from "@/lib/api";
-import { dateTime, fixed, humanize, money, pct, qty } from "@/lib/format";
+import { dateTime, fixed, humanize, money, orderStatus, pct, qty } from "@/lib/format";
 import type { PortfolioHistoryPoint } from "@/lib/types";
 import { useRequest } from "@/lib/useRequest";
 
@@ -303,9 +303,12 @@ function Overview({ clientId }: { clientId: string }) {
                       <p className="mt-1 text-[11px] text-muted">{dateTime(t.created_at)}</p>
                     </div>
                     <div className="text-right">
-                      <p className="figures font-semibold text-ink">{t.filled_price ? money(t.filled_price) : "–"}</p>
+                      <p className="figures font-semibold text-ink">
+                        {t.filled_price ? money(t.filled_price) : "–"}
+                        {t.filled_price && !orderStatus(t.status).filled ? <span className="ml-1 text-[11px] font-normal text-muted">est.</span> : null}
+                      </p>
                       <div className="mt-1 flex justify-end gap-1">
-                        <Tag tone={t.status === "FILLED" ? "success" : "neutral"}>{humanize(t.status)}</Tag>
+                        <Tag tone={orderStatus(t.status).tone}>{orderStatus(t.status).label}</Tag>
                         {t.simulated ? <Tag tone="warning">Simulated</Tag> : null}
                       </div>
                     </div>

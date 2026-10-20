@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -75,6 +76,11 @@ async def get_portfolio(
     return {k: v for k, v in pf.items() if k not in ("prices", "position_qty")}
 
 
+# Before this deploy, snapshots recorded the one shared Alpaca account (every user's
+# trades mixed together), so they are not this client's history and would draw false jumps.
+PER_CLIENT_LEDGER_SINCE = datetime(2026, 10, 20, 9, 20)  # UTC, naive like the column
+
+
 @router.get("/portfolio/{client_id}/history")
 async def get_portfolio_history(
     client_id: str,
@@ -87,7 +93,10 @@ async def get_portfolio_history(
     rows = (
         await db.execute(
             select(DBPortfolioSnapshot)
-            .where(DBPortfolioSnapshot.client_id == client_id)
+            .where(
+                DBPortfolioSnapshot.client_id == client_id,
+                DBPortfolioSnapshot.timestamp >= PER_CLIENT_LEDGER_SINCE,
+            )
             .order_by(DBPortfolioSnapshot.timestamp.desc())
             .limit(limit)
         )

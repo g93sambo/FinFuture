@@ -41,3 +41,20 @@ export function humanize(s: string | null | undefined): string {
 }
 
 export const shortHash = (h: string | null | undefined, n = 10) => (h ? `${h.slice(0, n)}…${h.slice(-4)}` : "–");
+
+/**
+ * Broker order statuses in words a client understands. Market orders placed while the
+ * exchange is closed stay "new"/"accepted" at the broker until the next session opens.
+ */
+export function orderStatus(status: string | null | undefined): { label: string; tone: "success" | "warning" | "danger" | "neutral"; filled: boolean } {
+  const s = (status ?? "").toUpperCase();
+  if (s === "FILLED") return { label: "Filled", tone: "success", filled: true };
+  if (s === "PARTIALLY_FILLED") return { label: "Partly filled", tone: "warning", filled: false };
+  if (["CANCELED", "CANCELLED", "PENDING_CANCEL"].includes(s)) return { label: "Cancelled", tone: "neutral", filled: false };
+  if (["EXPIRED", "DONE_FOR_DAY"].includes(s)) return { label: "Expired", tone: "neutral", filled: false };
+  if (["REJECTED", "BLOCKED", "SUSPENDED"].includes(s)) return { label: "Rejected", tone: "danger", filled: false };
+  return { label: "Queued", tone: "neutral", filled: false };
+}
+
+/** Short, readable reference for an order or account (the full broker ID stays available as a tooltip). */
+export const shortRef = (id: string | null | undefined) => (id ? id.replace(/-/g, "").slice(-8).toUpperCase() : "–");

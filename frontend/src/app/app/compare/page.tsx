@@ -121,7 +121,7 @@ const factors: [keyof ComparedProduct["factor_breakdown"], string, string][] = [
 function ProductDetail({ p }: { p: ComparedProduct }) {
   const r = p.factor_breakdown.raw_metrics ?? {};
   return (
-    <div className="grid gap-6 bg-surface px-5 py-4 text-sm md:grid-cols-3">
+    <div className="sticky left-0 grid max-w-3xl gap-6 bg-surface px-5 py-4 text-sm md:grid-cols-[1fr_1fr_auto]">
       <div>
         <p className="mb-1.5 font-medium text-ink">Strengths</p>
         {p.key_advantages.length ? (
@@ -146,7 +146,7 @@ function ProductDetail({ p }: { p: ComparedProduct }) {
           <p className="text-muted">None flagged.</p>
         )}
       </div>
-      <dl className="figures grid grid-cols-2 gap-x-4 gap-y-1 text-[0.9375rem]">
+      <dl className="figures grid w-fit grid-cols-[auto_auto] content-start gap-x-6 gap-y-1 text-[0.9375rem]">
         <dt className="font-sans text-muted">Expense ratio</dt>
         <dd className="text-right">{pct(r.expense_ratio, 2)}</dd>
         <dt className="font-sans text-muted">Tracking error</dt>
@@ -662,7 +662,7 @@ function Compare({ clientId }: { clientId: string }) {
         <div className="flex flex-wrap items-center justify-between gap-4 border-t border-line/70 pt-4">
           <div>
             {tooFew ? (
-              <p className="text-xs text-amber-600 font-medium">
+              <p className="text-xs text-warning font-medium">
                 ⚠️ Select at least 2 funds to run multi-factor quantitative comparison.
               </p>
             ) : tooMany ? (

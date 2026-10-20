@@ -152,3 +152,54 @@ async def test_single_stock_limit_skips_diversified_funds(symbol, flagged):
         violations = exc.violations
     conc = [v for v in violations if v.rule_id == "CONC-001"]
     assert bool(conc) is flagged
+
+
+@pytest.mark.asyncio
+async def test_health_review_counts_cash(db_session, two_clients):
+    """Team video: $1.4k of AAPL in a $100k account was reported as 'AAPL 100%' with a critical score."""
+    from services.health_report import HealthReportService
+
+    db_session.add(trade("client_a", "AAPL", "BUY", 4, "FILLED", 342.94))
+    await db_session.commit()
+    market = FixedMarket({"AAPL": 342.94, "SPY": 766.48, "BND": 74.10})
+    pf = await PortfolioService(execution_module=make_execution(), market_data_agent=market).get_portfolio(db_session, "client_a")
+    report = await HealthReportService(market_data_agent=market, openai_api_key="").generate_health_report(
+        db_session, "client_a",
+        portfolio={"weights": pf["weights"], "positions": pf["position_qty"], "cash": pf["cash"],
+                   "total_value": pf["total_value"], "prices": pf["prices"]},
+    )
+    conc = report.concentration_metrics
+    assert conc.max_position_symbol == "AAPL"
+    assert conc.max_position_weight == pytest.approx(0.0137, abs=0.001)  # share of the whole account
+    assert not conc.has_concentration_risk
+    assert report.drift_analysis.asset_drifts["CASH"].current_weight > 0.98
+    assert report.benchmark_comparison.portfolio_volatility < 0.02
+
+
+async def _health(db, cid, market):
+    from services.health_report import HealthReportService
+
+    pf = await PortfolioService(execution_module=make_execution(), market_data_agent=market).get_portfolio(db, cid)
+    return await HealthReportService(market_data_agent=market, openai_api_key="").generate_health_report(
+        db, cid,
+        portfolio={"weights": pf["weights"], "positions": pf["position_qty"], "cash": pf["cash"],
+                   "total_value": pf["total_value"], "prices": pf["prices"]},
+    )
+
+
+@pytest.mark.asyncio
+async def test_all_cash_account_is_not_invested_rather_than_critical(db_session, two_clients):
+    report = await _health(db_session, "client_b", FixedMarket({"SPY": 766.48, "BND": 74.10}))
+    assert report.not_invested is True
+    assert [a.severity.value for a in report.alerts] == ["INFO"]
+    assert "not invested yet" in report.narrative.executive_summary
+    assert report.rebalancing_plan.orders  # the plan to invest the cash is still there
+
+
+@pytest.mark.asyncio
+async def test_invested_account_still_gets_a_score(db_session, two_clients):
+    db_session.add(trade("client_a", "SPY", "BUY", 65, "FILLED", 766.48))
+    await db_session.commit()
+    report = await _health(db_session, "client_a", FixedMarket({"SPY": 766.48, "BND": 74.10}))
+    assert report.not_invested is False
+    assert report.health_score > 0

@@ -13,7 +13,7 @@ import { PageHeader, Panel } from "@/components/ui/Layout";
 import { Table, Td, Th, Tr } from "@/components/ui/Table";
 import { ApiError, api, retryableStepUpReason, type ApproveOptions } from "@/lib/api";
 import { POPULAR_CURATED_ASSETS, PRESET_DOLLAR_AMOUNTS, type CuratedAsset } from "@/lib/curatedInvestments";
-import { dateTime, humanize, money, qty } from "@/lib/format";
+import { dateTime, money, orderStatus, qty, shortRef } from "@/lib/format";
 import type { AgentEvent, Execution, Proposal, TradeBlockedDetail } from "@/lib/types";
 import { useRequest } from "@/lib/useRequest";
 
@@ -132,7 +132,7 @@ function TradeDesk({ clientId }: { clientId: string }) {
     <div className="space-y-8">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface/70 px-5 py-4 shadow-xs">
         <div>
-          <p className="text-sm font-bold text-ink">Alpaca paper-trading account</p>
+          <p className="text-sm font-bold text-ink">Your paper-trading account</p>
           <p className="text-xs text-muted">Simulated money. Every order needs your approval and is recorded in the audit trail.</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -292,7 +292,7 @@ function TradeDesk({ clientId }: { clientId: string }) {
                 label="Quantity (Shares)"
                 hint={
                   qtyOk && estimatedTotal !== null && livePrice
-                    ? `Estimated value: ${money(estimatedTotal)} (${qty(q)} shares @ ${money(livePrice)})`
+                    ? `Estimated value: ${money(estimatedTotal)} (${qty(q)} ${q === 1 ? "share" : "shares"} @ ${money(livePrice)})`
                     : "Fractional shares are accepted."
                 }
                 error={quantity && !qtyOk ? "Enter a quantity above zero." : null}
@@ -413,36 +413,41 @@ function TradeDesk({ clientId }: { clientId: string }) {
                   <tr>
                     <Th>Date</Th>
                     <Th>Order</Th>
-                    <Th numeric>Fill Price</Th>
-                    <Th numeric>Total Value</Th>
+                    <Th numeric>Price</Th>
+                    <Th numeric>Total value</Th>
                     <Th>Status</Th>
-                    <Th>Order ID</Th>
+                    <Th>Reference</Th>
                   </tr>
                 </thead>
                 <tbody>
                   {history.data.trades.map((t) => {
                     const price = t.filled_price;
-                    const isFilled = t.status === "FILLED";
+                    const st = orderStatus(t.status);
                     return (
                       <Tr key={t.trade_id}>
                         <Td className="whitespace-nowrap text-muted text-xs">{dateTime(t.created_at)}</Td>
                         <Td className="font-medium whitespace-nowrap">
                           <div className="flex items-center gap-1.5">
-                            <span className={t.side === "BUY" ? "text-emerald-600 font-bold" : "text-amber-600 font-bold"}>
+                            <span className={t.side === "BUY" ? "font-bold text-success" : "font-bold text-warning"}>
                               {t.side === "BUY" ? "Buy" : "Sell"}
                             </span>
                             <span>{qty(t.qty)} {t.symbol}</span>
                           </div>
                         </Td>
-                        <Td numeric className="figures">{price === null ? "–" : money(price)}</Td>
+                        <Td numeric className="figures">
+                          {price === null ? "–" : money(price)}
+                          {price !== null && !st.filled ? <span className="ml-1 text-[11px] text-muted">est.</span> : null}
+                        </Td>
                         <Td numeric className="figures font-medium">{price === null ? "–" : money(price * t.qty)}</Td>
                         <Td>
                           <div className="flex flex-wrap gap-1">
-                            <Tag tone={isFilled ? "success" : "neutral"}>{humanize(t.status)}</Tag>
+                            <Tag tone={st.tone}>{st.label}</Tag>
                             {t.simulated ? <Tag tone="warning">Simulated</Tag> : null}
                           </div>
                         </Td>
-                        <Td className="font-mono text-[11px] text-muted">{t.broker_order_id}</Td>
+                        <Td className="figures text-xs text-muted" title={t.broker_order_id ?? undefined}>
+                          {shortRef(t.broker_order_id)}
+                        </Td>
                       </Tr>
                     );
                   })}
@@ -462,7 +467,7 @@ export default function TradePage() {
     <>
       <PageHeader
         title="Trade & Investments"
-        lede="Draft an order, review the pre-trade compliance checks, and approve it into the Alpaca paper-trading account."
+        lede="Draft an order, review the pre-trade compliance checks, and approve it into your paper-trading account."
       />
       <RequireProfile>
         {(id) => (

@@ -371,6 +371,8 @@ export interface HealthReport {
   portfolio_summary: { total_value: number; cash: number; holdings_count: number; asset_classes: string[] };
   health_score: number;
   health_grade: "EXCELLENT" | "GOOD" | "FAIR" | "POOR" | "CRITICAL";
+  /** Account is (almost) all cash: show "Not invested yet" instead of a score. */
+  not_invested?: boolean;
   score_breakdown: {
     base_potential: number;
     diversification_reward: number;

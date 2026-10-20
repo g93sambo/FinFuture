@@ -98,10 +98,8 @@ async def submit_onboarding_profile(
 
         # Net worth calculation fallback
         if ext.get("net_worth") is None:
-            ext["net_worth"] = max(
-                0.0,
-                ext["liquid_assets"] + (ext["annual_income"] * 0.5) - ext["existing_debts"]
-            )
+            # Net worth is what you own minus what you owe; income is not an asset
+            ext["net_worth"] = max(0.0, ext["liquid_assets"] - ext["existing_debts"])
 
         # Detect behavioral biases from structured answers
         biases: List[str] = []
@@ -264,7 +262,7 @@ async def update_client_profile(
         if req.net_worth is None:
             merged["net_worth"] = max(
                 0.0,
-                merged.get("liquid_assets", 0.0) + (merged.get("annual_income", 0.0) * 0.5) - merged.get("existing_debts", 0.0)
+                merged.get("liquid_assets", 0.0) - merged.get("existing_debts", 0.0)
             )
 
     # Re-evaluate behavioral biases

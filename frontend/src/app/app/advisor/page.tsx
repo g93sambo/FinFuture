@@ -362,7 +362,7 @@ export default function AdvisorPage() {
 
               {/* Status Indicator */}
               <span className="hidden md:inline-flex items-center gap-1 text-[11px] text-muted">
-                <span className={`h-1.5 w-1.5 rounded-full ${connection === "live" ? "bg-accent animate-pulse" : "bg-amber-500"}`} />
+                <span className={`h-1.5 w-1.5 rounded-full ${connection === "live" ? "bg-accent animate-pulse" : "bg-warning"}`} />
                 <span>{connectionText[connection]}</span>
               </span>
 
@@ -443,24 +443,6 @@ export default function AdvisorPage() {
                 </svg>
               </button>
 
-              {/* Share Button */}
-              <button
-                type="button"
-                onClick={() => {
-                  if (typeof window !== "undefined") {
-                    navigator.clipboard.writeText(window.location.href);
-                    alert("Advisory link copied to clipboard!");
-                  }
-                }}
-                title="Share Conversation"
-                className="grid h-8 w-8 place-items-center rounded-full text-muted hover:bg-surface hover:text-ink transition-colors"
-                aria-label="Share"
-              >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                </svg>
-              </button>
-
               {/* Three-Dot Menu */}
               <button
                 type="button"
@@ -495,7 +477,7 @@ export default function AdvisorPage() {
                     className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-ink hover:bg-surface transition-colors"
                   >
                     <span className="text-accent">📎</span>
-                    <span>Upload chart / document</span>
+                    <span>Upload a chart or screenshot</span>
                   </button>
                 </div>
               )}

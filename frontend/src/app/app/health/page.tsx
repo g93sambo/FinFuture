@@ -184,18 +184,33 @@ function Report({
 
       <div className="grid gap-8 xl:grid-cols-12">
         <Panel title="Health score" className="xl:col-span-7">
-          <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
-            <p className="figures text-[3.5rem] leading-none font-bold text-primary">{fixed(r.health_score, 0)}</p>
-            <p className="text-muted">out of 100</p>
-            <Tag tone={gradeTone[r.health_grade]}>{humanize(r.health_grade)}</Tag>
-          </div>
-          <div className="mt-6">
-            <ScoreScale score={r.health_score} />
-          </div>
+          {r.not_invested ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="font-display text-[1.75rem] leading-tight font-semibold text-primary">Not invested yet</p>
+              <Tag tone="neutral">No score</Tag>
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
+                <p className="figures text-[3.5rem] leading-none font-bold text-primary">{fixed(r.health_score, 0)}</p>
+                <p className="text-muted">out of 100</p>
+                <Tag tone={gradeTone[r.health_grade]}>{humanize(r.health_grade)}</Tag>
+              </div>
+              <div className="mt-6">
+                <ScoreScale score={r.health_score} />
+              </div>
+            </>
+          )}
           <Markdown className="mt-6 max-w-[68ch]" text={formatExecutiveSummary(n.executive_summary)} />
         </Panel>
 
         <Panel title="How the score is built" className="xl:col-span-5">
+          {r.not_invested ? (
+            <p className="text-sm text-muted">
+              The score rates how well your investments are spread and how close they are to your target mix. It appears once part of your
+              money is invested.
+            </p>
+          ) : (
           <Ledger
             rows={[
               { label: "Starting point", value: fixed(sb.base_potential, 1) },
@@ -206,6 +221,7 @@ function Report({
               { label: <span className="font-medium text-ink">Score</span>, value: <span className="font-semibold">{fixed(sb.final_score, 1)}</span> },
             ]}
           />
+          )}
         </Panel>
       </div>
 
@@ -237,7 +253,7 @@ function Report({
           <BulletBars
             title="Current weight against target weight"
             max={Math.max(...drifts.map((d) => Math.max(d.current_weight, d.target_weight)), 0.01)}
-            rows={drifts.map((d) => ({ label: d.symbol, value: d.current_weight, target: d.target_weight, valueText: pct(d.current_weight) }))}
+            rows={drifts.map((d) => ({ label: d.symbol === "CASH" ? "Cash" : d.symbol, value: d.current_weight, target: d.target_weight, valueText: pct(d.current_weight) }))}
           />
           <Markdown className="mt-4 text-sm" text={n.drift_diagnosis} />
         </Panel>
@@ -245,7 +261,13 @@ function Report({
         <Panel title="Concentration" className="xl:col-span-5">
           <Ledger
             rows={[
-              { label: "Largest holding", value: `${r.concentration_metrics.max_position_symbol} ${pct(r.concentration_metrics.max_position_weight)}` },
+              {
+                label: "Largest holding",
+                value:
+                  r.concentration_metrics.max_position_symbol === "NONE"
+                    ? "No investments yet"
+                    : `${r.concentration_metrics.max_position_symbol} ${pct(r.concentration_metrics.max_position_weight)}`,
+              },
               { label: "Top three together", value: pct(r.concentration_metrics.top_3_concentration) },
               { label: "Herfindahl index", note: "Sum of squared weights", value: fixed(r.concentration_metrics.herfindahl_index, 3) },
               { label: "Effective holdings", note: "1 / Herfindahl", value: fixed(r.concentration_metrics.effective_asset_count, 1) },
@@ -284,7 +306,7 @@ function Report({
               <Td numeric>{fixed(bc.benchmark_sharpe_ratio)}</Td>
               <Td numeric>{fixed(bc.portfolio_sharpe_ratio - bc.benchmark_sharpe_ratio)}</Td>
             </Tr>
-            {["Equity", "Fixed Income", "Alternative"].map((k) => (
+            {["Equity", "Fixed Income", "Alternative", "Cash"].map((k) => (
               <Tr key={k}>
                 <Td>{k} share</Td>
                 <Td numeric>{pct(bc.asset_mix_comparison.Portfolio?.[k])}</Td>

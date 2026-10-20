@@ -10,6 +10,10 @@ import { dateTime, humanize } from "@/lib/format";
 import type { CircuitBreakerStatus, ComplianceRule } from "@/lib/types";
 import { useAction, useRequest } from "@/lib/useRequest";
 
+// Drill buttons that trip/reset the circuit breaker for a live demo. Off for customers;
+// set NEXT_PUBLIC_SHOW_DEMO_CONTROLS=true on a demo deployment to show them.
+const SHOW_DEMO_CONTROLS = process.env.NEXT_PUBLIC_SHOW_DEMO_CONTROLS === "true";
+
 const categoryOrder = ["SUITABILITY", "CONCENTRATION", "REGULATORY", "AML"];
 const categoryNotes: Record<string, string> = {
   SUITABILITY: "Does the advice fit this client?",
@@ -133,7 +137,7 @@ export default function CompliancePage() {
 
         <div className="grid gap-8 xl:grid-cols-12">
           <Panel
-            title="Anomaly circuit breaker (live stress-test)"
+            title="Anomaly circuit breaker"
             className="xl:col-span-6"
             aside={
               cb ? (
@@ -164,19 +168,23 @@ export default function CompliancePage() {
                 </div>
                 {cb.is_locked ? (
                   <Notice tone="danger" title="Circuit breaker tripped (OPEN_LOCKED)">
-                    High-risk trade execution is temporarily frozen due to repeated blocked compliance/injection attempts. A lock caused only
-                    by simulated drills can be reset below; a lock caused by real blocked attempts expires after 15 minutes.
+                    High-risk trade execution is temporarily frozen after repeated blocked compliance or injection attempts. The lock
+                    lifts automatically after 15 minutes.
                   </Notice>
                 ) : null}
-                <div className="flex flex-wrap gap-3 pt-1">
-                  <Button size="sm" variant="secondary" onClick={() => simulateCb.run()} pending={simulateCb.pending}>
-                    Simulate blocked anomaly (+1)
-                  </Button>
-                  <Button size="sm" variant="quiet" onClick={() => resetCb.run()} pending={resetCb.pending}>
-                    Reset circuit breaker
-                  </Button>
-                </div>
-                <ErrorNotice error={simulateCb.error ?? resetCb.error} />
+                {SHOW_DEMO_CONTROLS ? (
+                  <>
+                    <div className="flex flex-wrap gap-3 pt-1">
+                      <Button size="sm" variant="secondary" onClick={() => simulateCb.run()} pending={simulateCb.pending}>
+                        Simulate blocked anomaly (+1)
+                      </Button>
+                      <Button size="sm" variant="quiet" onClick={() => resetCb.run()} pending={resetCb.pending}>
+                        Reset circuit breaker
+                      </Button>
+                    </div>
+                    <ErrorNotice error={simulateCb.error ?? resetCb.error} />
+                  </>
+                ) : null}
               </div>
             ) : null}
           </Panel>
@@ -226,7 +234,7 @@ export default function CompliancePage() {
         ) : null}
 
         {cats.map((c) => (
-          <Panel key={c} title={humanize(c)} aside={<span>{categoryNotes[c] ?? ""}</span>}>
+          <Panel key={c} title={c === "AML" ? "Anti-money laundering (AML)" : humanize(c)} aside={<span>{categoryNotes[c] ?? ""}</span>}>
             <ul className="-my-4 divide-y divide-line">
               {rules
                 .filter((r) => r.category === c)

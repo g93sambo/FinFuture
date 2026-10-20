@@ -104,11 +104,18 @@ function EventBody({
         const r = ev.report;
         return (
           <div className="space-y-3">
-            <p className="flex flex-wrap items-baseline gap-3 text-sm">
-              <span className="figures text-[1.5rem] text-ink">{fixed(r.health_score, 0)}</span>
-              <span className="text-muted">out of 100</span>
-              <Tag tone={r.health_score >= 70 ? "success" : r.health_score >= 50 ? "warning" : "danger"}>{r.health_grade.toLowerCase()}</Tag>
-            </p>
+            {r.not_invested ? (
+              <p className="flex flex-wrap items-center gap-3 text-sm">
+                <span className="font-semibold text-ink">Not invested yet</span>
+                <Tag tone="neutral">No score</Tag>
+              </p>
+            ) : (
+              <p className="flex flex-wrap items-baseline gap-3 text-sm">
+                <span className="figures text-[1.5rem] text-ink">{fixed(r.health_score, 0)}</span>
+                <span className="text-muted">out of 100</span>
+                <Tag tone={r.health_score >= 70 ? "success" : r.health_score >= 50 ? "warning" : "danger"}>{r.health_grade.toLowerCase()}</Tag>
+              </p>
+            )}
             <Body text={ev.text} />
             <Link href="/app/health" className="text-sm text-primary underline underline-offset-4">
               Open the full health review

@@ -34,6 +34,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const reset = useCallback(() => {
     tokenStore.clear();
+    // Forget everything tied to this account (name, open chat, saved results) so the next
+    // person on this browser starts clean; only the layout preference survives.
+    try {
+      const keys = Object.keys(window.localStorage).filter((k) => k.startsWith("finfuture.") && k !== "finfuture.sidebar");
+      keys.forEach((k) => window.localStorage.removeItem(k));
+    } catch {
+      // Storage unavailable: nothing to clear
+    }
     sessionPromise.current = null;
     setUser(null);
     setSession(null);

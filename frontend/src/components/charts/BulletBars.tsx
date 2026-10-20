@@ -59,7 +59,12 @@ export function BulletBars({ rows, max, title }: { rows: BulletRow[]; max?: numb
             </span>
             <span className="figures text-right text-[0.9375rem] font-medium text-ink">
               {r.valueText ?? `${(r.value * 100).toFixed(1)}%`}
-              {r.target !== undefined ? <span className="block text-muted font-normal sm:inline"> / {(r.target * 100).toFixed(1)}%</span> : null}
+              {r.target !== undefined ? (
+                <span className="block text-muted font-normal sm:inline">
+                  {" "}
+                  / {scaleMax <= 1 ? `${(r.target * 100).toFixed(1)}%` : r.target.toFixed(1)}
+                </span>
+              ) : null}
             </span>
           </li>
         ))}

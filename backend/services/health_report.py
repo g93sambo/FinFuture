@@ -184,7 +184,31 @@ class HealthReportResponse(BaseModel):
     alerts: List[StructuredAlert]
     rebalancing_plan: RebalancingTradePlan
     narrative: PortfolioNarrative
+    # True when the account is (almost) all cash: there is no allocation to grade yet,
+    # so the UI shows "Not invested yet" instead of a misleading "Critical" score.
+    not_invested: bool = False
 
+
+def _whole_sentences(text: str, limit: int) -> str:
+    """Shortens model text at a sentence boundary instead of mid-word."""
+    text = text.strip()
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    end = max(cut.rfind(". "), cut.rfind(".\n"), cut.rfind("! "), cut.rfind("? "))
+    return cut[: end + 1] if end > limit // 3 else cut.rsplit(" ", 1)[0] + "…"
+
+
+def _top_holding_sentence(concentration: "ConcentrationMetrics") -> str:
+    if concentration.max_position_symbol == "NONE":
+        return "You do not hold any investments yet; the account is all cash."
+    return f"Largest holding is {concentration.max_position_symbol} at {concentration.max_position_weight:.1%} of the portfolio."
+
+
+# Uninvested cash is a real part of the portfolio: without it, $1k of AAPL in a $100k
+# account would read as "AAPL 100%" and every drift/concentration figure would be wrong.
+CASH_SYMBOL = "CASH"
+NOT_INVESTED_CASH_SHARE = 0.95
 
 # Asset class mappings for standard ticker universe
 STANDARD_ASSET_CLASSES: Dict[str, str] = {
@@ -204,6 +228,7 @@ STANDARD_ASSET_CLASSES: Dict[str, str] = {
     "GLD": "Alternative",
     "IAU": "Alternative",
     "DBC": "Alternative",
+    CASH_SYMBOL: "Cash",
 }
 
 # Standard simulated market prices
@@ -366,9 +391,23 @@ class HealthReportService:
             )
 
         total_w = sum(current_weights.values()) or 1.0
-        normalized = {sym: float(w) / total_w for sym, w in current_weights.items()}
+        # Position sizes are shares of the whole portfolio (cash included); cash itself is not a concentration risk
+        of_total = {sym: float(w) / total_w for sym, w in current_weights.items() if sym != CASH_SYMBOL}
+        if not of_total or sum(of_total.values()) <= 0:
+            return ConcentrationMetrics(
+                max_position_symbol="NONE",
+                max_position_weight=0.0,
+                herfindahl_index=0.0,
+                effective_asset_count=0.0,
+                top_3_concentration=0.0,
+                has_concentration_risk=False,
+                concentrated_assets=[],
+            )
+        invested = sum(of_total.values())
+        # Diversification (HHI, effective holdings) describes how the invested part is spread
+        normalized = {sym: w / invested for sym, w in of_total.items()}
 
-        sorted_positions = sorted(normalized.items(), key=lambda kv: kv[1], reverse=True)
+        sorted_positions = sorted(of_total.items(), key=lambda kv: kv[1], reverse=True)
         max_sym, max_w = sorted_positions[0]
 
         hhi = sum(w ** 2 for w in normalized.values())
@@ -376,7 +415,7 @@ class HealthReportService:
 
         top_3_sum = sum(w for _, w in sorted_positions[:3])
         concentrated = [sym for sym, w in sorted_positions if w > 0.20]
-        has_risk = len(concentrated) > 0 or hhi > 0.25
+        has_risk = len(concentrated) > 0 or (hhi > 0.25 and invested > 0.20)
 
         return ConcentrationMetrics(
             max_position_symbol=max_sym,
@@ -437,7 +476,7 @@ class HealthReportService:
             sym: d.current_weight for sym, d in drift_result.asset_drifts.items()
         }
         total_w = sum(weights_dict.values()) or 1.0
-        excess_conc = sum(max(0.0, (w / total_w) - 0.20) for w in weights_dict.values())
+        excess_conc = sum(max(0.0, (w / total_w) - 0.20) for sym, w in weights_dict.items() if sym != CASH_SYMBOL)
         conc_penalty = min(20.0, excess_conc * 35.0)
 
         # 4. Risk Profile Misalignment Penalty (0.0 to -20.0 pts)
@@ -512,12 +551,12 @@ class HealthReportService:
         expected_returns = {
             "SPY": 0.10, "QQQ": 0.12, "VTI": 0.095, "AAPL": 0.14, "MSFT": 0.13,
             "NVDA": 0.16, "GOOGL": 0.12, "AMZN": 0.13, "BND": 0.045, "AGG": 0.042,
-            "SHY": 0.038, "TLT": 0.048, "IEF": 0.041, "DEFAULT": 0.08,
+            "SHY": 0.038, "TLT": 0.048, "IEF": 0.041, CASH_SYMBOL: 0.04, "DEFAULT": 0.08,
         }
         volatilities = {
             "SPY": 0.16, "QQQ": 0.20, "VTI": 0.155, "AAPL": 0.24, "MSFT": 0.22,
             "NVDA": 0.35, "GOOGL": 0.23, "AMZN": 0.26, "BND": 0.055, "AGG": 0.052,
-            "SHY": 0.020, "TLT": 0.14, "IEF": 0.07, "DEFAULT": 0.18,
+            "SHY": 0.020, "TLT": 0.14, "IEF": 0.07, CASH_SYMBOL: 0.0, "DEFAULT": 0.18,
         }
         risk_free_rate = 0.04
 
@@ -537,6 +576,7 @@ class HealthReportService:
         # Individual variances + basic cross-terms
         equity_w = sum(w for sym, w in norm_weights.items() if STANDARD_ASSET_CLASSES.get(sym.upper(), "Equity") == "Equity")
         bond_w = sum(w for sym, w in norm_weights.items() if STANDARD_ASSET_CLASSES.get(sym.upper(), "Equity") == "Fixed Income")
+        cash_w = norm_weights.get(CASH_SYMBOL, 0.0)
 
         port_var = (equity_w * 0.16) ** 2 + (bond_w * 0.055) ** 2 + 2 * equity_w * bond_w * 0.16 * 0.055 * 0.10
         if port_var <= 0:
@@ -555,12 +595,14 @@ class HealthReportService:
             "Portfolio": {
                 "Equity": round(equity_w, 4),
                 "Fixed Income": round(bond_w, 4),
-                "Alternative": round(1.0 - equity_w - bond_w, 4),
+                "Alternative": round(max(0.0, 1.0 - equity_w - bond_w - cash_w), 4),
+                "Cash": round(cash_w, 4),
             },
             "Benchmark": {
                 "Equity": 0.60,
                 "Fixed Income": 0.40,
                 "Alternative": 0.0,
+                "Cash": 0.0,
             },
         }
 
@@ -872,9 +914,9 @@ class HealthReportService:
                     cleaned_text = re.sub(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", "your portfolio", cleaned_text, flags=re.IGNORECASE)
                     cleaned_text = cleaned_text.replace("for client your portfolio", "for your portfolio").replace("for client", "for your portfolio")
                     return PortfolioNarrative(
-                        executive_summary=cleaned_text[:300].strip(),
+                        executive_summary=_whole_sentences(cleaned_text, 600),
                         drift_diagnosis=f"Portfolio drift evaluated. Max drift is {drift_result.max_drift:.1%}.",
-                        risk_and_concentration_diagnosis=f"Top holding {concentration.max_position_symbol} is {concentration.max_position_weight:.1%}.",
+                        risk_and_concentration_diagnosis=_top_holding_sentence(concentration),
                         benchmark_comparison_narrative=f"Expected return {benchmark.portfolio_annualized_return:.1%} vs 60/40 benchmark {benchmark.benchmark_annualized_return:.1%}.",
                         actionable_recommendations=[f"Execute {len(rebalance_plan.orders)} rebalance orders."],
                         regulatory_disclosure=REGULATORY_DISCLOSURE,
@@ -906,7 +948,9 @@ class HealthReportService:
         )
 
         conc_status = (
-            f"Elevated concentration in {concentration.max_position_symbol} ({concentration.max_position_weight:.1%})"
+            "No investments held yet; the account is in cash"
+            if concentration.max_position_symbol == "NONE"
+            else f"Elevated concentration in {concentration.max_position_symbol} ({concentration.max_position_weight:.1%})"
             if concentration.has_concentration_risk
             else "Well diversified across target holdings"
         )
@@ -1006,8 +1050,11 @@ class HealthReportService:
                 positions = {"SPY": 60.0, "BND": 40.0}
                 cash = 1000.0
 
+        if portfolio is not None and total_value > 0 and cash > 0.005 * total_value:
+            current_weights[CASH_SYMBOL] = cash / total_value
+
         # Fill prices if missing
-        for sym in set(positions.keys()) | set(current_weights.keys()):
+        for sym in (set(positions.keys()) | set(current_weights.keys())) - {CASH_SYMBOL}:
             if sym not in prices:
                 prices[sym] = STANDARD_PRICES.get(sym, STANDARD_PRICES["DEFAULT"])
 
@@ -1076,16 +1123,52 @@ class HealthReportService:
             "suitability_category": str(getattr(profile, "suitability_category", "Moderate") if profile else "Moderate"),
         }
 
-        narrative = await self.generate_narrative(
-            client_id=client_id,
-            profile_summary=profile_summary,
-            health_score=health_score,
-            drift_result=drift_result,
-            concentration=concentration,
-            benchmark=benchmark_comp,
-            alerts=alerts,
-            rebalance_plan=rebalance_plan,
-        )
+        not_invested = current_weights.get(CASH_SYMBOL, 0.0) >= NOT_INVESTED_CASH_SHARE
+        if not_invested:
+            # Nothing to grade yet: say so plainly instead of narrating a "critical" portfolio
+            cash_share = current_weights.get(CASH_SYMBOL, 0.0)
+            buys = ", ".join(f"{o.symbol} {o.target_weight:.0%}" for o in rebalance_plan.orders if o.side == "BUY")
+            narrative = PortfolioNarrative(
+                executive_summary=(
+                    f"Your account is {cash_share:.0%} cash and not invested yet, so there is no allocation to score. "
+                    + (f"The plan below would invest it in your target mix ({buys}). " if buys else "")
+                    + "Each order needs your approval."
+                ),
+                drift_diagnosis="Your money is still in cash; the drift chart shows how far that is from your target mix.",
+                risk_and_concentration_diagnosis=_top_holding_sentence(concentration),
+                benchmark_comparison_narrative="Cash has almost no volatility but earns less than an invested 60/40 portfolio over time.",
+                actionable_recommendations=(
+                    [f"Review and approve the {len(rebalance_plan.orders)} orders in the plan to invest your cash."]
+                    if rebalance_plan.orders
+                    else ["Build an allocation to choose how to invest your cash."]
+                ),
+                regulatory_disclosure=REGULATORY_DISCLOSURE,
+                generation_mode="DETERMINISTIC_FALLBACK",
+            )
+            # The drift/misalignment alerts all restate "you are in cash"; one plain note replaces them
+            alerts = [
+                StructuredAlert(
+                    alert_type=AlertType.REBALANCE_RECOMMENDED,
+                    severity=AlertSeverity.INFO,
+                    title="Your cash is not invested yet",
+                    message=f"{cash_share:.0%} of your account is in cash.",
+                    affected_assets=[CASH_SYMBOL],
+                    metric_value=round(cash_share, 4),
+                    threshold_value=NOT_INVESTED_CASH_SHARE,
+                    action_recommended="Review the rebalancing plan below, or build an allocation, to start investing.",
+                )
+            ]
+        else:
+            narrative = await self.generate_narrative(
+                client_id=client_id,
+                profile_summary=profile_summary,
+                health_score=health_score,
+                drift_result=drift_result,
+                concentration=concentration,
+                benchmark=benchmark_comp,
+                alerts=alerts,
+                rebalance_plan=rebalance_plan,
+            )
 
         portfolio_summary = {
             "total_value": total_value,
@@ -1107,4 +1190,5 @@ class HealthReportService:
             alerts=alerts,
             rebalancing_plan=rebalance_plan,
             narrative=narrative,
+            not_invested=not_invested,
         )
