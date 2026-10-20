@@ -8,10 +8,12 @@ import { ErrorNotice, Tag } from "@/components/ui/Feedback";
 import { Segmented } from "@/components/ui/Field";
 import { PageHeader, Panel } from "@/components/ui/Layout";
 import { Table, Td, Th, Tr } from "@/components/ui/Table";
+import { Markdown } from "@/components/ui/Markdown";
 import { api } from "@/lib/api";
 import { fixed, pct } from "@/lib/format";
 import type { ComparedProduct, CompareResponse } from "@/lib/types";
 import { useAction } from "@/lib/useRequest";
+import { useStoredState } from "@/lib/useStoredState";
 
 type Kind = "etfs" | "bonds";
 
@@ -188,7 +190,7 @@ function Results({
   const sanitizedRationale = (res.rationale || "")
     .replace(/\s*per\s+SUIT-\d+/gi, "")
     .replace(/SUIT-\d+/gi, "")
-    .replace(/\s+/g, " ")
+    .replace(/[ \t]+/g, " ")
     .trim();
 
   return (
@@ -363,7 +365,7 @@ function Results({
       ) : null}
 
       <Panel title="Fiduciary Summary">
-        <p className="max-w-[72ch] whitespace-pre-line text-[1rem] text-ink leading-relaxed">{sanitizedRationale}</p>
+        <Markdown className="max-w-[72ch]" text={sanitizedRationale} />
         <p className="mt-4 text-[0.9375rem] text-muted">
           Method: {res.report?.methodology}. Your risk tier for products is {clientTier} of 5.
         </p>
@@ -378,7 +380,8 @@ function Compare({ clientId }: { clientId: string }) {
   const [activePresetId, setActivePresetId] = useState<string | null>(STRATEGY_PRESETS.etfs[0].id);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
-  const [res, setRes] = useState<CompareResponse | null>(null);
+  // Kept across page changes so the last comparison is still here when the client comes back
+  const [res, setRes] = useStoredState<CompareResponse>(`compare.${clientId}`);
 
   const tooFew = selectedSymbols.length < 2;
   const tooMany = selectedSymbols.length > 15;

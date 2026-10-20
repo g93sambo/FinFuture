@@ -50,7 +50,8 @@ export function ProposalTicket({
   onReject?: () => void;
 }) {
   const { expired, label } = useCountdown(proposal.created_at, proposal.expires_in_seconds);
-  const exceedsConcentration = proposal.projected_weight > 0.15 || Boolean(proposal.exceeds_concentration_ceiling);
+  // The backend decides: broad index/bond funds are exempt from the single-stock ceiling
+  const exceedsConcentration = proposal.exceeds_concentration_ceiling ?? proposal.projected_weight > 0.15;
   const isRedTier =
     proposal.permission_tier === "RED" ||
     proposal.requires_step_up_auth === true ||

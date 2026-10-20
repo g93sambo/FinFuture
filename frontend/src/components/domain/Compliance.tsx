@@ -8,9 +8,12 @@ export function RuleResults({ details }: { details: ComplianceDetails }) {
   return (
     <ul className="divide-y divide-line border-y border-line">
       {rows.map((r) => (
-        <li key={r.rule_id} className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5 py-2.5 text-sm">
-          <span className="font-medium text-ink">{r.rule_name}</span>
-          <span>
+        <li key={r.rule_id} className="flex items-start justify-between gap-4 py-2.5 text-sm">
+          <div className="min-w-0">
+            <p className="font-medium text-ink">{r.rule_name}</p>
+            {r.details ? <p className="mt-0.5 text-[0.875rem] leading-snug text-muted">{r.details}</p> : null}
+          </div>
+          <span className="shrink-0 pt-0.5">
             {r.passed ? (
               <Tag tone="success">Pass</Tag>
             ) : r.severity === "BLOCK" ? (
@@ -19,7 +22,6 @@ export function RuleResults({ details }: { details: ComplianceDetails }) {
               <Tag tone="warning">Warning</Tag>
             )}
           </span>
-          <span className="col-start-2 col-end-4 text-[0.9375rem] text-muted">{r.details}</span>
         </li>
       ))}
     </ul>

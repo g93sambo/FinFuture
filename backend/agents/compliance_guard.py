@@ -298,6 +298,19 @@ STANDARD_DISCLOSURE_TEXT = (
 # Main ComplianceGuard Implementation
 # ============================================================================
 
+# Broad index and bond funds that each hold hundreds of securities. CONC-001 is a
+# *single-stock* limit, so it does not apply to them; single stocks and single-asset
+# funds (gold, bitcoin, sector bets) still do.
+DIVERSIFIED_FUNDS = frozenset({
+    "SPY", "VOO", "IVV", "VTI", "ITOT", "SCHB", "VT", "QQQ", "DIA", "IWM", "VXUS", "VEA", "VWO", "EFA", "IEFA",
+    "IEMG", "SCHD", "VIG", "BND", "AGG", "BNDX", "SHY", "IEF", "TLT", "TIP", "VGIT", "VGSH", "SCHZ", "BSV", "VTEB",
+})
+
+
+def is_diversified_fund(symbol: str) -> bool:
+    return str(symbol or "").strip().upper() in DIVERSIFIED_FUNDS
+
+
 class ComplianceGuard:
     """
     Production Compliance Guard Agent enforcing 12 regulatory, suitability,
@@ -1060,8 +1073,20 @@ class ComplianceGuard:
             r = rule_map["CONC-001"]
             max_stock_weight = float(r["parameters"].get("max_single_stock_weight", 0.15))
             proj_w = float(trade["projected_weight"])
-            passed = proj_w <= max_stock_weight
-            if not passed:
+            diversified = is_diversified_fund(trade.get("symbol", ""))
+            passed = proj_w <= max_stock_weight or diversified
+            if diversified and proj_w > max_stock_weight:
+                rule_results.append(
+                    RuleCheckDetail(
+                        rule_id="CONC-001",
+                        rule_name=r["name"],
+                        category="CONCENTRATION",
+                        passed=True,
+                        severity=r["severity"],
+                        details=f"Diversified fund: single-stock limit does not apply (projected weight {proj_w:.1%})",
+                    )
+                )
+            elif not passed:
                 # Fiduciary waiver: Client-directed unsolicited orders with affirmative attestation can override soft concentration ceiling
                 if bool(trade.get("fiduciary_attested")):
                     override_msg = (

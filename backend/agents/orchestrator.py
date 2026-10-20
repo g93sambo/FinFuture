@@ -32,7 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from agents.allocation_engine import AllocationEngine
 from agents.behavioral_bias import BehavioralBiasAgent
-from agents.compliance_guard import ComplianceGuard, ComplianceViolationError
+from agents.compliance_guard import ComplianceGuard, ComplianceViolationError, is_diversified_fund
 from agents.execution_module import (
     DuplicateTradeError,
     ExecutionError,
@@ -1814,7 +1814,7 @@ class OrchestratorAgent:
             "permission_tier": tier_info["permission_tier"],
             "requires_step_up_auth": tier_info["requires_step_up_auth"],
             "step_up_reason": tier_info["step_up_reason"],
-            "exceeds_concentration_ceiling": float(proj["projected_weight"]) > 0.15,
+            "exceeds_concentration_ceiling": float(proj["projected_weight"]) > 0.15 and not is_diversified_fund(symbol),
             "max_recommended_weight": 0.15,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "expires_in_seconds": PROPOSAL_TTL_SECONDS,

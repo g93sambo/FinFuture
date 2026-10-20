@@ -115,3 +115,40 @@ async def test_selling_shares_not_held_is_blocked(db_session, two_clients):
         await _execute(ex, db_session, "client_a", "SPY", "SELL", 11)
     result = await _execute(ex, db_session, "client_a", "SPY", "SELL", 4)
     assert result.success
+
+
+@pytest.mark.asyncio
+async def test_health_plan_prices_unheld_targets_at_live_quotes(db_session, two_clients):
+    """Team report: the plan valued SPY at a stale $510.50 while the Trade page charged $766.48."""
+    from services.health_report import HealthReportService
+
+    market = FixedMarket({"SPY": 766.48, "BND": 74.10})
+    svc = PortfolioService(execution_module=make_execution(), market_data_agent=market)
+    pf = await svc.get_portfolio(db_session, "client_b")  # all cash, nothing held yet
+    report = await HealthReportService(market_data_agent=market, openai_api_key="").generate_health_report(
+        db_session, "client_b",
+        portfolio={"weights": pf["weights"], "positions": pf["position_qty"], "cash": pf["cash"],
+                   "total_value": pf["total_value"], "prices": pf["prices"]},
+    )
+    plan = report.rebalancing_plan
+    by_symbol = {o.symbol: o for o in plan.orders}
+    assert plan.total_portfolio_value == pytest.approx(DEFAULT_STARTING_CASH)
+    assert by_symbol["SPY"].estimated_price == 766.48
+    assert by_symbol["BND"].estimated_price == 74.10
+    assert sum(o.estimated_amount for o in plan.orders) <= DEFAULT_STARTING_CASH + 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("symbol,flagged", [("BND", False), ("SPY", False), ("AAPL", True), ("GLD", True)])
+async def test_single_stock_limit_skips_diversified_funds(symbol, flagged):
+    """Team report: following the plan's 'Buy BND' (20%) raised a single-stock concentration warning."""
+    from agents.compliance_guard import ComplianceGuard, ComplianceViolationError
+
+    trade = {"symbol": symbol, "side": "BUY", "qty": 10, "notional_value": 900.0, "projected_weight": 0.195,
+             "user_approved": True, "approval_timestamp": datetime.now(timezone.utc).isoformat()}
+    try:
+        violations = (await ComplianceGuard().check_trade(None, "client_a", trade, None)).violations
+    except ComplianceViolationError as exc:  # other rules may block this synthetic trade; only CONC-001 matters here
+        violations = exc.violations
+    conc = [v for v in violations if v.rule_id == "CONC-001"]
+    assert bool(conc) is flagged

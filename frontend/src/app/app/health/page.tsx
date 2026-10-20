@@ -7,6 +7,7 @@ import { Button, ButtonLink } from "@/components/ui/Button";
 import { ErrorNotice, Notice, Skeleton, Tag, type Tone } from "@/components/ui/Feedback";
 import { Ledger, PageHeader, Panel } from "@/components/ui/Layout";
 import { Table, Td, Th, Tr } from "@/components/ui/Table";
+import { Markdown } from "@/components/ui/Markdown";
 import { api } from "@/lib/api";
 import { dateTime, fixed, humanize, money, pct, qty, signedPct } from "@/lib/format";
 import type { HealthReport } from "@/lib/types";
@@ -191,7 +192,7 @@ function Report({
           <div className="mt-6">
             <ScoreScale score={r.health_score} />
           </div>
-          <p className="mt-6 max-w-[68ch] text-[1rem] leading-relaxed text-ink">{formatExecutiveSummary(n.executive_summary)}</p>
+          <Markdown className="mt-6 max-w-[68ch]" text={formatExecutiveSummary(n.executive_summary)} />
         </Panel>
 
         <Panel title="How the score is built" className="xl:col-span-5">
@@ -238,7 +239,7 @@ function Report({
             max={Math.max(...drifts.map((d) => Math.max(d.current_weight, d.target_weight)), 0.01)}
             rows={drifts.map((d) => ({ label: d.symbol, value: d.current_weight, target: d.target_weight, valueText: pct(d.current_weight) }))}
           />
-          <p className="mt-4 text-sm text-ink">{n.drift_diagnosis}</p>
+          <Markdown className="mt-4 text-sm" text={n.drift_diagnosis} />
         </Panel>
 
         <Panel title="Concentration" className="xl:col-span-5">
@@ -250,7 +251,7 @@ function Report({
               { label: "Effective holdings", note: "1 / Herfindahl", value: fixed(r.concentration_metrics.effective_asset_count, 1) },
             ]}
           />
-          <p className="mt-4 text-sm text-ink">{n.risk_and_concentration_diagnosis}</p>
+          <Markdown className="mt-4 text-sm" text={n.risk_and_concentration_diagnosis} />
         </Panel>
       </div>
 
@@ -349,9 +350,11 @@ function Report({
       </Panel>
 
       <Panel title="Recommendations">
-        <ol className="list-inside list-decimal space-y-1.5 text-[1rem] text-ink marker:text-muted">
+        <ol className="list-decimal space-y-1.5 pl-5 text-[1rem] text-ink marker:text-muted">
           {n.actionable_recommendations.map((a) => (
-            <li key={a}>{a}</li>
+            <li key={a} className="pl-1">
+              <Markdown text={a.replace(/^\s*(\d+[.)]|[-*•])\s+/, "")} />
+            </li>
           ))}
         </ol>
         <p className="mt-4 border-t border-line pt-3 text-[0.875rem] text-muted">{n.regulatory_disclosure}</p>

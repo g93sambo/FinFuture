@@ -105,13 +105,14 @@ async def _generate_health_report(client_id: str, user: DBUser, db: AsyncSession
     await verify_client_ownership(user, client_id, db)
     await c.bias.record_portfolio_check(client_id, db=db)
     pf = await c.portfolio.get_portfolio(db, client_id)
+    # Always the client's real portfolio (even all cash), never a placeholder baseline
     portfolio_arg = {
         "weights": pf["weights"],
         "positions": pf["position_qty"],
         "cash": pf["cash"],
         "total_value": pf["total_value"],
         "prices": pf["prices"],
-    } if pf["position_qty"] else None
+    }
     report = await c.health.generate_health_report(db, client_id, portfolio=portfolio_arg)
     return report.model_dump(mode="json")
 

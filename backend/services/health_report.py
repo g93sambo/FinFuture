@@ -252,6 +252,18 @@ class HealthReportService:
             self.openai_api_key = getattr(settings, "openai_api_key", None)
         self.openai_model = openai_model or getattr(settings, "openai_model", "gpt-4o")
 
+    async def _live_price(self, symbol: str) -> Optional[float]:
+        """Live quote from the market data agent, or None when unavailable."""
+        if self.market_data_agent is None:
+            return None
+        try:
+            quote = await self.market_data_agent.get_quote(symbol)
+            price = float(getattr(quote, "price", 0.0) or 0.0)
+            return price if price > 0 else None
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Live price unavailable for %s: %s", symbol, exc)
+            return None
+
     # ========================================================================
     # 1. Portfolio Drift Analysis
     # ========================================================================
@@ -1037,6 +1049,17 @@ class HealthReportService:
             health_score=health_score,
             profile=profile,
         )
+
+        # Price every symbol the plan may trade (including targets not yet held) at the live quote,
+        # so quantities and estimated values match what the Trade page will charge.
+        prices = dict(prices)
+        for sym in set(positions) | set(target_weights):
+            if sym not in prices or sym not in positions:
+                live = await self._live_price(sym)
+                if live:
+                    prices[sym] = live
+                elif sym not in prices:
+                    prices[sym] = STANDARD_PRICES.get(sym, STANDARD_PRICES["DEFAULT"])
 
         rebalance_plan = self.generate_rebalancing_orders(
             current_positions=positions,

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { BulletBars } from "../charts/BulletBars";
 import { Notice, Tag } from "../ui/Feedback";
+import { Markdown } from "../ui/Markdown";
 import { BiasAlert } from "./BiasAlert";
 import { ComplianceSummary, Violations } from "./Compliance";
 import { ExecutionReceipt, ProposalTicket } from "./TradeTicket";
@@ -37,164 +38,16 @@ function splitDisclosure(text: string): [string, boolean] {
   return [text.replace(DISCLOSURE, "\n").trim(), true];
 }
 
-/** Renders bold and footnote citation tokens [1], [2], etc. */
-function renderInlineFormatting(line: string) {
-  const parts = line.split(/(\*\*.*?\*\*|\[\d+\])/g);
-  return parts.map((part, i) => {
-    if (part.startsWith("**") && part.endsWith("**")) {
-      return (
-        <strong key={i} className="font-semibold text-ink">
-          {part.slice(2, -2)}
-        </strong>
-      );
-    }
-    if (/^\[\d+\]$/.test(part)) {
-      return (
-        <span
-          key={i}
-          className="ml-1 inline-flex items-center justify-center rounded-sm bg-accent-soft px-1.5 py-0.2 text-[10px] font-semibold text-accent align-baseline"
-          title={`Citation ${part}`}
-        >
-          {part.slice(1, -1)}
-        </span>
-      );
-    }
-    return part;
-  });
-}
-
 function Body({ text }: { text?: string }) {
   if (!text) return null;
   const [main, hadDisclosure] = splitDisclosure(text);
   if (!main) return null;
 
-  const lines = main.split("\n");
-  const blocks: React.ReactNode[] = [];
-  let i = 0;
-
-  while (i < lines.length) {
-    const rawLine = lines[i];
-    const line = rawLine.trim();
-
-    // Markdown table block detection
-    if (line.startsWith("|") && line.endsWith("|") && i + 1 < lines.length && lines[i + 1].trim().startsWith("|")) {
-      const tableLines: string[] = [];
-      while (i < lines.length && lines[i].trim().startsWith("|")) {
-        tableLines.push(lines[i].trim());
-        i++;
-      }
-      if (tableLines.length >= 2) {
-        const parseRow = (r: string) =>
-          r
-            .slice(1, -1)
-            .split("|")
-            .map((c) => c.trim());
-        const headers = parseRow(tableLines[0]);
-        const dataRows = tableLines.slice(2).map(parseRow);
-        blocks.push(
-          <div key={`tbl-${i}`} className="relative my-3 overflow-x-auto rounded-xl border border-line bg-surface">
-            <table className="w-full border-collapse text-left text-[0.9375rem]">
-              <thead>
-                <tr className="border-b border-line bg-surface-muted">
-                  {headers.map((h, hi) => (
-                    <th key={hi} className="px-3 py-2 font-semibold text-ink">
-                      {renderInlineFormatting(h)}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line">
-                {dataRows.map((row, ri) => (
-                  <tr key={ri} className="hover:bg-surface-muted/50">
-                    {row.map((cell, ci) => (
-                      <td key={ci} className="figures px-3 py-2 text-ink">
-                        {renderInlineFormatting(cell)}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        );
-        continue;
-      }
-    }
-
-    // Headings
-    if (line.startsWith("### ")) {
-      blocks.push(
-        <h4 key={i} className="mt-4 mb-1.5 text-[1rem] font-semibold text-ink">
-          {renderInlineFormatting(line.slice(4))}
-        </h4>
-      );
-      i++;
-      continue;
-    }
-    if (line.startsWith("## ")) {
-      blocks.push(
-        <h3 key={i} className="mt-5 mb-1.5 text-[1.0625rem] font-semibold text-ink">
-          {renderInlineFormatting(line.slice(3))}
-        </h3>
-      );
-      i++;
-      continue;
-    }
-    if (line.startsWith("# ")) {
-      blocks.push(
-        <h2 key={i} className="mt-5 mb-2 text-[1.125rem] font-semibold text-ink">
-          {renderInlineFormatting(line.slice(2))}
-        </h2>
-      );
-      i++;
-      continue;
-    }
-
-    // Bullet list items (- , * , • )
-    if (line.startsWith("- ") || line.startsWith("* ") || line.startsWith("• ")) {
-      blocks.push(
-        <div key={i} className="my-1 flex items-start gap-2.5 text-[14px] leading-relaxed text-ink/90">
-          <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
-          <span className="flex-1">{renderInlineFormatting(line.replace(/^[-*•]\s+/, ""))}</span>
-        </div>
-      );
-      i++;
-      continue;
-    }
-
-    // Numbered list items (1. , 2. )
-    const numMatch = line.match(/^(\d+)\.\s+(.*)$/);
-    if (numMatch) {
-      blocks.push(
-        <div key={i} className="my-1.5 flex items-start gap-2.5 text-[14px] leading-relaxed text-ink/90">
-          <span className="figures mt-0.5 text-[12px] font-bold text-muted shrink-0">{numMatch[1]}.</span>
-          <span className="flex-1">{renderInlineFormatting(numMatch[2])}</span>
-        </div>
-      );
-      i++;
-      continue;
-    }
-
-    // Empty line
-    if (!line) {
-      i++;
-      continue;
-    }
-
-    // Standard paragraph line
-    blocks.push(
-      <p key={i} className="max-w-[82ch] whitespace-pre-line text-[1.0625rem] leading-relaxed text-ink/90">
-        {renderInlineFormatting(lines[i])}
-      </p>
-    );
-    i++;
-  }
-
   return (
-    <div className="space-y-2">
-      {blocks}
+    <div>
+      <Markdown text={main} />
       {hadDisclosure ? (
-        <p className="mt-2 max-w-[72ch] text-[0.875rem] text-muted">
+        <p className="mt-3 max-w-[72ch] text-[0.875rem] text-muted">
           Investing involves risk, including possible loss of principal. Past performance is no guarantee of future results.
         </p>
       ) : null}

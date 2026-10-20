@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useStoredState } from "@/lib/useStoredState";
 import { BulletBars } from "@/components/charts/BulletBars";
 import { LineChart } from "@/components/charts/LineChart";
 import { ComplianceSummary } from "@/components/domain/Compliance";
@@ -10,8 +11,9 @@ import { Empty, ErrorNotice, Notice, Tag } from "@/components/ui/Feedback";
 import { Segmented } from "@/components/ui/Field";
 import { Ledger, PageHeader, Panel } from "@/components/ui/Layout";
 import { Table, Td, Th, Tr } from "@/components/ui/Table";
+import { Markdown } from "@/components/ui/Markdown";
 import { api } from "@/lib/api";
-import { fixed, money, pct, qty, signedPct } from "@/lib/format";
+import { fixed, money, pct, qty, signedPct, timeOnly } from "@/lib/format";
 import type { AgentEvent } from "@/lib/types";
 import { useAction } from "@/lib/useRequest";
 
@@ -65,7 +67,8 @@ function splitText(text = "") {
 }
 
 function Allocation({ clientId }: { clientId: string }) {
-  const [events, setEvents] = useState<AgentEvent[] | null>(null);
+  // Kept across page changes so the client does not have to rebuild after visiting another page
+  const [events, setEvents, savedAt] = useStoredState<AgentEvent[]>(`allocation.${clientId}`);
   const [explainMode, setExplainMode] = useState<"novice" | "quant">("novice");
   const { run, pending, error } = useAction(async () => {
     const res = await api.recommendAllocation(clientId);
@@ -143,6 +146,7 @@ function Allocation({ clientId }: { clientId: string }) {
               { value: "quant", label: "Detailed Analysis" },
             ]}
           />
+          {savedAt ? <span className="text-xs text-muted">Built {timeOnly(savedAt.toISOString())}</span> : null}
           <Button variant="secondary" size="sm" onClick={() => run()} pending={pending}>
             Recalculate
           </Button>
@@ -193,7 +197,7 @@ function Allocation({ clientId }: { clientId: string }) {
                 </div>
               </div>
             ) : (
-              <div className="max-w-[70ch] space-y-3 text-[1rem] whitespace-pre-line text-ink">{explanation}</div>
+              <Markdown className="max-w-[70ch]" text={explanation} />
             )}
           </Panel>
 
