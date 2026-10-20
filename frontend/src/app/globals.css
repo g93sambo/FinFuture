@@ -77,6 +77,18 @@ body {
   font-size: 1.0625rem;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
+  /* Safety net: nothing may widen the page past the screen on phones. */
+  overflow-x: clip;
+}
+
+/*
+ * Grid children default to min-width: auto, so a wide table inside a column
+ * stretches the whole page and phones zoom out. Let them shrink; the table's
+ * own overflow-x-auto wrapper then scrolls. Zero specificity, so an explicit
+ * min-w-* class still wins.
+ */
+:where(.grid) > * {
+  min-width: 0;
 }
 
 /* Figures always line up in columns. */

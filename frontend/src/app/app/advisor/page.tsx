@@ -688,7 +688,7 @@ export default function AdvisorPage() {
         {/* 2. Right "History Chat" Sidebar (added back as requested) */}
         <aside
           aria-label="Chat History"
-          className="flex h-[70vh] flex-col overflow-hidden rounded-3xl border border-line bg-background shadow-[0_2px_20px_rgba(15,41,34,0.04)] lg:sticky lg:top-6 lg:h-[calc(100vh-3rem)]"
+          className="flex max-h-[60vh] flex-col overflow-hidden rounded-3xl border border-line bg-background shadow-[0_2px_20px_rgba(15,41,34,0.04)] lg:sticky lg:top-6 lg:h-[calc(100vh-3rem)] lg:max-h-none"
         >
           {/* Header */}
           <div className="flex items-center justify-between border-b border-line bg-surface/50 px-4 py-3.5">

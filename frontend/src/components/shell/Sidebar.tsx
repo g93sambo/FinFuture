@@ -306,7 +306,7 @@ export function MobileBar() {
   }, [open]);
 
   return (
-    <div className="lg:hidden">
+    <div className="sticky top-0 z-40 lg:hidden">
       <div className="relative isolate flex h-14 items-center justify-between overflow-hidden bg-primary px-4">
         <AuroraBackground />
         <span className="relative z-10">

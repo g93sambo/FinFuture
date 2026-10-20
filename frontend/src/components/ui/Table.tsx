@@ -3,7 +3,7 @@ import type { ComponentProps, ReactNode } from "react";
 /** Horizontally scrollable, ruled table. Header row sits on a hairline, no zebra stripes. */
 export function Table({ children, caption, className = "" }: { children: ReactNode; caption?: string; className?: string }) {
   return (
-    <div className={`overflow-x-auto ${className}`}>
+    <div className={`relative overflow-x-auto ${className}`}>
       <table className="w-full border-collapse text-left text-[1rem]">
         {caption ? <caption className="sr-only">{caption}</caption> : null}
         {children}

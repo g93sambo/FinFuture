@@ -92,7 +92,7 @@ function Body({ text }: { text?: string }) {
         const headers = parseRow(tableLines[0]);
         const dataRows = tableLines.slice(2).map(parseRow);
         blocks.push(
-          <div key={`tbl-${i}`} className="my-3 overflow-x-auto rounded-xl border border-line bg-surface">
+          <div key={`tbl-${i}`} className="relative my-3 overflow-x-auto rounded-xl border border-line bg-surface">
             <table className="w-full border-collapse text-left text-[0.9375rem]">
               <thead>
                 <tr className="border-b border-line bg-surface-muted">

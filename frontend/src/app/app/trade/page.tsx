@@ -314,7 +314,7 @@ function TradeDesk({ clientId }: { clientId: string }) {
 
               <ErrorNotice error={draftError} />
 
-              <div className="flex items-center gap-4 pt-1">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-1">
                 <Button type="submit" pending={drafting} disabled={!symbolOk || !qtyOk || ticketState === "approving"}>
                   Draft Investment Proposal
                 </Button>
