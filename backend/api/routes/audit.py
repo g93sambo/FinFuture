@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import time
+from collections import deque
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agents.orchestrator import AgentContainer
 from api.deps import get_container
+from core.config import settings
 from core.security import get_current_user, verify_client_ownership
 from db.database import get_db
 from db.models import DBAuditLog, DBClientProfile, DBUser
@@ -77,6 +81,25 @@ async def verify_audit(
     return {"client_id": client_id, "valid": valid, "first_invalid_entry": bad_entry}
 
 
+# Every real anchor is a Sepolia transaction paid from the server wallet, so it is rate limited:
+# per client through the shared cache (holds across instances with Redis), and server-wide here.
+_recent_anchors: deque[float] = deque()
+
+
+def _anchor_wait_seconds() -> int:
+    """Seconds until the server-wide hourly anchor budget frees up (0 if available)."""
+    now = time.time()
+    while _recent_anchors and now - _recent_anchors[0] >= 3600:
+        _recent_anchors.popleft()
+    if len(_recent_anchors) < settings.anchor_max_per_hour:
+        return 0
+    return int(3600 - (now - _recent_anchors[0])) + 1
+
+
+def _too_many(detail: str, retry_after: int) -> HTTPException:
+    return HTTPException(status_code=429, detail=detail, headers={"Retry-After": str(max(1, retry_after))})
+
+
 @router.post("/audit/{client_id}/anchor")
 async def anchor_audit(
     client_id: str,
@@ -90,7 +113,27 @@ async def anchor_audit(
     Etherscan link, so it can be looked up again later.
     """
     await verify_client_ownership(user, client_id, db)
+
+    cooldown_key = f"anchor:cooldown:{client_id}"
+    limited = settings.is_anchoring_configured and not settings.dry_run
+    if limited:
+        wait = _anchor_wait_seconds()
+        if wait:
+            raise _too_many(f"Anchoring is busy right now. Try again in about {max(1, wait // 60)} minutes.", wait)
+        if settings.anchor_cooldown_seconds and not await c.cache.acquire_lock(cooldown_key, settings.anchor_cooldown_seconds):
+            minutes = max(1, settings.anchor_cooldown_seconds // 60)
+            raise _too_many(
+                f"Your audit trail was anchored recently. You can anchor again up to {minutes} minutes after the last one.",
+                settings.anchor_cooldown_seconds,
+            )
+
     result = await get_anchoring_service().anchor_client_audit_trail(db, client_id)
+    if limited:
+        if result.tx_hash:
+            _recent_anchors.append(time.time())
+        else:
+            # Nothing was sent (e.g. RPC error): let the client retry straight away
+            await c.cache.release_lock(cooldown_key)
     if result.tx_hash:
         await c.audit.log_audit_entry(
             db=db, client_id=client_id, event_type="AUDIT_ANCHORED", actor=f"USER:{user.id}",

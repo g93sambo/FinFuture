@@ -150,6 +150,7 @@ All settings are environment variables, documented in [`.env.example`](.env.exam
 | `FRED_API_KEY` | Macro series | cached fixtures |
 | `SEPOLIA_RPC_URL`, `SEPOLIA_PRIVATE_KEY`, `AUDIT_CONTRACT_ADDRESS` | Optional Merkle-root anchoring on Sepolia | anchoring off (nothing is sent) |
 | `AUTH_RATE_LIMIT_ENABLED`, `REGISTER_MAX_PER_IP_PER_HOUR`, `LOGIN_FAILURES_MAX_PER_IP` | Per-IP limits on sign-ups and failed logins (each account also locks after 5 failures) | on; 10 per hour; 30 per 15 min |
+| `ANCHOR_COOLDOWN_SECONDS`, `ANCHOR_MAX_PER_HOUR` | Limits on Sepolia anchoring, which spends test ETH: per client, and server-wide | 600 s; 20 per hour |
 
 **Start-up refuses to run** with `ALLOW_AUTONOMOUS_EXECUTION=true`, `ALPACA_PAPER=false`, a live Alpaca URL, or any chain other than Sepolia. With `ENVIRONMENT=production` it also refuses default or shared secrets, `DEBUG=true` and `OTP_DEV_ECHO=true`.
 

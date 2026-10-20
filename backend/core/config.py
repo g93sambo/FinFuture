@@ -135,6 +135,10 @@ class Settings(BaseSettings):
     # --- Authentication abuse limits (per client IP, in-process) ---
     auth_rate_limit_enabled: bool = Field(default=True, description="Throttle registrations and failed logins per IP")
     register_max_per_ip_per_hour: int = Field(default=10, ge=1, description="Accounts one IP may create per hour")
+    anchor_cooldown_seconds: int = Field(
+        default=600, ge=0, description="Minimum time between Sepolia anchors for one client (each anchor spends test ETH)"
+    )
+    anchor_max_per_hour: int = Field(default=20, ge=1, description="Sepolia anchors the whole server may send per hour")
     login_failures_max_per_ip: int = Field(default=30, ge=1, description="Failed logins one IP may make per 15 minutes")
 
     # --- Step-Up OTP & Transactional Email ---
